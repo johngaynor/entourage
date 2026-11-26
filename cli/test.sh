@@ -16,7 +16,7 @@ setup() {
   export HOME=$TMP/home
   unset HERDR_APP_HOME
   APP=$HOME/.config/herdr-app
-  mkdir -p "$REPO/cli" "$REPO/herdr/mods/cpu" "$REPO/herdr/mods/layout-switch" "$REPO/herdr/layouts"
+  mkdir -p "$REPO/.git" "$REPO/cli" "$REPO/herdr/mods/cpu" "$REPO/herdr/mods/layout-switch" "$REPO/herdr/layouts"
   cp "$HERE/entourage" "$REPO/cli/entourage"
   echo x > "$REPO/herdr/mods/cpu/main.js"
   echo x > "$REPO/herdr/mods/layout-switch/main.js"
@@ -129,6 +129,36 @@ fails_before_herdr_first_run() {
   [ ! -d "$APP" ] || fail "created Herdr's folder itself"
 }
 
+# An npm install has no .git: it must not link itself onto PATH (npm did that).
+npm_install_skips_path_link() {
+  rmdir "$REPO/.git"
+  "$E" install >/dev/null || fail "install exited non-zero"
+  is_link_to "$APP/mods/cpu" "$REPO/herdr/mods/cpu" || fail "cpu mod not linked"
+  [ ! -e "$HOME/.local/bin/entourage" ] || fail "linked itself onto PATH in an npm install"
+}
+
+# A stub command that logs its arguments and exits with the given code.
+stub() {
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s"\nexit %s\n' "$TMP/$1-calls.log" "${2:-0}" > "$TMP/bin/$1"
+  chmod +x "$TMP/bin/$1"
+}
+
+# An npm install updates through npm, then hands over to the new copy.
+npm_install_updates_through_npm() {
+  rmdir "$REPO/.git"
+  stub npm; stub entourage
+  "$E" update >/dev/null || fail "update exited non-zero"
+  grep -q 'install -g github:johngaynor/entourage' "$TMP/npm-calls.log" 2>/dev/null || fail "did not reinstall through npm"
+  grep -q 'update --no-pull' "$TMP/entourage-calls.log" 2>/dev/null || fail "did not hand over to the new copy"
+}
+
+npm_update_failure_changes_nothing() {
+  rmdir "$REPO/.git"
+  stub npm 1
+  out=$("$E" update 2>&1) && fail "update exited zero when npm failed"
+  [ ! -e "$APP/mods/cpu" ] || fail "linked after a failed npm install"
+}
+
 honors_herdr_app_home() {
   export HERDR_APP_HOME=$TMP/custom
   mkdir -p "$HERDR_APP_HOME"
@@ -140,7 +170,8 @@ honors_herdr_app_home() {
 for c in install_links_everything install_is_repeatable works_through_the_path_link \
   update_links_a_new_mod update_removes_stale_links update_leaves_other_links_alone \
   real_file_is_never_replaced update_refreshes_herdr status_reports_missing_links \
-  fails_without_herdr fails_before_herdr_first_run honors_herdr_app_home; do
+  fails_without_herdr fails_before_herdr_first_run npm_install_skips_path_link \
+  npm_install_updates_through_npm npm_update_failure_changes_nothing honors_herdr_app_home; do
   run_case "$c"
 done
 
