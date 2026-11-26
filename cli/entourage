@@ -33,7 +33,7 @@ APP_HOME=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
 BIN_DIR=$HOME/.local/bin
 HERDR_INSTALL='curl -fsSL https://releases.herdr.dev/app/install.sh | sh'
 # What `update` reinstalls when entourage came from npm rather than a git clone.
-NPM_SPEC=${ENTOURAGE_NPM_SPEC:-github:johngaynor/entourage}
+NPM_SPEC=${ENTOURAGE_NPM_SPEC:-@johngaynor/entourage}
 
 # A git clone updates with `git pull`; an npm install updates through npm.
 is_clone() { [ -e "$REPO/.git" ]; }

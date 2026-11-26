@@ -39,7 +39,7 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
 3. Install entourage (needs Node):
 
    ```sh
-   npm install -g github:johngaynor/entourage
+   npm install -g @johngaynor/entourage
    ```
 
 4. Run the installer:

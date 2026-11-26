@@ -148,7 +148,7 @@ npm_install_updates_through_npm() {
   rmdir "$REPO/.git"
   stub npm; stub entourage
   "$E" update >/dev/null || fail "update exited non-zero"
-  grep -q 'install -g github:johngaynor/entourage' "$TMP/npm-calls.log" 2>/dev/null || fail "did not reinstall through npm"
+  grep -q 'install -g @johngaynor/entourage' "$TMP/npm-calls.log" 2>/dev/null || fail "did not reinstall through npm"
   grep -q 'update --no-pull' "$TMP/entourage-calls.log" 2>/dev/null || fail "did not hand over to the new copy"
 }
 
