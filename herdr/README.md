@@ -42,33 +42,34 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
    git clone https://github.com/johngaynor/entourage.git
    ```
 
-4. From the repo root, link the mods and layouts into Herdr:
+4. From the repo root, run the installer:
 
    ```sh
-   for m in herdr/mods/*/; do m=${m%/}; [ -e ~/.config/herdr-app/mods/"${m##*/}" ] || ln -s "$PWD/$m" ~/.config/herdr-app/mods/; done
-   for l in herdr/layouts/*.json; do [ -e ~/.config/herdr-app/layouts/"${l##*/}" ] || ln -s "$PWD/$l" ~/.config/herdr-app/layouts/; done
+   cli/entourage install
    ```
 
-   These are safe to re-run: anything already there is left alone.
+   It links every mod and layout into Herdr, puts the `entourage` command in
+   `~/.local/bin`, and refreshes Herdr if it is running. It is safe to re-run,
+   and it never replaces a real file that is already in Herdr's folder.
 
-5. Switch to one of our layouts:
-
-   ```sh
-   herdr-app do layout.switch '{"name":"default"}'
-   ```
-
-   From then on, use the Layout dropdown at the top of the sidebar, or
-   `ctrl-shift-l` to cycle.
+5. Pick a layout from the Layout dropdown at the top of the sidebar, or press
+   `ctrl-shift-l` to cycle. The dropdown only appears on our layouts, so the
+   first switch from Herdr's own layout is `ctrl-shift-l`.
 
 ## Keeping a machine up to date
 
-- **Get changes:** `git pull` in the clone. Then switch to another layout and
-  back, or restart Herdr: it does not notice edits made through a link straight
-  away.
-- **A pull added a new mod or layout:** re-run step 4. Links are made per mod
-  and per layout, so new ones need linking.
+```sh
+entourage update
+```
+
+This pulls the repo, links any mod or layout that is new, removes links to
+ones that were deleted, and refreshes Herdr so it re-reads everything.
+
+- **Check a machine:** `entourage status` lists each mod and layout and whether
+  it is linked.
 - **Remove one from a machine:** delete its link in `~/.config/herdr-app/mods`
-  or `layouts`. The repo is untouched.
+  or `layouts`. The next `entourage update` will link it again, so remove it
+  from the repo to drop it everywhere.
 - **Herdr updates itself:** it replaces its own shipped mods and layouts on
   every start and leaves ours alone, because ours have different names.
 - **Something broke the window:** `ctrl-alt-shift-escape` always returns Herdr
@@ -78,8 +79,8 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
 
 - Edit files here, not in `~/.config/herdr-app`: the links mean they are the
   same files.
-- Herdr does not notice edits made through a link straight away. Switch to
-  another layout and back, or restart Herdr, to pick them up.
+- Herdr does not notice edits made through a link straight away. Run
+  `entourage update --no-pull` to refresh it without pulling.
 - Run `herdr-app check herdr/mods/<name>` after editing a mod.
 - Herdr's shipped layouts and mods are read-only. To build on one, clone it
   (`herdr-app do layout.clone '{"name":"main","as":"<name>"}'`) and move the
