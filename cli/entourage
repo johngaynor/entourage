@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# entourage: set up and maintain this machine's copy of the software factory.
+# Today that means the Herdr mods and layouts under herdr/.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+entourage: set up and maintain this machine from the entourage repo
+
+Usage:
+  entourage install            first-time setup: link everything into the tools on this machine
+  entourage update [--no-pull] get the latest entourage, link anything new, drop stale links, refresh Herdr
+  entourage status             show what is linked and what is not
+  entourage help
+
+Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
+EOF
+}
+
+# --- where things are -------------------------------------------------------
+
+# The repo root, found from this script's real location (it may be run through
+# the ~/.local/bin/entourage link).
+self=${BASH_SOURCE[0]}
+while [ -L "$self" ]; do
+  dir=$(cd -P "$(dirname "$self")" && pwd)
+  self=$(readlink "$self")
+  case $self in /*) ;; *) self=$dir/$self ;; esac
+done
+REPO=$(cd -P "$(dirname "$self")/.." && pwd)
+
+APP_HOME=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
+BIN_DIR=$HOME/.local/bin
+HERDR_INSTALL='curl -fsSL https://releases.herdr.dev/app/install.sh | sh'
+# What `update` reinstalls when entourage came from npm rather than a git clone.
+NPM_SPEC=${ENTOURAGE_NPM_SPEC:-@johngaynor/entourage}
+
+# A git clone updates with `git pull`; an npm install updates through npm.
+is_clone() { [ -e "$REPO/.git" ]; }
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'entourage: %s\n' "$*" >&2; exit 1; }
+
+herdr_app() {
+  if command -v herdr-app >/dev/null 2>&1; then herdr-app "$@"
+  elif [ -x "$BIN_DIR/herdr-app" ]; then "$BIN_DIR/herdr-app" "$@"
+  else return 127
+  fi
+}
+
+have_herdr() { command -v herdr-app >/dev/null 2>&1 || [ -x "$BIN_DIR/herdr-app" ]; }
+
+# --- linking ----------------------------------------------------------------
+
+# Every (source, destination) pair this repo wants linked, one per line,
+# tab-separated.
+wanted() {
+  local m l
+  for m in "$REPO"/herdr/mods/*/; do
+    [ -d "$m" ] || continue
+    m=${m%/}
+    printf '%s\t%s\n' "$m" "$APP_HOME/mods/${m##*/}"
+  done
+  for l in "$REPO"/herdr/layouts/*.json; do
+    [ -f "$l" ] || continue
+    printf '%s\t%s\n' "$l" "$APP_HOME/layouts/${l##*/}"
+  done
+}
+
+# linked | missing | elsewhere (a link to somewhere else) | blocked (a real file)
+state_of() {
+  local src=$1 dst=$2
+  if [ -L "$dst" ]; then
+    [ "$(readlink "$dst")" = "$src" ] && echo linked || echo elsewhere
+  elif [ -e "$dst" ]; then echo blocked
+  else echo missing
+  fi
+}
+
+label() { local dst=$1; say "${dst#"$APP_HOME"/}"; }
+
+# Link what is missing. Never touches a real file or someone else's link.
+link_all() {
+  local src dst added=0 skipped=0
+  mkdir -p "$APP_HOME/mods" "$APP_HOME/layouts"
+  while IFS=$'\t' read -r src dst; do
+    case $(state_of "$src" "$dst") in
+      linked) ;;
+      missing) ln -s "$src" "$dst"; say "  linked   $(label "$dst")"; added=$((added + 1)) ;;
+      elsewhere) say "  skipped  $(label "$dst") (already a link to $(readlink "$dst"))"; skipped=$((skipped + 1)) ;;
+      blocked) say "  skipped  $(label "$dst") (a real file is in the way; move it aside to use ours)"; skipped=$((skipped + 1)) ;;
+    esac
+  done < <(wanted)
+  [ "$added" -gt 0 ] || say "  nothing new to link"
+  CHANGED=$((CHANGED + added))
+  SKIPPED=$skipped
+}
+
+# Remove links that point into this repo at something that no longer exists
+# (a mod or layout that was deleted or renamed upstream).
+prune() {
+  local dst target
+  for dst in "$APP_HOME"/mods/* "$APP_HOME"/layouts/*; do
+    [ -L "$dst" ] || continue
+    target=$(readlink "$dst")
+    case $target in "$REPO"/herdr/*) ;; *) continue ;; esac
+    if [ ! -e "$target" ]; then
+      rm "$dst"; say "  removed  $(label "$dst") (no longer in the repo)"
+      CHANGED=$((CHANGED + 1))
+    fi
+  done
+}
+
+# Herdr does not notice edits made through a link. Switching to a shipped
+# layout and back makes it re-read our layouts and mods.
+refresh_herdr() {
+  local current
+  current=$(herdr_app status 2>/dev/null | sed -n 's/.*"layout": *"\([^"]*\)".*/\1/p' | head -n 1) || true
+  if [ -z "$current" ]; then
+    say "  Herdr is not running; it will pick everything up when it starts"
+    return 0
+  fi
+  local other=main
+  [ "$current" = main ] && other=terminals
+  herdr_app do layout.switch "{\"name\":\"$other\"}" >/dev/null 2>&1 || true
+  if herdr_app do layout.switch "{\"name\":\"$current\"}" >/dev/null 2>&1; then
+    say "  refreshed Herdr (layout: $current)"
+  else
+    say "  could not switch Herdr back to '$current'; pick it from the Layout dropdown or press ctrl-shift-l"
+  fi
+}
+
+require_herdr() {
+  have_herdr || die "Herdr is not installed. Install it, open it once, then run this again:
+  $HERDR_INSTALL"
+  [ -d "$APP_HOME" ] || die "$APP_HOME does not exist yet. Open Herdr once so it creates its folder, then run this again."
+}
+
+# --- commands ---------------------------------------------------------------
+
+cmd_install() {
+  require_herdr
+  CHANGED=0 SKIPPED=0
+  say "Linking mods and layouts into $APP_HOME"
+  link_all
+
+  # npm already put the command on PATH; a clone has to do it itself.
+  if is_clone; then
+    say "Putting entourage on your PATH"
+    mkdir -p "$BIN_DIR"
+    local me=$REPO/cli/entourage dst=$BIN_DIR/entourage
+    case $(state_of "$me" "$dst") in
+      linked) say "  already at $dst" ;;
+      missing) ln -s "$me" "$dst"; say "  linked   $dst" ;;
+      *) say "  skipped  $dst (something else is already there)" ;;
+    esac
+    case ":$PATH:" in
+      *":$BIN_DIR:"*) ;;
+      *) say "  note: $BIN_DIR is not on your PATH; add it to run 'entourage' from anywhere" ;;
+    esac
+  fi
+
+  say "Refreshing Herdr"
+  refresh_herdr
+  say "Done. Pick a layout from the Layout dropdown, or press ctrl-shift-l."
+}
+
+cmd_update() {
+  local pull=1
+  case ${1:-} in
+    --no-pull) pull=0 ;;
+    '') ;;
+    *) die "unknown option for update: $1" ;;
+  esac
+  require_herdr
+  CHANGED=0 SKIPPED=0
+  local before=none after=none
+  if [ "$pull" = 1 ] && ! is_clone; then
+    # Installed by npm: reinstall, then hand over to the new copy to relink.
+    command -v npm >/dev/null 2>&1 || die "npm is needed to update this install, and it is not on your PATH."
+    say "Updating entourage with npm ($NPM_SPEC)"
+    npm install -g "$NPM_SPEC" || die "npm install failed; nothing was changed in Herdr."
+    exec entourage update --no-pull
+  fi
+  if is_clone; then before=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo none); fi
+  if [ "$pull" = 1 ]; then
+    say "Pulling $REPO"
+    git -C "$REPO" pull --ff-only || die "git pull failed; fix that in $REPO and run update again."
+  fi
+  if is_clone; then after=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo none); fi
+
+  say "Linking mods and layouts into $APP_HOME"
+  link_all
+  prune
+
+  say "Refreshing Herdr"
+  if [ "$before" != "$after" ] || [ "$CHANGED" -gt 0 ] || [ "$pull" = 0 ]; then
+    refresh_herdr
+  else
+    say "  nothing changed"
+  fi
+}
+
+cmd_status() {
+  say "Repo:  $REPO"
+  say "Herdr: $APP_HOME"
+  have_herdr || say "  Herdr is not installed ($HERDR_INSTALL)"
+  local src dst s problems=0
+  while IFS=$'\t' read -r src dst; do
+    s=$(state_of "$src" "$dst")
+    [ "$s" = linked ] || problems=$((problems + 1))
+    printf '  %-10s %s\n' "$s" "${dst#"$APP_HOME"/}"
+  done < <(wanted)
+  if [ "$problems" -gt 0 ]; then
+    say "$problems not linked. Run: entourage update"
+    return 1
+  fi
+  say "Everything is linked."
+}
+
+case ${1:-help} in
+  install) shift; cmd_install "$@" ;;
+  update) shift; cmd_update "$@" ;;
+  status) shift; cmd_status "$@" ;;
+  help | -h | --help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

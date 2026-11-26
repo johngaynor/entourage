@@ -1,0 +1,23 @@
+{
+  "name": "@johngaynor/entourage",
+  "version": "0.1.0",
+  "description": "A software factory: agent skills and the Herdr setup to run them, installed with one command.",
+  "bin": {
+    "entourage": "cli/entourage"
+  },
+  "files": [
+    "cli/entourage",
+    "herdr/"
+  ],
+  "scripts": {
+    "test": "cli/test.sh"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johngaynor/entourage.git"
+  }
+}
