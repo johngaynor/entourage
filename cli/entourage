@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # entourage: set up and maintain this machine's copy of the software factory.
-# It links the Herdr mods and layouts under herdr/, and manages projects:
-# groups of repos that show up in Herdr as spaces.
+# It links the Herdr mods and layouts under herdr/, and manages projects
+# (groups of repos that show up in Herdr as spaces) and their tasks (a
+# worktree of each repo on one branch, shown as a tab in the project's space).
 set -euo pipefail
 
 usage() {
@@ -16,10 +17,16 @@ Usage:
   entourage project add <name> <path>  add a repo that is already on this machine
   entourage project open <name>        show the project as a Herdr space
   entourage project ls                 list projects and their repos
+  entourage task new <project> <branch>  start a task: a worktree per repo, opened as a tab
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
 each repo is for. A repo can be in several projects.
+
+A task is one piece of work in a project. Its branch is <type>/<description>,
+like feat/abc-122-short-title (https://conventionalbranch.org). The task gets
+a folder in the project's tasks/ folder with a worktree of each repo on that
+branch, and a tab in the project's Herdr space.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
 Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
@@ -148,6 +155,9 @@ refresh_herdr() {
   fi
 }
 
+# Herdr answers `status` with the layout it shows only while its window is open.
+herdr_running() { herdr_app status 2>/dev/null | grep -q '"layout"'; }
+
 require_herdr() {
   have_herdr || die "Herdr is not installed. Install it, open it once, then run this again:
   $HERDR_INSTALL"
@@ -254,11 +264,9 @@ project_add() {
   say "Describe what it owns in $dir/PROJECT.md"
 }
 
-project_open() {
-  local name=${1:-} dir id
-  dir=$(project_dir "$name")
-  require_herdr
-  sync_links "$dir"
+# Show the Herdr space for a project, making it if it is not open.
+show_space() {
+  local name=$1 dir=$2 id
   # Find an open space whose folder is this project's. `herdr-app ls` prints
   # indented JSON; a space's own "id" and "folder" sit at six spaces. Closed
   # spaces are listed after "recent" in the same shape, so stop there.
@@ -276,6 +284,14 @@ project_open() {
       die "could not make a space for '$name'. Is Herdr open?"
     say "Opened a space for '$name' in $dir"
   fi
+}
+
+project_open() {
+  local name=${1:-} dir
+  dir=$(project_dir "$name")
+  require_herdr
+  sync_links "$dir"
+  show_space "$name" "$dir"
 }
 
 project_ls() {
@@ -381,6 +397,9 @@ task_new() {
   valid_branch "$branch" ||
     die "'$branch' is not a branch name entourage accepts. Use <type>/<description>, like: feat/abc-122-short-title (see https://conventionalbranch.org)"
   task=$(task_name "$branch")
+  # A task is shown as a tab, so Herdr has to be there before anything is made.
+  require_herdr
+  herdr_running || die "Herdr is not running. Open it, then run this again."
 
   # Check everything before making anything.
   local repos=() repo base tdir=$dir/tasks/$task
@@ -425,6 +444,18 @@ task_new() {
     ln -s ../../PROJECT.md "$tdir/CLAUDE.md"
     ln -s ../../PROJECT.md "$tdir/AGENTS.md"
   fi
+
+  # One repo: the tab starts in its worktree, where git and the repo's own
+  # docs work as usual. Several: it starts in the task folder above them.
+  local folder=$tdir
+  [ "${#repos[@]}" -gt 1 ] || folder=$tdir/${repos[0]##*/}
+  sync_links "$dir"
+  show_space "$name" "$dir"
+  # No `space` argument: the tab goes in the selected space, which show_space
+  # has just selected or made.
+  herdr_app do tab.new "{\"name\":\"$task\",\"folder\":\"$folder\"}" >/dev/null 2>&1 ||
+    die "made the task at $folder but could not open its tab. Is Herdr open?"
+  say "Opened task '$task' on branch $branch"
 }
 
 cmd_task() {

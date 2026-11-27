@@ -89,6 +89,7 @@ template is in this repo. Your own projects are in
 | `PROJECT.md` | What the project is and what belongs in each repo. You write this. |
 | `repos` | One repo path per line. `entourage project add` writes it; you can edit it. |
 | `links/` | Generated: a link to each repo, named after its folder. |
+| `tasks/` | One folder per task, holding a worktree of each repo. See [Tasks](#tasks). |
 | `CLAUDE.md`, `AGENTS.md` | Generated: links to `PROJECT.md`, so an agent started in the space reads it. |
 
 - **Make one:** `entourage project new <name>`, then
@@ -104,6 +105,38 @@ template is in this repo. Your own projects are in
   link. To remove a project, close its space and delete its folder.
 - **The linked repos are shared.** A repo in two projects is the same clone
   in both, so switching branches in one changes it in the other.
+
+## Tasks
+
+A task is one piece of work in a project: one branch, checked out as a git
+worktree of every repo in the project, and shown as a tab in the project's
+space.
+
+```sh
+entourage task new <project> <branch>
+```
+
+- **The branch is `<type>/<description>`**, following
+  [Conventional Branch](https://conventionalbranch.org): `feat/abc-122-insert-task-here`,
+  `fix/abc-140-header-bug`, `chore/update-dependencies`. Put the card's ID in
+  the description. The types are `feature`, `feat`, `bugfix`, `fix`, `hotfix`,
+  `release` and `chore`, plus `ai`, `claude`, `codex`, `copilot` and `cursor`.
+- **The description names the task.** `feat/abc-122-insert-task-here` makes
+  the folder `tasks/abc-122-insert-task-here` and a tab of that name.
+- **Each repo gets a worktree** at `tasks/<task>/<repo>`, on the new branch,
+  cut from the remote's default branch after a fetch. A repo that cannot be
+  fetched starts from what is local, with a warning.
+- **The repos' own checkouts are not touched.** They stay on whatever branch
+  they were on.
+- **Where the tab starts:** in the worktree when the project has one repo; in
+  the task folder when it has several. That folder has `CLAUDE.md` and
+  `AGENTS.md` links to the project's `PROJECT.md`.
+- **Nothing is made unless everything can be.** A task or branch of that name
+  that already exists, a missing repo, or Herdr not running stops it first,
+  and a worktree that fails partway is undone.
+- **Remove a task by hand for now:** in each repo run
+  `git worktree remove <project folder>/tasks/<task>/<repo>` and
+  `git branch -D <branch>`, then delete the task's folder and close its tab.
 
 ## Changing things
 

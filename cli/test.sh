@@ -557,7 +557,78 @@ task_new_undoes_a_failed_run() {
   [ "$(git -C "$API" worktree list | wc -l | tr -d ' ')" = 1 ] || fail "left the worktree behind in api"
 }
 
-TASK_CASES="task_new_several_repos task_new_one_repo_has_no_links task_new_undoes_a_failed_run
+last_call() { tail -n 1 "$TMP/herdr-calls.log"; }
+
+task_new_opens_a_tab_one_repo() {
+  task_demo api
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  [ "$(last_call)" = "do tab.new {\"name\":\"x\",\"folder\":\"$T/x/api\"}" ] || fail "wrong last call: $(last_call)"
+  sed '$d' "$TMP/herdr-calls.log" | grep -qF "do space.new {\"name\":\"demo\",\"folder\":\"$P/demo\"}" ||
+    fail "did not make the space before the tab: $(cat "$TMP/herdr-calls.log")"
+}
+
+task_new_opens_a_tab_several_repos() {
+  task_demo api web
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  [ "$(last_call)" = "do tab.new {\"name\":\"x\",\"folder\":\"$T/x\"}" ] || fail "wrong last call: $(last_call)"
+}
+
+task_new_selects_an_open_space() {
+  task_demo api
+  cat > "$TMP/herdr-ls.json" <<EOF
+{
+  "spaces": [
+    {
+      "id": "spcmine",
+      "name": "demo",
+      "folder": "$P/demo",
+      "tabs": []
+    }
+  ],
+  "recent": []
+}
+EOF
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  grep -qF 'do space.select {"id":"spcmine"}' "$TMP/herdr-calls.log" || fail "did not select the open space"
+  grep -q 'space.new' "$TMP/herdr-calls.log" && fail "made a second space"
+  case $(last_call) in "do tab.new "*) ;; *) fail "the tab was not opened last: $(last_call)" ;; esac
+}
+
+task_new_needs_herdr_running() {
+  task_demo api
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/bin/herdr-app"
+  "$E" task new demo feat/x >/dev/null 2>"$TMP/err" && fail "exited zero with Herdr not running"
+  grep -q 'not running' "$TMP/err" || fail "did not say Herdr is not running: $(cat "$TMP/err")"
+  [ ! -e "$T" ] || fail "made a tasks folder"
+  has_branch "$API" feat/x && fail "made a branch"
+}
+
+task_new_repo_path_with_a_space() {
+  "$E" project new demo >/dev/null
+  make_git_repo "$HOME/Dev/my api"
+  "$E" project add demo "$HOME/Dev/my api" >/dev/null
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  [ "$(branch_of "$P/demo/tasks/x/my api")" = feat/x ] || fail "no worktree at a path with a space"
+  [ "$(last_call)" = "do tab.new {\"name\":\"x\",\"folder\":\"$P/demo/tasks/x/my api\"}" ] || fail "wrong last call: $(last_call)"
+}
+
+# The tab could not be opened: the task is kept, and the message says where it is.
+task_new_keeps_the_task_when_the_tab_fails() {
+  task_demo api
+  cat > "$TMP/bin/herdr-app" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = status ] && echo '  "layout": "test",'
+[ "$2" = tab.new ] && exit 1
+exit 0
+EOF
+  "$E" task new demo feat/x >/dev/null 2>"$TMP/err" && fail "exited zero when the tab could not be opened"
+  [ -d "$T/x/api" ] || fail "removed the task"
+  grep -qF "$T/x/api" "$TMP/err" || fail "did not say where the task is: $(cat "$TMP/err")"
+}
+
+TASK_CASES="task_new_opens_a_tab_one_repo task_new_opens_a_tab_several_repos task_new_selects_an_open_space
+  task_new_needs_herdr_running task_new_repo_path_with_a_space task_new_keeps_the_task_when_the_tab_fails
+  task_new_several_repos task_new_one_repo_has_no_links task_new_undoes_a_failed_run
   task_new_refuses_bad_branch task_new_refuses_unknown_project task_usage_on_unknown_subcommand
   task_new_makes_a_worktree task_new_accepts_every_spec_name task_new_starts_from_the_latest_default_branch
   task_new_works_offline task_new_without_origin_uses_local_default task_new_refuses_no_repos
