@@ -516,6 +516,84 @@ status_is_quiet_about_just_without_projects() {
   case $out in *"just is not installed"*) fail "mentioned just on a machine with no projects: $out" ;; esac
 }
 
+# --- a project's Linear team ------------------------------------------------
+
+project_team_sets_the_team() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo PHY >/dev/null || fail "team exited non-zero"
+  [ "$(cat "$P/demo/teams" 2>&1)" = PHY ] || fail "the team file holds: $(cat "$P/demo/teams" 2>&1)"
+}
+
+# Linear writes a team's key in upper case, however it is typed here.
+project_team_stores_the_key_in_upper_case() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo phy >/dev/null || fail "team exited non-zero"
+  [ "$(cat "$P/demo/teams" 2>&1)" = PHY ] || fail "the team file holds: $(cat "$P/demo/teams" 2>&1)"
+}
+
+project_team_replaces_the_team() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo PHY >/dev/null
+  "$E" project team demo LAB >/dev/null || fail "the second team exited non-zero"
+  [ "$(cat "$P/demo/teams" 2>&1)" = LAB ] || fail "the team file holds: $(cat "$P/demo/teams" 2>&1)"
+}
+
+project_team_prints_the_team() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo PHY >/dev/null
+  out=$("$E" project team demo) || fail "printing the team exited non-zero"
+  [ "$out" = PHY ] || fail "printed: $out"
+}
+
+# A project's cards can be spread over several Linear teams, and a team can be
+# named by several projects.
+project_team_takes_several_teams() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo PHY lab >/dev/null || fail "team exited non-zero"
+  [ "$(cat "$P/demo/teams" 2>&1)" = "$(printf 'PHY\nLAB')" ] ||
+    fail "the teams file holds: $(cat "$P/demo/teams" 2>&1)"
+}
+
+project_team_prints_every_team() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo PHY LAB >/dev/null
+  out=$("$E" project team demo) || fail "printing the teams exited non-zero"
+  [ "$out" = "$(printf 'PHY\nLAB')" ] || fail "printed: $out"
+}
+
+project_team_lists_a_team_once() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo PHY phy >/dev/null || fail "team exited non-zero"
+  [ "$(cat "$P/demo/teams" 2>&1)" = PHY ] || fail "the teams file holds: $(cat "$P/demo/teams" 2>&1)"
+}
+
+# One bad key must not leave the project with only some of its teams.
+project_team_keeps_the_old_teams_when_a_key_is_bad() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo PHY >/dev/null
+  "$E" project team demo LAB "A B" >/dev/null 2>&1 && fail "accepted a bad key among good ones"
+  [ "$(cat "$P/demo/teams" 2>&1)" = PHY ] || fail "the teams file holds: $(cat "$P/demo/teams" 2>&1)"
+}
+
+project_team_without_one_says_how_to_set_it() {
+  "$E" project new demo >/dev/null
+  out=$("$E" project team demo 2>&1) && fail "exited zero for a project with no team"
+  case $out in *"entourage project team demo "*) ;; *) fail "did not say how to set it: $out" ;; esac
+}
+
+project_team_refuses_what_is_not_a_team_key() {
+  "$E" project new demo >/dev/null
+  for k in "A B" 12 AB-1 'A"B' 'A/B'; do
+    "$E" project team demo "$k" >/dev/null 2>&1 && fail "accepted the team key '$k'"
+  done
+  [ ! -e "$P/demo/teams" ] || fail "wrote a team file: $(cat "$P/demo/teams")"
+}
+
+project_team_unknown_project() {
+  "$E" project team nope PHY >/dev/null 2>&1 && fail "set a team on a project that does not exist"
+  [ ! -e "$P/nope" ] || fail "made the project"
+}
+
 CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a_justfile status_notes_a_justfile_without_setup
   status_is_quiet_when_setup_exists status_ignores_a_parent_justfile
   status_notes_an_unreadable_justfile status_says_once_when_just_is_missing
@@ -533,4 +611,9 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   project_add_refuses_non_repo project_add_refuses_duplicates project_add_handles_spaces
   project_add_unknown_project a_repo_can_be_in_two_projects stale_link_removed_real_file_kept
   project_open_makes_space project_open_selects_existing project_open_ignores_closed_spaces project_open_warns_missing_repo
-  project_open_unknown_project status_reports_project_problems honors_entourage_home"
+  project_open_unknown_project status_reports_project_problems honors_entourage_home
+  project_team_sets_the_team project_team_stores_the_key_in_upper_case project_team_replaces_the_team
+  project_team_prints_the_team project_team_without_one_says_how_to_set_it
+  project_team_takes_several_teams project_team_prints_every_team project_team_lists_a_team_once
+  project_team_keeps_the_old_teams_when_a_key_is_bad
+  project_team_refuses_what_is_not_a_team_key project_team_unknown_project"

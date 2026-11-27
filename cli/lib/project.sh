@@ -3,6 +3,7 @@
 # A project is a folder in $PROJECTS:
 #   PROJECT.md   what the project is and what belongs in each repo
 #   repos        one repo path per line (~/ for the home folder, # for comments)
+#   teams        the keys of the project's Linear teams, like ABC, one per line
 #   links/       generated: a link to each repo, named after its folder
 #   CLAUDE.md, AGENTS.md   generated: links to PROJECT.md, so agents read it
 
@@ -208,6 +209,50 @@ project_ls() {
   [ "$any" = 1 ] || say "No projects yet. Make one with: entourage project new <name>"
 }
 
+# A team's key is what its cards' IDs start with: ABC for ABC-122.
+TEAM_RE='^[A-Za-z][A-Za-z0-9]*$'
+
+# Print a project's Linear teams, one key per line, or nothing when it has
+# none. Blank lines and # comments are skipped, as in the repos file.
+project_teams() {
+  local dir=$1 line
+  [ -f "$dir/teams" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    case $line in '' | '#'*) continue ;; esac
+    printf '%s\n' "$line"
+  done < "$dir/teams"
+}
+
+# Set the Linear teams whose cards are a project's, or print them when no key
+# is given. `task ls` lists those teams' cards. A project can name several
+# teams, and several projects can name the same team. The keys given replace
+# the ones there. They are not checked with Linear here, so teams can be set
+# with no network and before a Linear key is saved.
+project_team() {
+  local name=${1:-} dir key keys='' teams
+  dir=$(project_dir "$name")
+  shift
+  if [ "$#" -eq 0 ]; then
+    teams=$(project_teams "$dir")
+    [ -n "$teams" ] ||
+      die "project '$name' has no Linear team. Set it with: entourage project team $name <team key>, like: entourage project team $name ABC"
+    say "$teams"
+    return
+  fi
+  # Every key is checked before the file is written, so a bad one does not
+  # leave the project with only some of its teams.
+  for key in "$@"; do
+    [[ $key =~ $TEAM_RE ]] ||
+      die "'$key' is not a Linear team key. A team's key is what its cards' IDs start with: ABC for ABC-122."
+    key=$(printf '%s' "$key" | tr '[:lower:]' '[:upper:]')
+    case $'\n'$keys in *$'\n'"$key"$'\n'*) continue ;; esac
+    keys+=$key$'\n'
+  done
+  printf '%s' "$keys" > "$dir/teams"
+  say "Project '$name' lists the cards of: $(printf '%s' "$keys" | tr '\n' ' ' | sed 's/ $//')"
+}
+
 # Print what is wrong with each project; return how many problems there are.
 check_projects() {
   local d repo problems=0 bad
@@ -247,6 +292,7 @@ cmd_project() {
     add) shift; project_add "$@" ;;
     open) shift; project_open "$@" ;;
     ls | list) shift; project_ls "$@" ;;
-    *) die "usage: entourage project new|add|open|ls (see: entourage help)" ;;
+    team) shift; project_team "$@" ;;
+    *) die "usage: entourage project new|add|open|ls|team (see: entourage help)" ;;
   esac
 }
