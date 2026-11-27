@@ -381,6 +381,31 @@ honors_entourage_home() {
   [ ! -e "$P/demo" ] || fail "wrote to the default folder too"
 }
 
+# --- tasks ------------------------------------------------------------------
+
+task_new_refuses_bad_branch() {
+  "$E" project new demo >/dev/null
+  for b in main master develop abc-122-x Feature/Add-Login feature/new--login \
+           feature/-new-login feature/new-login- release/v1.-2.0 "fix/header bug" \
+           fix/header_bug unknown/some-task feat/ feat/a/b ""; do
+    "$E" task new demo "$b" >/dev/null 2>"$TMP/err" && fail "accepted the branch '$b'"
+    grep -q conventionalbranch.org "$TMP/err" || fail "no naming hint for '$b'"
+  done
+  [ ! -e "$P/demo/tasks" ] || fail "made a tasks folder for a refused branch"
+}
+
+task_new_refuses_unknown_project() {
+  "$E" task new nope feat/abc-1-x >/dev/null 2>&1 && fail "accepted a project that does not exist"
+  [ ! -e "$P/nope" ] || fail "made a project folder"
+}
+
+task_usage_on_unknown_subcommand() {
+  "$E" task >/dev/null 2>&1 && fail "bare 'task' exited zero"
+  "$E" task frob >/dev/null 2>&1 && fail "'task frob' exited zero"
+}
+
+TASK_CASES="task_new_refuses_bad_branch task_new_refuses_unknown_project task_usage_on_unknown_subcommand"
+
 for c in install_links_everything install_is_repeatable works_through_the_path_link \
   update_links_a_new_mod update_removes_stale_links update_leaves_other_links_alone \
   real_file_is_never_replaced update_refreshes_herdr status_reports_missing_links \
@@ -391,7 +416,8 @@ for c in install_links_everything install_is_repeatable works_through_the_path_l
   project_add_refuses_non_repo project_add_refuses_duplicates project_add_handles_spaces \
   project_add_unknown_project a_repo_can_be_in_two_projects stale_link_removed_real_file_kept \
   project_open_makes_space project_open_selects_existing project_open_ignores_closed_spaces project_open_warns_missing_repo \
-  project_open_unknown_project status_reports_project_problems honors_entourage_home; do
+  project_open_unknown_project status_reports_project_problems honors_entourage_home \
+  $TASK_CASES; do
   run_case "$c"
 done
 

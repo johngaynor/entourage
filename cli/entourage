@@ -321,6 +321,39 @@ cmd_project() {
   esac
 }
 
+# --- tasks ------------------------------------------------------------------
+
+# A task is a folder in a project's tasks/ folder, named after its branch's
+# description, holding one git worktree per repo of the project:
+#   tasks/abc-122-short-title/api   a worktree of api on feat/abc-122-short-title
+
+# Branch names follow Conventional Branch 1.1.0 (https://conventionalbranch.org):
+# <type>/<description>. Trunk names (main, master, develop) have no type, so
+# they do not match.
+BRANCH_RE='^(feature|feat|bugfix|fix|hotfix|release|chore|ai|claude|codex|copilot|cursor)/[a-z0-9]+(\.[a-z0-9]+)*(-[a-z0-9]+(\.[a-z0-9]+)*)*$'
+
+valid_branch() { [[ ${1:-} =~ $BRANCH_RE ]]; }
+
+# A task's name is its branch without the type.
+task_name() { printf '%s\n' "${1#*/}"; }
+
+task_new() {
+  local name=${1:-} branch=${2:-} dir task
+  dir=$(project_dir "$name")
+  [ -n "$branch" ] ||
+    die "which branch? Usage: entourage task new $name <type>/<description> (see https://conventionalbranch.org)"
+  valid_branch "$branch" ||
+    die "'$branch' is not a branch name entourage accepts. Use <type>/<description>, like: feat/abc-122-short-title (see https://conventionalbranch.org)"
+  task=$(task_name "$branch")
+}
+
+cmd_task() {
+  case ${1:-} in
+    new) shift; task_new "$@" ;;
+    *) die "usage: entourage task new <project> <branch> (see: entourage help)" ;;
+  esac
+}
+
 # --- commands ---------------------------------------------------------------
 
 cmd_install() {
@@ -412,6 +445,7 @@ case ${1:-help} in
   update) shift; cmd_update "$@" ;;
   status) shift; cmd_status "$@" ;;
   project) shift; cmd_project "$@" ;;
+  task) shift; cmd_task "$@" ;;
   help | -h | --help) usage ;;
   *) usage >&2; exit 2 ;;
 esac
