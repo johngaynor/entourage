@@ -7,7 +7,7 @@ description: Write the technical plan for a Linear card that already has a Speci
 
 Plan is the second step of the lifecycle. Define said what is wanted. Plan reads the code and says how it will be built: the approach, the files that change, and how each Done when item will be shown to be true.
 
-Two readers depend on it. John reads it to approve the card, so it has to be short and honest. The build step starts later in a fresh session with only the card, so the plan has to be exact enough to build from cold. A plan that says "update the orders module" helps neither of them.
+Two readers depend on it. The human reads it to approve the card, so it has to be short and honest. The build step starts later in a fresh session with only the card, so the plan has to be exact enough to build from cold. A plan that says "update the orders module" helps neither of them.
 
 Plan only reads. It writes no code and makes no branch or worktree. Whether the card is one piece or several is breakdown's job, which comes next.
 
@@ -15,7 +15,7 @@ Plan only reads. It writes no code and makes no branch or worktree. Whether the 
 
 1. Read the card with the Linear tools: the original description and the Specification.
 2. If there is no Specification, define hasn't run. Say so and stop.
-3. If the card already has a Plan section, don't write a second one. Tell John and ask whether he wants it revised.
+3. If the card already has a Plan section, don't write a second one. Tell the human and ask whether they want it revised.
 
 ## 1. Read the code
 
@@ -38,8 +38,8 @@ It has three parts.
 
 A few sentences on how it will be built. Name the existing pattern it follows and where that pattern lives.
 
-- If you chose between two real options, add one line on the one you rejected and why. It saves John asking.
-- If the work needs a new dependency, say so here. That is a decision John should see.
+- If you chose between two real options, add one line on the one you rejected and why. It saves the human asking.
+- If the work needs a new dependency, say so here. That is a decision the human should see.
 - If the work needs more than one repo, say which and why.
 
 ### Changes
@@ -66,11 +66,11 @@ One line for each Done when item, in the same order, saying how it will be shown
 
 ## 3. Stay inside the Specification
 
-Plan never edits the Specification or the original description. They are what John asked for, and the plan answers to them.
+Plan never edits the Specification or the original description. They are what the human asked for, and the plan answers to them.
 
-- **A Done when item can't be met as written.** The code may show that an item is impossible, contradicts how the product works, or costs far more than the card suggests. Ask John before going any further, in a handoff block with `status: needs-human`. He may change the Specification. You may not.
-- **A technical question.** Settle it from the code where you can. Ask John only what the code can't answer, such as an upcoming change that affects the approach, or a choice between two workable options with different costs. Ask one question at a time, in a handoff block with `status: needs-human` and your recommendation first in `options`.
-- **Something outside the Specification.** While reading you may find a nearby bug, a missing test or a refactor that would help. Leave it out of the plan and put it in `flags` when you hand off. Folding it in makes the card bigger than what he approved.
+- **A Done when item can't be met as written.** The code may show that an item is impossible, contradicts how the product works, or costs far more than the card suggests. Ask the human before going any further, in a handoff block with `status: needs-human`. They may change the Specification. You may not.
+- **A technical question.** Settle it from the code where you can. Ask the human only what the code can't answer, such as an upcoming change that affects the approach, or a choice between two workable options with different costs. Ask one question at a time, in a handoff block with `status: needs-human` and your recommendation first in `options`.
+- **Something outside the Specification.** While reading you may find a nearby bug, a missing test or a refactor that would help. Leave it out of the plan and put it in `flags` when you hand off. Folding it in makes the card bigger than what they approved.
 
 ## 4. Write it to the card
 
@@ -140,16 +140,16 @@ Which lines you write depends on the status:
 
 | When this happens | Do this |
 |---|---|
-| The card ID doesn't resolve | Ask John for the ID. Don't pick a card because its title looks similar |
+| The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
 | A write to the card fails | Read the card before doing anything else. Retry once, and only if the section isn't there, so it can't be added twice |
-| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell John |
-| The collapsed section shows as plain `>>>` text | Leave the content as it is and tell John. Don't keep reformatting it |
-| A repo named in `PROJECT.md` is missing, or the fetch fails | Tell John, and ask whether to plan from what is on disk |
-| You can't tell which repo the work belongs in | Ask John. Don't guess paths |
+| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell the human |
+| The collapsed section shows as plain `>>>` text | Leave the content as it is and tell the human. Don't keep reformatting it |
+| A repo named in `PROJECT.md` is missing, or the fetch fails | Tell the human, and ask whether to plan from what is on disk |
+| You can't tell which repo the work belongs in | Ask the human. Don't guess paths |
 | A path you were about to write doesn't exist | Find the real one, or mark the file as new. Never leave a path you haven't checked |
 
-If something fails that isn't on this list, stop and tell John what happened. Don't work around it.
+If something fails that isn't on this list, stop and tell the human what happened. Don't work around it.
 
 ## Example
 

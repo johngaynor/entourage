@@ -57,6 +57,16 @@ task_new_prompt_follows_the_block() {
   done
 }
 
+# The skills ship to everyone who installs entourage, so they name no one.
+# They say "the human".
+no_skill_names_a_person() {
+  local s
+  for s in $CARD_SKILL_NAMES; do
+    ! grep -qw 'John' "$REPO/skills/$s/SKILL.md" ||
+      fail "$s names John; say 'the human'"
+  done
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_hands_off_as_itself no_skill_says_then_stop
-  task_new_prompt_follows_the_block"
+  no_skill_names_a_person task_new_prompt_follows_the_block"

@@ -7,7 +7,7 @@ description: Fill out a Linear card from its title and short description by sett
 
 Define is the first step of the lifecycle. It takes a card that holds a title and a sentence or two, and leaves it with a type and a Specification that says what is wanted and how anyone can tell it is done.
 
-Everything after this step is checked against the Specification. Plan maps its tests to Done when, breakdown cuts along it, build is finished when it is true, and John reads it to approve the card. A vague Specification doesn't slow an agent down. It gets built as whatever the agent guessed.
+Everything after this step is checked against the Specification. Plan maps its tests to Done when, breakdown cuts along it, build is finished when it is true, and the human reads it to approve the card. A vague Specification doesn't slow an agent down. It gets built as whatever the agent guessed.
 
 Define says what and why. How it will be built belongs to plan, and whether it is one piece or several belongs to breakdown. Leave both alone here.
 
@@ -15,7 +15,7 @@ Define says what and why. How it will be built belongs to plan, and whether it i
 
 1. Get the card. If you weren't given a card ID, ask for one.
 2. Read the card with the Linear tools: title, description, labels and comments.
-3. If the card already has a Specification section, don't write a second one. Tell John and ask whether he wants it revised.
+3. If the card already has a Specification section, don't write a second one. Tell the human and ask whether they want it revised.
 4. Read the project's `PROJECT.md`, and look at only enough of the product, docs and code to use the right names and to know what exists today. Stop there. Working out the approach is plan's job, and doing it now tends to leak files and design into the Specification.
 
 ## 1. Set the type
@@ -31,7 +31,7 @@ Every card gets exactly one type. The types come from Conventional Branch, becau
 - If two could fit, take the first that does, in this order: `fix`, `feat`, `chore`.
 - Work the type out from the title and description even when the card already carries a type label. Labels get added by habit and are often wrong. Replace the label if yours differs.
 - Set the type as the card's label in the `Type` label group, which allows one per card. The name is lowercase and exact, because setup uses it as the branch prefix: `<type>/<card-id>-<short-name>`, for example `feat/abc-122-export-orders`.
-- If the work is really two types, such as a fix plus an unrelated clean-up, this card keeps its main change. Tell John about the other part and ask whether he wants a second card for it. Don't create that card yourself.
+- If the work is really two types, such as a fix plus an unrelated clean-up, this card keeps its main change. Tell the human about the other part and ask whether they want a second card for it. Don't create that card yourself.
 
 The type is a label only. Don't write it into the card's text.
 
@@ -68,20 +68,20 @@ If you end up with more than seven items, the card is probably more than one thi
 
 Include this only when a reader would reasonably expect something that this card will not do. Otherwise leave it out.
 
-## 3. When to ask John
+## 3. When to ask the human
 
 Ask in the session and wait for the answer when:
 
 - The title and description aren't enough to say who this is for or what done looks like.
-- An item depends on a product decision or a fact only he has, such as a limit, a wording, or which users.
+- An item depends on a product decision or a fact only they have, such as a limit, a wording, or which users.
 - There are two readings that would give different Done when lists.
 
-Ask one question at a time, in a handoff block with `status: needs-human`. Put your best guess first in `options`, so he can answer with a yes. Don't fill a gap with a guess or a placeholder. A made-up criterion reads exactly like a real one, and it will be built.
+Ask one question at a time, in a handoff block with `status: needs-human`. Put your best guess first in `options`, so they can answer with a yes. Don't fill a gap with a guess or a placeholder. A made-up criterion reads exactly like a real one, and it will be built.
 
 ## 4. Write it to the card
 
 - Leave the original description exactly as it is, at the top. It is the original ask, and later steps read it.
-- Append the Specification below it as a collapsible section, so the card stays short when John opens it.
+- Append the Specification below it as a collapsible section, so the card stays short when the human opens it.
 - Add nothing else. No type line, repo, risk or flags, and no approach or file names.
 
 Use this form:
@@ -144,15 +144,15 @@ Which lines you write depends on the status:
 
 | When this happens | Do this |
 |---|---|
-| The card ID doesn't resolve | Ask John for the ID. Don't pick a card because its title looks similar |
+| The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
 | A write to the card fails | Read the card before doing anything else. Retry once, and only if the section isn't there, so it can't be added twice |
-| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell John |
-| The collapsed section shows as plain `>>>` text | Leave the content as it is and tell John. Don't keep reformatting it |
-| The `Type` label group, or the label you need, doesn't exist | Don't create it. Finish the Specification, and tell John which label is missing |
+| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell the human |
+| The collapsed section shows as plain `>>>` text | Leave the content as it is and tell the human. Don't keep reformatting it |
+| The `Type` label group, or the label you need, doesn't exist | Don't create it. Finish the Specification, and tell the human which label is missing |
 | The card carries more than one type label | Leave only the one you worked out |
 
-If something fails that isn't on this list, stop and tell John what happened. Don't work around it.
+If something fails that isn't on this list, stop and tell the human what happened. Don't work around it.
 
 ## Example
 

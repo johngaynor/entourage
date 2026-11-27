@@ -1,6 +1,6 @@
 ---
 name: sdlc-breakdown
-description: Decide whether a planned Linear card is one piece or several, by cutting it into thin end-to-end slices (elephant carpaccio) where it can be cut, then, once John approves, creating each slice as a sub-issue. Use this after plan on every card, and whenever asked to break down, slice or split a card, or to judge whether a card is too big for one pull request.
+description: Decide whether a planned Linear card is one piece or several, by cutting it into thin end-to-end slices (elephant carpaccio) where it can be cut, then, once the human approves, creating each slice as a sub-issue. Use this after plan on every card, and whenever asked to break down, slice or split a card, or to judge whether a card is too big for one pull request.
 ---
 
 # Break down a card
@@ -11,20 +11,20 @@ The method is elephant carpaccio: cut the work into slices so thin that each one
 
 Thin slices matter more when an agent is building. Each slice can be checked end to end as soon as it merges, a mistake stays inside one small pull request, and if the third slice never ships, the first two still work.
 
-This skill has two parts. Proposing, and asking John to approve, happens on every card. Creating sub-issues happens only after he approves a card that was sliced.
+This skill has two parts. Proposing, and asking the human to approve, happens on every card. Creating sub-issues happens only after they approve a card that was sliced.
 
 ## Before you write anything
 
 1. Read the card with the Linear tools: the Specification and the Plan.
 2. If either is missing, the earlier step hasn't run. Say so and stop.
-3. If the card is itself a sub-issue, don't slice it again. Slices go one level deep. If it looks too big, tell John.
-4. If the card already has a Breakdown section, don't write a second one. Tell John and ask whether he wants it revised.
+3. If the card is itself a sub-issue, don't slice it again. Slices go one level deep. If it looks too big, tell the human.
+4. If the card already has a Breakdown section, don't write a second one. Tell the human and ask whether they want it revised.
 
 ## Part 1: Propose
 
 ### First, is it already small?
 
-Look at the plan's Changes. If the whole card is one agent, one sitting and one quick pull request, it stands as one piece, even if you could cut it further. Every slice costs John a review and a merge, so don't slice for its own sake.
+Look at the plan's Changes. If the whole card is one agent, one sitting and one quick pull request, it stands as one piece, even if you could cut it further. Every slice costs the human a review and a merge, so don't slice for its own sake.
 
 ### If it is too big, try to cut it
 
@@ -55,17 +55,17 @@ Then check the set:
 - **Each slice has its own Done when**, one to four outcomes written by the same rules as the card's.
 - **The slices run in order.** Each builds on the last.
 
-Two to five slices is usual. If you need more than six, the card is probably several cards. Propose what you have and say so when you ask John to approve.
+Two to five slices is usual. If you need more than six, the card is probably several cards. Propose what you have and say so when you ask the human to approve.
 
 ### If it can't be cut
 
 Some work has no cut that passes the checks. A refactor may have nothing to click halfway through. A migration may have to land together. A first slice may not be acceptable for users to see without the rest.
 
-Then the card stands as one piece, however large it is. Don't force a cut that fails a check. A horizontal slice is worse than a large card, because it merges something nobody can test. Say in one line why it can't be cut, and if it is large, say so when you ask John to approve.
+Then the card stands as one piece, however large it is. Don't force a cut that fails a check. A horizontal slice is worse than a large card, because it merges something nobody can test. Say in one line why it can't be cut, and if it is large, say so when you ask the human to approve.
 
 ### Write it to the card
 
-Append a Breakdown section below the Plan. Leave it open, not collapsible, because it is what John reads to approve the card. Change nothing above it.
+Append a Breakdown section below the Plan. Leave it open, not collapsible, because it is what the human reads to approve the card. Change nothing above it.
 
 For one piece:
 
@@ -85,20 +85,20 @@ For slices:
    - [ ] …
 ```
 
-Create nothing else in Linear yet. A proposal John turns down should leave nothing behind to clean up.
+Create nothing else in Linear yet. A proposal the human turns down should leave nothing behind to clean up.
 
-### Ask John to approve
+### Ask the human to approve
 
-Breakdown is the last step before building, so it ends by asking John to approve the whole card: the Specification, the Plan and the Breakdown together. This happens on every card, sliced or not.
+Breakdown is the last step before building, so it ends by asking the human to approve the whole card: the Specification, the Plan and the Breakdown together. This happens on every card, sliced or not.
 
-Give him a summary he can answer from without opening Linear:
+Give them a summary they can answer from without opening Linear:
 
 - The type.
 - The Done when list.
 - The approach, in a sentence or two.
 - Whether it is one piece or several, and why. If several, the slice names in order.
 
-Then ask him to approve or say what to change. The summary goes above the handoff block, and the block is the ask:
+Then ask them to approve or say what to change. The summary goes above the handoff block, and the block is the ask:
 
 ```
 phase: breakdown
@@ -107,9 +107,9 @@ question: Approve <card ID> as specified, planned and broken down?
 options: approve | change breakdown | change plan | change specification
 ```
 
-Wait for his answer.
+Wait for their answer.
 
-| John says | Then |
+| The human says | Then |
 |---|---|
 | Change the breakdown | Revise the Breakdown section and ask again |
 | Change the Specification or the Plan | Make the change by that section's own skill, `sdlc-define` or `sdlc-plan`. When that skill hands off, come back here and re-check every section below the one that changed, because a new Done when item can make the Plan and the Breakdown wrong. Ask again |
@@ -118,7 +118,7 @@ Wait for his answer.
 
 ## Part 2: Create the sub-issues
 
-Do this only when John has approved the card in this session, and only when the breakdown has more than one slice.
+Do this only when the human has approved the card in this session, and only when the breakdown has more than one slice.
 
 For each slice, in order, create a sub-issue of the card:
 
@@ -138,7 +138,7 @@ Read the parent and each sub-issue back, then hand off.
 
 ## Hand off
 
-Breakdown is finished when John has approved the card and, if it was sliced, its sub-issues exist. End with a handoff block:
+Breakdown is finished when the human has approved the card and, if it was sliced, its sub-issues exist. End with a handoff block:
 
 - `phase: breakdown`, `status: done` and `next: setup`.
 - `summary`: that the card is approved, and whether it is one piece or sliced. If it was sliced, the sub-issues in order with their IDs, and which one is first.
@@ -182,15 +182,15 @@ Which lines you write depends on the status:
 
 | When this happens | Do this |
 |---|---|
-| The card ID doesn't resolve | Ask John for the ID. Don't pick a card because its title looks similar |
+| The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
 | A write to the card fails | Read the card before doing anything else. Retry once, and only if the section isn't there, so it can't be added twice |
-| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell John |
+| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell the human |
 | Creating the sub-issues stops partway | Don't start over. List the sub-issues the card already has, create only the missing ones, then set the blocking order |
-| A blocking relation can't be set | Tell John. The order is still on the parent's Breakdown list, so it isn't lost |
-| John's answer isn't a clear yes | Treat it as a change request. Ask what he wants changed, then ask for approval again |
+| A blocking relation can't be set | Tell the human. The order is still on the parent's Breakdown list, so it isn't lost |
+| The human's answer isn't a clear yes | Treat it as a change request. Ask what they want changed, then ask for approval again |
 
-If something fails that isn't on this list, stop and tell John what happened. Don't work around it.
+If something fails that isn't on this list, stop and tell the human what happened. Don't work around it.
 
 ## Examples
 
