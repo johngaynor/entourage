@@ -76,6 +76,10 @@ the description. The description names the task:
       web/                      a worktree of web on the same branch
 ```
 
+If a repo has a `justfile` with a `setup` recipe, `just setup` then runs in
+the task's tab, so the checkout is ready to work in. See
+[what a repo provides](herdr/README.md#what-a-repo-provides).
+
 See [herdr/README.md](herdr/README.md#tasks) for the details.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
