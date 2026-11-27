@@ -505,6 +505,108 @@ log_shows_a_question_still_waiting() {
   log_has '^    waiting on the human for 2m [0-5][0-9]s$'
 }
 
+# --- the view as JSON, for Herdr --------------------------------------------
+
+# The same rows as log_shows_how_long_each_step_took.
+seven_rows() {
+  put 2026-01-01T10:00:00Z new done define
+  put 2026-01-01T10:00:50Z define done plan
+  put 2026-01-01T10:02:34Z plan done breakdown
+  put 2026-01-01T10:02:39Z breakdown needs-human
+  put 2026-01-01T10:09:43Z breakdown answered '' 'change specification'
+  put 2026-01-01T10:10:03Z define done plan
+  put 2026-01-01T11:12:03Z plan done breakdown
+}
+# Read one value out of the JSON in $out.
+j() { printf '%s' "$out" | jq -r "$1"; }
+# The value at jq path $1 must be $2.
+j_is() { [ "$(j "$1")" = "$2" ] || fail "$1 is '$(j "$1")', not '$2'"; }
+
+log_json_is_the_same_view_on_one_line() {
+  demo; make_store; seven_rows
+  out=$("$E" task log demo abc-122 --json) || fail "task log --json exited non-zero"
+  [ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" = 1 ] || fail "not one line: $out"
+  printf '%s' "$out" | jq -e . >/dev/null || fail "not JSON: $out"
+  j_is .project demo; j_is .card ABC-122; j_is '.steps | length' 7
+  # Every label and time is worked out already: the reader formats nothing.
+  j_is '.steps[0].label' started;                      j_is '.steps[0].took' '';  j_is '.steps[0].kind' start
+  j_is '.steps[1].label' 'define done';                j_is '.steps[1].took' 50s; j_is '.steps[1].seconds' 50
+  j_is '.steps[2].took' '1m 44s'
+  j_is '.steps[3].label' 'breakdown asked a question'; j_is '.steps[3].took' 5s
+  j_is '.steps[4].label' answered;                     j_is '.steps[4].took' 'waited 7m 04s'
+  j_is '.steps[4].kind' wait;                          j_is '.steps[4].answer' 'change specification'
+  j_is '.steps[5].took' 20s;                           j_is '.steps[5].kind' step
+  j_is '.steps[6].took' '1h 02m';                      j_is '.steps[6].next' breakdown
+  j_is .state 'plan done, then breakdown';             j_is .waiting null
+  # And it says what the plain log says.
+  text=$("$E" task log demo ABC-122)
+  for i in 1 2 3 4 5 6; do
+    took=$(j ".steps[$i].took")
+    case $text in *"$took"*) ;; *) fail "the plain log does not show '$took': $text" ;; esac
+  done
+}
+
+log_json_with_nothing_recorded() {
+  demo
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero with no store"
+  j_is '.steps | length' 0; j_is .card ABC-122; j_is .state null
+  make_store
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero for a card with none"
+  j_is '.steps | length' 0; j_is .project demo
+}
+
+log_json_says_when_a_question_is_still_waiting() {
+  demo; make_store
+  q "insert into handoffs (at, project, card, phase, status, question, options)
+     values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-125 seconds'), 'demo', 'ABC-122', 'breakdown', 'needs-human', 'Approve?', 'approve | change plan');"
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+  j_is .state 'waiting on the human'
+  j .waiting | grep -Eq '^waiting on the human for 2m [0-5][0-9]s$' || fail "wrong waiting line: $(j .waiting)"
+  j_is '.steps[0].question' 'Approve?'
+}
+
+log_json_keeps_awkward_text() {
+  demo
+  IFS= read -r text <<'EOF'
+It's "done" \ back\\slash, a `tick`, $HOME, <b>, café 日本語 and a 100% {brace}
+EOF
+  hand "phase: define
+status: done
+next: plan
+summary: $text" >/dev/null || fail "task handoff exited non-zero"
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+  [ "$(j '.steps[0].summary')" = "$text" ] || fail "the summary changed: $(j '.steps[0].summary')"
+}
+
+# A card can be written up more than once. The row that starts a run has no
+# step before it, so it shows no time, however long ago the run before ended.
+a_start_row_shows_no_time() {
+  demo; make_store
+  put 2026-01-01T10:00:00Z new done define
+  put 2026-01-01T10:00:50Z define done plan
+  put 2026-01-01T10:24:02Z new done define
+  put 2026-01-01T10:24:48Z define done plan
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  [ "$(printf '%s\n' "$out" | grep -Ec 'new +done, then define$')" = 2 ] || fail "a start row shows a time: $out"
+  log_has 'define +done, then plan +46s$'
+  out=$("$E" task log demo ABC-122 --json)
+  j_is '.steps[2].took' ''; j_is '.steps[2].seconds' null; j_is '.steps[3].took' 46s
+  # Each step says which run it belongs to, and the view names the latest,
+  # so a reader can show that one alone.
+  j_is '.steps[0].run' 1; j_is '.steps[1].run' 1; j_is '.steps[2].run' 2; j_is '.steps[3].run' 2
+  j_is .run 2
+}
+
+log_json_fails_as_the_plain_log_does() {
+  demo
+  mkdir -p "$HOME/.config/entourage"
+  echo 'not a database' > "$HOME/.config/entourage/entourage.db"
+  if out=$("$E" task log demo ABC-122 --json 2>&1); then fail "read a file that is not a database: $out"; fi
+  case $out in *'could not read'*) ;; *) fail "does not say it could not read the store: $out" ;; esac
+  if out=$("$E" task log demo ABC-122 --yaml 2>&1); then fail "took an option it does not have"; fi
+  case $out in *'--json'*) ;; *) fail "does not say which options there are: $out" ;; esac
+}
+
 CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_question handoff_records_a_failure handoff_refuses_a_missing_line
   handoff_refuses_what_it_does_not_know handoff_refuses_a_line_that_does_not_belong
@@ -523,4 +625,7 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   log_reads_an_older_store_without_changing_it
   hand_offs_at_once_into_an_older_store_are_all_recorded
   log_shows_how_long_each_step_took log_marks_a_step_that_includes_waiting
-  log_shows_a_question_still_waiting"
+  log_shows_a_question_still_waiting
+  log_json_is_the_same_view_on_one_line log_json_with_nothing_recorded
+  log_json_says_when_a_question_is_still_waiting log_json_keeps_awkward_text
+  a_start_row_shows_no_time log_json_fails_as_the_plain_log_does"
