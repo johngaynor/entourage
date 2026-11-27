@@ -73,9 +73,10 @@ entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
 These variables, and your Linear key as LINEAR_API_KEY, can be exported in
 your shell or written as NAME=value lines in ~/.config/entourage/.env, which
 `linear key` writes for you and only you can read. A variable you export wins
-over its line in the file. Herdr starts commands without your shell's
-exports, so what a mod's run of entourage needs has to be in the file.
-ENTOURAGE_HOME is the one variable the file cannot set.
+over its line in the file, unless it is empty; of two lines for a name, the
+last is used. Herdr starts commands without your shell's exports, so what a
+mod's run of entourage needs has to be in the file. ENTOURAGE_HOME is the one
+variable the file cannot set.
 EOF
 }
 
@@ -104,17 +105,34 @@ ENV_FILE=$ENT_HOME/.env
 # Whether the Linear key came with the environment, before the file is read.
 KEY_EXPORTED=${LINEAR_API_KEY:+1}
 
-# Take entourage's variables from the file. One that is already in the
-# environment wins over its line in the file. The file is read, never run: a
+# Take entourage's variables from the file. The file is read, never run: a
 # line that is not NAME=value is skipped, and nothing in a value is expanded.
-# Only entourage's own variables are taken, so the file cannot change how the
-# programs entourage starts behave. ENTOURAGE_HOME is left out: it says where
-# this file is.
+# What a line may hold:
+#   - export before the name, spaces around the =, one pair of quotes around
+#     the value, and a # comment after a value with no quotes;
+#   - of two lines for a name, the last one;
+#   - a variable already in the environment wins over the file, unless it is
+#     empty, which counts as not set.
+# Only the variables entourage reads are taken: a line for PATH or anything
+# else is skipped, and so is ENTOURAGE_HOME, which says where this file is.
+# HERDR_APP_HOME and CLAUDE_CONFIG_DIR are exported, so a program entourage
+# starts finds the same folders it does. The Linear key is not: only
+# entourage reads it, and it hands it to curl on stdin.
 load_env() {
-  local line name value re='^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$'
+  local line name value from_file=' '
+  local re='^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$'
   [ -f "$ENV_FILE" ] || return 0
+  # Stop rather than go on without the file: its settings would be missing,
+  # and `linear key` would write it anew with only the key in it.
+  [ -r "$ENV_FILE" ] || {
+    printf 'entourage: cannot read %s. It should be yours, and readable by you only: check its owner, then run: chmod 600 %s\n' \
+      "$ENV_FILE" "$ENV_FILE" >&2
+    exit 1
+  }
   while IFS= read -r line || [ -n "$line" ]; do
     line=${line%$'\r'}
+    # The mark some editors put at the start of a file.
+    line=${line#$'\357\273\277'}
     [[ $line =~ $re ]] || continue
     name=${BASH_REMATCH[2]} value=${BASH_REMATCH[3]}
     case $name in
@@ -122,14 +140,33 @@ load_env() {
       ENTOURAGE_* | LINEAR_API_KEY | HERDR_APP_HOME | CLAUDE_CONFIG_DIR) ;;
       *) continue ;;
     esac
-    [ -z "${!name:-}" ] || continue
+    # A name the file has set already is set again; one that came with the
+    # environment is left as it is.
+    case $from_file in
+      *" $name "*) ;;
+      *) [ -z "${!name:-}" ] || continue ;;
+    esac
+    from_file="$from_file$name "
+    # A # after a space starts a comment, in a value with no quotes.
+    case $value in
+      \"* | \'*) ;;
+      \#*) value= ;;
+      *) value=${value%%[[:space:]]#*} ;;
+    esac
     # Spaces after the value, then one pair of quotes around it.
     value=${value%"${value##*[![:space:]]}"}
     case $value in
       \"*\") value=${value#\"}; value=${value%\"} ;;
       \'*\') value=${value#\'}; value=${value%\'} ;;
     esac
-    export "$name=$value"
+    if [ "$name" = LINEAR_API_KEY ]; then
+      # Set for entourage alone. -n also covers a key that came exported but
+      # empty, so that no program entourage starts finds it either way.
+      LINEAR_API_KEY=$value
+      export -n LINEAR_API_KEY
+    else
+      export "$name=$value"
+    fi
   done < "$ENV_FILE"
 }
 load_env

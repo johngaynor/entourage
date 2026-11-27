@@ -212,16 +212,26 @@ project_ls() {
 # A team's key is what its cards' IDs start with: ABC for ABC-122.
 TEAM_RE='^[A-Za-z][A-Za-z0-9]*$'
 
-# Print a project's Linear teams, one key per line, or nothing when it has
-# none. Blank lines and # comments are skipped, as in the repos file.
+# Print a project's Linear teams, one key per line in upper case, each once,
+# or nothing when it has none. The file is the human's to edit, so a # starts
+# a comment anywhere on a line, and spaces and blank lines are skipped. A line
+# that is still not a team key stops it, naming the line, before anything is
+# printed: a typo here would otherwise read as a team Linear does not have.
 project_teams() {
-  local dir=$1 line
+  local dir=$1 line n=0 keys=''
   [ -f "$dir/teams" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
-    line=${line%$'\r'}
-    case $line in '' | '#'*) continue ;; esac
-    printf '%s\n' "$line"
+    n=$((n + 1))
+    line=${line%%#*}
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    [ -n "$line" ] || continue
+    [[ $line =~ $TEAM_RE ]] ||
+      die "line $n of $dir/teams is '$line', which is not a Linear team key. A team's key is what its cards' IDs start with: ABC for ABC-122."
+    keys+=$line$'\n'
   done < "$dir/teams"
+  [ -n "$keys" ] || return 0
+  printf '%s' "$keys" | tr '[:lower:]' '[:upper:]' | awk '!seen[$0]++'
 }
 
 # Set the Linear teams whose cards are a project's, or print them when no key
@@ -234,7 +244,7 @@ project_team() {
   dir=$(project_dir "$name")
   shift
   if [ "$#" -eq 0 ]; then
-    teams=$(project_teams "$dir")
+    teams=$(project_teams "$dir") || exit 1
     [ -n "$teams" ] ||
       die "project '$name' has no Linear team. Set it with: entourage project team $name <team key>, like: entourage project team $name ABC"
     say "$teams"

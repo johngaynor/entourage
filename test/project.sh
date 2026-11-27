@@ -575,6 +575,15 @@ project_team_keeps_the_old_teams_when_a_key_is_bad() {
   [ "$(cat "$P/demo/teams" 2>&1)" = PHY ] || fail "the teams file holds: $(cat "$P/demo/teams" 2>&1)"
 }
 
+# The file is the human's to edit: lower case, spaces, blank lines and
+# comments are all read as they mean.
+project_team_reads_a_hand_edited_file() {
+  "$E" project new demo >/dev/null
+  printf '%s\n' '  # our teams' 'abc # ours  ' '' 'ABC' 'lab' > "$P/demo/teams"
+  out=$("$E" project team demo) || fail "printing the teams exited non-zero"
+  [ "$out" = "$(printf 'ABC\nLAB')" ] || fail "printed: $out"
+}
+
 project_team_without_one_says_how_to_set_it() {
   "$E" project new demo >/dev/null
   out=$("$E" project team demo 2>&1) && fail "exited zero for a project with no team"
@@ -615,5 +624,5 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   project_team_sets_the_team project_team_stores_the_key_in_upper_case project_team_replaces_the_team
   project_team_prints_the_team project_team_without_one_says_how_to_set_it
   project_team_takes_several_teams project_team_prints_every_team project_team_lists_a_team_once
-  project_team_keeps_the_old_teams_when_a_key_is_bad
+  project_team_keeps_the_old_teams_when_a_key_is_bad project_team_reads_a_hand_edited_file
   project_team_refuses_what_is_not_a_team_key project_team_unknown_project"

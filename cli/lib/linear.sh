@@ -43,8 +43,13 @@ linear_ask() {
   [ -n "$vars" ] || vars='{}'
   body=$(jq -cn --arg q "$query" --argjson v "$vars" '{query: $q, variables: $v}') ||
     die "could not put a question to Linear together."
+  # --disable has to be curl's first argument. It keeps a person's ~/.curlrc
+  # from changing how Linear's answers are read, as -init /dev/null does for
+  # sqlite3 in handoff.sh: a --fail or --include there would make a rejected
+  # key look like the network, or a good answer unreadable. The key's own
+  # --config - is still read.
   out=$(printf 'header = "Authorization: %s"\n' "$key" |
-    curl --silent --show-error --max-time "$LINEAR_WAIT" --config - \
+    curl --disable --silent --show-error --max-time "$LINEAR_WAIT" --config - \
       --header 'Content-Type: application/json' --data-binary "$body" \
       --write-out '\n%{http_code}' "$LINEAR_URL" 2>&1) || code=$?
   if [ "$code" -ne 0 ]; then
@@ -54,13 +59,20 @@ linear_ask() {
   # curl ends what it prints with the HTTP status, on a line of its own.
   status=${out##*$'\n'}
   out=${out%$'\n'*}
-  # A key Linear does not know: by the status, or by how Linear marks the error.
-  if [ "$status" = 401 ] || [ "$status" = 403 ] ||
+  # A key Linear does not know: a 401, or Linear's own word for it at any
+  # status. A 403 counts only when it is Linear's own answer: a page from a
+  # proxy or a firewall says nothing about the key, and a new key would not
+  # get past it.
+  if [ "$status" = 401 ] ||
+    { [ "$status" = 403 ] && printf '%s' "$out" | jq -e 'type == "object" and has("errors")' >/dev/null 2>&1; } ||
     [ "$(printf '%s' "$out" | jq -r '[.errors[]?.extensions | ((.type // "") + " " + (.code // "")) | test("authentication"; "i")] | any' 2>/dev/null)" = true ]; then
     die "Linear rejected the key. Make a new one in $KEY_PLACE, then save it with: entourage linear key"
   fi
   said=$(printf '%s' "$out" | jq -r '.errors[0].message // empty' 2>/dev/null) || said=
   [ -z "$said" ] || die "Linear answered with an error: ${said//"$key"/<the key>}"
+  # An answer that is not JSON did not come from Linear's API.
+  [ "$status" = 200 ] || printf '%s' "$out" | jq -e . >/dev/null 2>&1 ||
+    die "something between this machine and Linear answered for it, with HTTP status $status. Check the network, then run this again."
   [ "$status" = 200 ] || die "Linear answered with HTTP status $status and no result. Try again in a minute."
   printf '%s' "$out" | jq -ce '.data // empty' 2>/dev/null ||
     die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it."
@@ -94,7 +106,7 @@ LIST_QUERY='query($teams: [String!], $types: [String!], $first: Int, $after: Str
   }
   issues(first: $first, after: $after, orderBy: updatedAt,
       filter: {team: {key: {in: $teams}}, state: {type: {in: $types}}}) {
-    nodes { identifier title url state { name type } }
+    nodes { identifier title url state { name type position } }
     pageInfo { hasNextPage endCursor }
   }
 }'
@@ -103,19 +115,25 @@ LIST_QUERY='query($teams: [String!], $types: [String!], $first: Int, $after: Str
 # the list: every open status, in Linear's order, with its cards. Teams often
 # share a status name; a status of one name and kind is one group, whichever
 # teams have it. $project, $teams and $types are given by the caller.
+#   - A card can come on two pages, when it moves while they are fetched. The
+#     first copy is kept, in the order Linear gave them.
+#   - The statuses are the ones the first page names, and any a card is in
+#     that it did not, such as one made while the pages were fetched, so that
+#     no card is dropped for want of a group.
+#   - A closed status is never listed, should Linear send one.
 LIST_SHAPE='
   ($types | to_entries | map({key: .value, value: .key}) | from_entries) as $rank
   | .[0] as $first
-  | [.[].issues.nodes[]] as $cards
+  | ([.[].issues.nodes[]] | to_entries | unique_by(.value.identifier) | sort_by(.key) | map(.value)) as $cards
   | {
       missing: ($teams - [$first.teams.nodes[].key]),
       project: $project,
       teams: $teams,
       statuses: [
-        $first.workflowStates.nodes
+        ($first.workflowStates.nodes + [$cards[].state])
         | map(select($rank[.type] != null))
         | group_by([.type, .name])
-        | map({name: .[0].name, type: .[0].type, position: (map(.position) | min)})
+        | map({name: .[0].name, type: .[0].type, position: ((map(.position | numbers) | min) // 1000000)})
         | sort_by([$rank[.type], .position, .name])
         | .[]
         | . as $status
@@ -138,7 +156,7 @@ LIST_SHAPE='
 # Every open status of the teams is there, with no cards when it has none.
 #   linear_open_cards <project> <team key>...
 linear_open_cards() {
-  local project=$1 key teams vars data pages='' after='' asked=0 list missing
+  local project=$1 key teams vars data pages='' after='' more asked=0 list missing
   shift
   linear_tools
   key=$(linear_saved_key) || exit 1
@@ -152,10 +170,13 @@ linear_open_cards() {
       '{teams: $teams, types: $types, first: $first, after: (if $after == "" then null else $after end)}')
     data=$(linear_ask "$key" "$LIST_QUERY" "$vars") || exit 1
     pages+=$data$'\n'
-    after=$(printf '%s' "$data" |
-      jq -r 'if .issues.pageInfo.hasNextPage then .issues.pageInfo.endCursor // "" else "" end' 2>/dev/null) ||
+    more=$(printf '%s' "$data" | jq -r '.issues.pageInfo.hasNextPage == true' 2>/dev/null) ||
       die "Linear's answer was not one entourage can read."
-    [ -n "$after" ] || break
+    [ "$more" = true ] || break
+    # Listing what came so far would pass a part of the list for the whole.
+    after=$(printf '%s' "$data" | jq -r '.issues.pageInfo.endCursor | strings' 2>/dev/null) || after=
+    [ -n "$after" ] ||
+      die "Linear said it had more cards but not where the next ones start, so the list would be cut short."
   done
   # The pages go to jq on stdin, not as an argument: a long list of cards is
   # more than a command's arguments may hold.
@@ -172,13 +193,26 @@ linear_open_cards() {
 # once Linear has said whose it is. The key is asked for or read from stdin,
 # never taken as an argument, so that it stays out of the shell's history.
 linear_key() {
-  local key='' data who tmp key_line='^[[:space:]]*(export[[:space:]]+)?LINEAR_API_KEY='
+  # Every line the loader in cli/entourage would read as the key.
+  local key='' data who tmp tty_was key_line='^[[:space:]]*(export[[:space:]]+)?LINEAR_API_KEY[[:space:]]*='
   [ "$#" -eq 0 ] ||
     die "usage: entourage linear key (it asks for the key, or reads it from stdin; the key is never an argument)"
+  # A linked env file is often kept in a dotfiles repo. Replacing the link
+  # would cut it loose, and writing through it would put the key in that
+  # repo, so it is left alone, as trust.sh leaves a linked Claude Code file.
+  # This comes before the key is asked for, so nobody pastes one for nothing.
+  [ ! -L "$ENV_FILE" ] ||
+    die "$ENV_FILE is a link, so entourage left it alone and saved no key. Add the line LINEAR_API_KEY=<your key> to the file it links to yourself, or put a plain file in its place and run this again."
   linear_tools
   if [ -t 0 ]; then
     printf 'Linear API key (it is not shown as you type or paste it): ' >&2
+    # read -s turns the terminal's echo off, and Ctrl-C at the prompt would
+    # leave it off. Put the terminal back as it was, then stop as Ctrl-C would
+    # have, so that whatever ran this sees it end the same way.
+    tty_was=$(stty -g 2>/dev/null) || tty_was=
+    trap 'stty "$tty_was" 2>/dev/null || stty echo 2>/dev/null; printf "\n" >&2; trap - INT; kill -INT $$' INT
     IFS= read -rs key || true
+    trap - INT
     printf '\n' >&2
   else
     IFS= read -r key || true
@@ -190,7 +224,11 @@ linear_key() {
   [ -n "$key" ] || die "no key was given. Make one in $KEY_PLACE, then run this again."
   [[ $key =~ $KEY_RE ]] ||
     die "that is not a Linear API key. A key is lin_api_ and then letters and digits. Make one in $KEY_PLACE."
-  data=$(linear_ask "$key" 'query { viewer { name } }') || die "the key was not saved."
+  data=$(linear_ask "$key" 'query { viewer { id name } }') || die "the key was not saved."
+  # Linear always says who a good key belongs to. An answer that names nobody
+  # did not come from Linear, so it checked nothing.
+  printf '%s' "$data" | jq -e '.viewer.id | strings' >/dev/null 2>&1 ||
+    die "Linear's answer did not say whose key it is, so the key was not saved. Something between this machine and Linear may be answering for it."
   who=$(printf '%s' "$data" | jq -r '.viewer.name // empty' 2>/dev/null) || who=
 
   # The file is the human's too: every other line of it is kept, and the key
@@ -199,9 +237,16 @@ linear_key() {
   # one, never half of one. It is made for its owner's eyes only.
   mkdir -p "$ENT_HOME"
   tmp=$ENV_FILE.entourage.$$
+  # grep -a: a file with a NUL or another odd byte in it is still text here.
+  # Without it grep calls the file binary and prints a note in place of its
+  # lines. grep exits 1 when no line is left, which is fine; 2 is an error,
+  # and must not leave a file with only the key in it.
   if (umask 077
       {
-        [ ! -f "$ENV_FILE" ] || grep -v -E "$key_line" "$ENV_FILE" || true
+        if [ -f "$ENV_FILE" ]; then
+          grep -a -v -E "$key_line" "$ENV_FILE"
+          [ "$?" -le 1 ]
+        fi &&
         printf 'LINEAR_API_KEY=%s\n' "$key"
       } > "$tmp") 2>/dev/null && mv -f "$tmp" "$ENV_FILE" 2>/dev/null; then
     chmod 600 "$ENV_FILE" 2>/dev/null || true

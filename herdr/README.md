@@ -94,7 +94,7 @@ template is in this repo. Your own projects are in
 |---|---|
 | `PROJECT.md` | What the project is and what belongs in each repo. You write this. |
 | `repos` | One repo path per line. `entourage project add` writes it; you can edit it. |
-| `teams` | The keys of the project's Linear teams, one per line. `entourage project team` writes it; you can edit it. See [Seeing a project's cards](#seeing-a-projects-cards). |
+| `teams` | The keys of the project's Linear teams, one per line, `#` for comments. `entourage project team` writes it; you can edit it. See [Seeing a project's cards](#seeing-a-projects-cards). |
 | `links/` | Generated: a link to each repo, named after its folder. |
 | `tasks/` | One folder per task, holding a worktree of each repo. See [Tasks](#tasks). |
 | `CLAUDE.md`, `AGENTS.md` | Generated: links to `PROJECT.md`, so an agent started in the space reads it. |
@@ -156,8 +156,23 @@ entourage task ls <project> [--json]
   argument, and no message prints it. To take it off the machine, delete its
   line from the env file.
 - **When it cannot list, it says which thing is wrong:** no key saved, a key
-  Linear rejects, Linear out of reach, a project with no team, or a team key
-  Linear does not have.
+  Linear rejects, Linear out of reach, something between this machine and
+  Linear answering for it (a proxy's or a firewall's page), a project with no
+  team, a line of the `teams` file that is not a team key, or a team key Linear
+  does not have.
+- **The `teams` file can be edited by hand.** Keys may be in lower case, a `#`
+  starts a comment, and blank lines and spaces are skipped. A line that is
+  still not a team key is named in the message.
+- **A list it cannot fetch whole is not printed.** If Linear says it has more
+  cards but not where they start, the command fails rather than list part of
+  them. A card that comes on two pages is listed once, and a card in a status
+  Linear did not name up front is listed under that status.
+- **In the plain list, control characters in titles become spaces**, so a title
+  cannot start what looks like another card or send escape sequences to your
+  terminal. `--json` keeps the text as Linear gave it.
+- **Your `~/.curlrc` is not read**, so a line there such as `--fail` cannot
+  change what entourage reads back. A proxy set in the environment, such as
+  `HTTPS_PROXY`, is still used.
 - **`--json` prints the list as one line for programs**: the project, its
   teams, and each status with its `name`, its `type` (`triage`, `backlog`,
   `unstarted` or `started`) and its `cards`, each with an `id`, a `title` and a
@@ -349,15 +364,26 @@ shell, or written as a `NAME=value` line in entourage's env file,
   starts a command without your shell's exports, so a variable set only in your
   shell profile is missing there. The file is read every time, wherever
   entourage is started from.
-- **A variable you export wins** over its line in the file.
+- **A variable you export wins** over its line in the file, unless it is
+  empty: an empty one counts as not set.
+- **Of two lines for a name, the last is used**, so a line added at the end
+  takes over.
 - **The file is read, never run.** A line that is not `NAME=value` is skipped,
-  and nothing in a value is expanded. `export` before the name and one pair of
-  quotes around the value are allowed. Only entourage's own variables are
+  and nothing in a value is expanded. These are allowed: `export` before the
+  name, spaces around the `=`, one pair of quotes around the value, and a `#`
+  comment after a value that has no quotes. Only entourage's own variables are
   taken from it: the ones in the table, and any other whose name starts with
   `ENTOURAGE_`. A line for anything else, such as `PATH`, is ignored.
+- **The Linear key stays with entourage.** The other variables are passed on to
+  the programs entourage starts, so they find the same folders it does. The key
+  from the file is not: it reaches only `curl`, on its stdin.
 - **Keep the file to yourself.** It holds your Linear key. `linear key` makes
   it readable only by you; if you make it by hand, run
-  `chmod 600 ~/.config/entourage/.env`.
+  `chmod 600 ~/.config/entourage/.env`. A file entourage cannot read stops every
+  command, with a message saying so, rather than being skipped.
+- **A linked env file is left alone.** If `.env` is a link, for example into a
+  dotfiles repo, `linear key` saves nothing and says so, so that the key does
+  not land in that repo. Add the `LINEAR_API_KEY` line yourself.
 
 ## Changing things
 
