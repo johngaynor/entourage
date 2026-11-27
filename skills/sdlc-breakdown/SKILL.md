@@ -17,8 +17,8 @@ This skill has two parts. Proposing, and asking the human to approve, happens on
 
 1. Read the card with the Linear tools: the Specification and the Plan.
 2. If either is missing, the earlier step hasn't run. Say so and stop.
-3. If the card is itself a sub-issue, don't slice it again. Slices go one level deep. If it looks too big, tell the human.
-4. If the card already has a Breakdown section, don't write a second one. Tell the human and ask whether they want it revised.
+3. If the card is itself a sub-issue, don't slice it again. Slices go one level deep. If it looks too big, say so when you ask the human to approve.
+4. If the card already has a Breakdown section, don't write a second one. If the human has asked for it to be revised, revise it in place. Otherwise tell the human and ask whether they want it revised, and if they don't, go on to ask them to approve the card.
 
 ## Part 1: Propose
 
@@ -112,7 +112,7 @@ Wait for their answer.
 | The human says | Then |
 |---|---|
 | Change the breakdown | Revise the Breakdown section and ask again |
-| Change the Specification or the Plan | Make the change by that section's own skill, `sdlc-define` or `sdlc-plan`. When that skill hands off, come back here and re-check every section below the one that changed, because a new Done when item can make the Plan and the Breakdown wrong. Ask again |
+| Change the Specification or the Plan | Make the change by that section's own skill, `sdlc-define` or `sdlc-plan`, as a revision the human asked for. That skill ends with its own `done` block, whose `next` does not apply here: come back to this step and re-check every section below the one that changed, because a new Done when item can make the Plan and the Breakdown wrong. Ask again |
 | Approve, and the card is one piece | The card is ready to build. Hand off, as described below |
 | Approve, and the card is sliced | Go on to part 2 |
 
@@ -174,8 +174,8 @@ Which lines you write depends on the status:
 - **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
 - **`needs-human` is a pause, not an ending.** Wait for the answer, then carry on with this step. The step is over only at `done` or `failed`.
 - **Ask one question per block.** If you have two, ask first the one whose answer could change the other. The human can always answer in their own words, so `options` are suggestions.
-- **Keep the block short.** Anything long, such as a section you could not write to the card, goes above the block.
-- **After `done`, this step is over.** Go on to the step in `next` only if you were asked to run more than this one step. Otherwise stop there.
+- **Keep the block short.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
+- **After `done`, this step is over.** If another step sent you here to revise this section, go back to that step and ignore `next`. Otherwise go on to the step in `next` only if you were asked to run more than this one step, and if you weren't, stop there.
 - **After `failed`, change nothing more.** Leave the card as it is for the human.
 
 ## If something goes wrong

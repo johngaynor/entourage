@@ -15,7 +15,7 @@ Define says what and why. How it will be built belongs to plan, and whether it i
 
 1. Get the card. If you weren't given a card ID, ask for one.
 2. Read the card with the Linear tools: title, description, labels and comments.
-3. If the card already has a Specification section, don't write a second one. Tell the human and ask whether they want it revised.
+3. If the card already has a Specification section, don't write a second one. If the human has asked for it to be revised, revise it in place. Otherwise tell the human and ask whether they want it revised, and if they don't, hand off as `done` without changing it.
 4. Read the project's `PROJECT.md`, and look at only enough of the product, docs and code to use the right names and to know what exists today. Stop there. Working out the approach is plan's job, and doing it now tends to leak files and design into the Specification.
 
 ## 1. Set the type
@@ -136,8 +136,8 @@ Which lines you write depends on the status:
 - **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
 - **`needs-human` is a pause, not an ending.** Wait for the answer, then carry on with this step. The step is over only at `done` or `failed`.
 - **Ask one question per block.** If you have two, ask first the one whose answer could change the other. The human can always answer in their own words, so `options` are suggestions.
-- **Keep the block short.** Anything long, such as a section you could not write to the card, goes above the block.
-- **After `done`, this step is over.** Go on to the step in `next` only if you were asked to run more than this one step. Otherwise stop there.
+- **Keep the block short.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
+- **After `done`, this step is over.** If another step sent you here to revise this section, go back to that step and ignore `next`. Otherwise go on to the step in `next` only if you were asked to run more than this one step, and if you weren't, stop there.
 - **After `failed`, change nothing more.** Leave the card as it is for the human.
 
 ## If something goes wrong

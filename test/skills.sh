@@ -67,6 +67,21 @@ no_skill_names_a_person() {
   done
 }
 
+# When the human asks for a change at approval, breakdown sends the agent to
+# sdlc-define or sdlc-plan. That skill's `done` block names its own next step,
+# which is wrong there: the agent has to come back to breakdown.
+a_routed_change_returns_to_breakdown() {
+  case $(handoff_section sdlc-define) in
+    *"go back to that step"*) ;;
+    *) fail "the handoff block section does not send a revising skill back to the step that called it" ;;
+  esac
+  grep -qF 'does not apply here' "$REPO/skills/sdlc-breakdown/SKILL.md" ||
+    fail "sdlc-breakdown does not say the routed skill's next does not apply"
+  grep -qF 'go back to sdlc-breakdown' "$REPO/prompts/task-new.md" ||
+    fail "the task-new prompt does not send a routed change back to sdlc-breakdown"
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_hands_off_as_itself no_skill_says_then_stop
-  no_skill_names_a_person task_new_prompt_follows_the_block"
+  no_skill_names_a_person a_routed_change_returns_to_breakdown
+  task_new_prompt_follows_the_block"

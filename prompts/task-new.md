@@ -6,6 +6,8 @@ Start with the sdlc-define skill. Each skill ends its messages with a handoff bl
 - `needs-human`: wait for my answer, then carry on with the same skill.
 - `failed`: stop there. Don't start the next skill.
 
+If I ask for a change when I'm approving, sdlc-breakdown tells you which skill makes it. When that skill hands off, go back to sdlc-breakdown, not on to `next`.
+
 Do every step yourself, in this session. Don't hand a step to a subagent.
 
 sdlc-breakdown asks me to approve the card. When it hands off with `next: setup`, the card is approved. Give me the command that starts the work, and don't run it yourself:
