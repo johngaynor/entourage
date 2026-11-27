@@ -141,8 +141,34 @@ project_open() {
   show_space "$name" "$dir"
 }
 
+# The same list for programs: one line of JSON, each project with its folder
+# (as project_dir prints it) and its repos. The projects mod reads this.
+project_ls_json() {
+  local d repo sep='' rsep
+  printf '{"projects":['
+  for d in "$PROJECTS"/*/; do
+    [ -d "$d" ] || continue
+    d=${d%/}
+    printf '%s{"name":"%s","folder":"%s","repos":[' "$sep" \
+      "$(json_str "${d##*/}")" "$(json_str "$(cd -P "$d" && pwd)")"
+    rsep=''
+    while IFS= read -r repo; do
+      printf '%s"%s"' "$rsep" "$(json_str "$repo")"
+      rsep=,
+    done < <(project_repos "$d")
+    printf ']}'
+    sep=,
+  done
+  printf ']}\n'
+}
+
 project_ls() {
   local d any=0 repo
+  case ${1:-} in
+    --json) project_ls_json; return ;;
+    '') ;;
+    *) die "unknown option for project ls: $1" ;;
+  esac
   for d in "$PROJECTS"/*/; do
     [ -d "$d" ] || continue
     any=1
@@ -191,7 +217,7 @@ cmd_project() {
     new) shift; project_new "$@" ;;
     add) shift; project_add "$@" ;;
     open) shift; project_open "$@" ;;
-    ls | list) shift; project_ls ;;
+    ls | list) shift; project_ls "$@" ;;
     *) die "usage: entourage project new|add|open|ls (see: entourage help)" ;;
   esac
 }

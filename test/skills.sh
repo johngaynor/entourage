@@ -81,7 +81,20 @@ a_routed_change_returns_to_breakdown() {
     fail "the task-new prompt does not send a routed change back to sdlc-breakdown"
 }
 
+# On the first real card the agent ran define and plan with no block between
+# them: the skills asked for one "every time you stop", and under task new it
+# does not stop between skills. The block marks the step ending, stop or not.
+a_done_block_is_written_before_the_next_step() {
+  case $(handoff_section sdlc-define) in
+    *"even when you go straight on to another step"*) ;;
+    *) fail "the handoff block section does not ask for a block when the agent carries straight on" ;;
+  esac
+  grep -qF 'before you start the next skill' "$REPO/prompts/task-new.md" ||
+    fail "the task-new prompt does not ask for each block before the next skill starts"
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_hands_off_as_itself no_skill_says_then_stop
   no_skill_names_a_person a_routed_change_returns_to_breakdown
+  a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block"

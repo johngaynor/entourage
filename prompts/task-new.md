@@ -1,6 +1,6 @@
 Write up Linear card {card} so that it is ready to build. This session is in the entourage project `{project}`.
 
-Start with the sdlc-define skill. Each skill ends its messages with a handoff block. You are driving this run, so act on the block's `status`:
+Start with the sdlc-define skill. Each skill ends by writing a handoff block. Write each one before you start the next skill, even though you carry straight on: the blocks are how I see how each step ended. You are driving this run, so act on the block's `status`:
 
 - `done`: go straight on to the step in `next`, without waiting for me. `plan` is the sdlc-plan skill and `breakdown` is the sdlc-breakdown skill.
 - `needs-human`: wait for my answer, then carry on with the same skill.

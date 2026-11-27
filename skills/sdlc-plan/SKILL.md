@@ -98,7 +98,7 @@ After writing, read the card back. Check that the description and Specification 
 
 ## 5. Hand off
 
-When the Plan is on the card and you have read it back, end with a handoff block:
+When the Plan is on the card and you have read it back, write the handoff block. Plan is not finished until it is written:
 
 - `phase: plan`, `status: done` and `next: breakdown`.
 - `summary`: the approach in one sentence, roughly how much it touches (how many files, in which apps or repos), and whether it looks like one pull request's worth or more. Breakdown decides, but your read is useful.
@@ -108,7 +108,7 @@ When the Plan is on the card and you have read it back, end with a handoff block
 
 Every step of the lifecycle ends the same way, so whoever is driving it, a person or a script, can tell how the step ended without reading the whole session.
 
-End your message with one handoff block every time you stop: when the step is finished, when you need an answer, and when something has gone wrong. Put it last, in a code block, one value per line:
+Write one handoff block every time this step ends or pauses: when the step is finished, when you need an answer, and when something has gone wrong. Write it even when you go straight on to another step, because the block is the record that this one ended. Put it in a code block, one value per line, as the last thing you write for this step:
 
 ```
 phase: <this step>
@@ -133,7 +133,7 @@ Which lines you write depends on the status:
 - **`needs-human` is a pause, not an ending.** Wait for the answer, then carry on with this step. The step is over only at `done` or `failed`.
 - **Ask one question per block.** If you have two, ask first the one whose answer could change the other. The human can always answer in their own words, so `options` are suggestions.
 - **Keep the block short.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
-- **After `done`, this step is over.** If another step sent you here to revise this section, go back to that step and ignore `next`. Otherwise go on to the step in `next` only if you were asked to run more than this one step, and if you weren't, stop there.
+- **After `done`, this step is over.** Write the block before anything else. If another step sent you here to revise this section, go back to that step and ignore `next`. Otherwise go on to the step in `next` only if you were asked to run more than this one step, and if you weren't, stop there.
 - **After `failed`, change nothing more.** Leave the card as it is for the human.
 
 ## If something goes wrong
