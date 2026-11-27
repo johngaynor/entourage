@@ -494,6 +494,9 @@ log_marks_a_step_that_includes_waiting() {
   put 2026-01-01T10:10:03Z define done plan
   out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
   log_has 'define +done, then plan +7m 24s, includes waiting on the human$'
+  # The view also gives the time alone, for a reader with room for little.
+  out=$("$E" task log demo ABC-122 --json)
+  j_is '.steps[1].took' '7m 24s, includes waiting on the human'; j_is '.steps[1].short' '7m 24s'
 }
 
 log_shows_a_question_still_waiting() {
@@ -535,6 +538,7 @@ log_json_is_the_same_view_on_one_line() {
   j_is '.steps[3].label' 'breakdown asked a question'; j_is '.steps[3].took' 5s
   j_is '.steps[4].label' answered;                     j_is '.steps[4].took' 'waited 7m 04s'
   j_is '.steps[4].kind' wait;                          j_is '.steps[4].answer' 'change specification'
+  j_is '.steps[0].short' '';  j_is '.steps[1].short' 50s;  j_is '.steps[4].short' '7m 04s'
   j_is '.steps[5].took' 20s;                           j_is '.steps[5].kind' step
   j_is '.steps[6].took' '1h 02m';                      j_is '.steps[6].next' breakdown
   j_is .state 'plan done, then breakdown';             j_is .waiting null
