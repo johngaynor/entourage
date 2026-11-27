@@ -1,8 +1,9 @@
 # Tests for what the skills and the task-new prompt must say the same way.
 # No agent runs here: these only read the text. Sourced by test/run.sh.
 
-# The skills that write a card up, each named sdlc-<step>.
-CARD_SKILL_NAMES='sdlc-define sdlc-plan sdlc-breakdown'
+# The skills for the steps of a card's lifecycle, each named sdlc-<step>: the
+# three that write it up, then the one that builds it.
+CARD_SKILL_NAMES='sdlc-define sdlc-plan sdlc-breakdown sdlc-build'
 
 # Print a skill's "The handoff block" section: its heading and everything up
 # to the next second-level heading.
@@ -123,7 +124,42 @@ the_answer_is_recorded_first() {
     fail "the task-new prompt does not say to record the answer"
 }
 
+# The build commits on the task's branch and stops there. Review, pushing and
+# the pull request come after it, so the human sees the work before anyone
+# else does.
+build_pushes_nothing() {
+  local skill=$REPO/skills/sdlc-build/SKILL.md
+  grep -qF 'Push nothing and open no pull request' "$skill" ||
+    fail "sdlc-build does not say to push nothing and open no pull request"
+}
+
+# A build is done only when the tests pass, and review comes after it.
+build_is_done_only_when_the_tests_pass() {
+  local skill=$REPO/skills/sdlc-build/SKILL.md
+  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'next: review' ||
+    fail "sdlc-build does not show its done hand-off with next: review"
+  grep -qF 'only when the tests pass' "$skill" ||
+    fail "sdlc-build does not say it is done only when the tests pass"
+}
+
+# A card with no Plan is not built. The skill says so in its first section,
+# before any step that changes a file.
+build_stops_on_a_card_with_no_plan() {
+  local first
+  first=$(awk '/^## / { if (on) exit; on = 1 } on' "$REPO/skills/sdlc-build/SKILL.md")
+  case $first in
+    '## Before you change anything'*) ;;
+    *) fail "sdlc-build's first section is not 'Before you change anything'" ;;
+  esac
+  case $first in
+    *'no Plan'*'`failed`'*) ;;
+    *) fail "sdlc-build's first section does not hand a card with no Plan off as failed" ;;
+  esac
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
+  build_pushes_nothing build_is_done_only_when_the_tests_pass
+  build_stops_on_a_card_with_no_plan
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop

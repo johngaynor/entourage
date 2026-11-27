@@ -405,6 +405,45 @@ summary: Done.
 answer: approve' "'answer:'"
 }
 
+# The build step hands off as build, with review next when it is done. The
+# block in $1 must be recorded and printed back, and `task log` must then show
+# each of the lines after it.
+build_logged() {
+  local block=$1 out want
+  shift
+  demo
+  out=$(hand "$block") || fail "task handoff refused a build block: $out"
+  [ "$out" = "$block" ] || fail "did not print the block back: $out"
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  for want in "$@"; do
+    printf '%s\n' "$out" | grep -qF -- "$want" || fail "the log has no line '$want': $out"
+  done
+}
+
+handoff_records_a_finished_build() {
+  build_logged 'phase: build
+status: done
+next: review
+summary: Built the CSV export and its tests. The tests pass.' \
+    'build      done, then review' '    summary: Built the CSV export and its tests. The tests pass.'
+}
+
+handoff_records_a_build_that_needs_the_human() {
+  build_logged 'phase: build
+status: needs-human
+question: The Plan names a helper that does not exist. Write it, or reuse the invoice export?
+options: reuse the invoice export | write the helper' \
+    'build      needs-human' \
+    '    question: The Plan names a helper that does not exist. Write it, or reuse the invoice export?'
+}
+
+handoff_records_a_failed_build() {
+  build_logged 'phase: build
+status: failed
+reason: The card has no Plan, so nothing was built.' \
+    'build      failed' '    reason: The card has no Plan, so nothing was built.'
+}
+
 # A store as the version before answers made it: no column for them, one row.
 older_store() {
   mkdir -p "$HOME/.config/entourage"
@@ -725,7 +764,9 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_takes_crlf_lines handoff_takes_indented_lines
   handoff_refuses_a_placeholder_left_in handoff_refuses_a_very_long_line
   handoff_refuses_a_project_in_the_wrong_case handoff_records_an_answer
-  handoff_checks_an_answer an_older_store_gains_the_answer_column
+  handoff_checks_an_answer handoff_records_a_finished_build
+  handoff_records_a_build_that_needs_the_human handoff_records_a_failed_build
+  an_older_store_gains_the_answer_column
   log_reads_an_older_store_without_changing_it
   hand_offs_at_once_into_an_older_store_are_all_recorded
   log_shows_how_long_each_step_took log_marks_a_step_that_includes_waiting

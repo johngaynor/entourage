@@ -245,8 +245,11 @@ the card up.
 ### Hand-offs
 
 Each step of a write-up ends by handing off: which step it was, how it ended
-(`done`, `needs-human` or `failed`) and what comes next. The agent records
-that itself, with the block on stdin:
+(`done`, `needs-human` or `failed`) and what comes next. So does the build,
+which the `sdlc-build` skill runs in a started task: it hands off as `build`,
+`done` only when the tests pass, with `review` next. Nothing runs a review
+yet, so the build's commits wait on the task's branch for you. The agent records
+each hand-off itself, with the block on stdin:
 
 ```sh
 entourage task handoff <project> <card> <<'EOF'

@@ -4,13 +4,14 @@ A collection of agent skills for the software development lifecycle (SDLC).
 
 ## Status
 
-Early setup. Three skills are in, and they have had only a few runs on real cards:
+Early setup. Four skills are in, and they have had only a few runs on real cards:
 
 | Skill | What it does |
 |---|---|
 | `sdlc-define` | Sets a card's type and writes its Specification |
 | `sdlc-plan` | Reads the card and the code, and writes the Plan |
 | `sdlc-breakdown` | Decides whether the card is one piece or several slices, then asks you to approve it |
+| `sdlc-build` | Builds an approved card in its task: makes the change the Plan describes, runs the tests and commits, pushing nothing |
 
 They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
@@ -135,6 +136,20 @@ the task's tab, so the checkout is ready to work in. See
 [what a repo provides](herdr/README.md#what-a-repo-provides).
 
 See [herdr/README.md](herdr/README.md#tasks) for the details.
+
+To build the card, start an agent in the task's tab, such as `claude`, and
+ask it to build the card with the `sdlc-build` skill:
+
+```
+/sdlc-build ABC-122
+```
+
+It reads the card's Plan, makes the change in the task's worktrees, runs the
+tests and commits on the task's branch. It pushes nothing and opens no pull
+request, so the commits wait for you there. Like the write-up, it records how
+it ended, and `task log` shows it: `done` only when the tests pass,
+`needs-human` with a question, or `failed` with the reason. A card with no
+Plan is not built.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
 from the clone instead. Run the CLI's tests with `npm test`. The cases run
