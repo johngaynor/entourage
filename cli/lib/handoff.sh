@@ -284,7 +284,7 @@ task_log() {
 
   if [ "$json" = 1 ]; then
     if [ ! -e "$STORE" ]; then
-      printf '{"project":"%s","card":"%s","state":null,"waiting":null,"steps":[]}\n' \
+      printf '{"project":"%s","card":"%s","state":null,"waiting":null,"run":null,"steps":[]}\n' \
         "$(json_str "$name")" "$(json_str "$card")"
       return
     fi
