@@ -549,7 +549,31 @@ task_start_leaves_other_worktrees_alone() {
   [ "$(git -C "$TMP/drive/other" status --porcelain 2>/dev/null)" = "A  f.txt" ] || fail "another worktree was broken: $(git -C "$TMP/drive/other" status --porcelain 2>&1)"
 }
 
-CARD_CASES="task_new_starts_an_agent task_new_sends_one_line_of_json task_new_takes_a_lowercase_card
+# entourage's variables can be set in its env file. Herdr starts commands
+# without a shell's exports, so the file is the only place a mod's run of
+# `task new` can find them.
+task_new_takes_the_agent_from_the_env_file() {
+  card_demo; stub myagent
+  echo 'ENTOURAGE_AGENT=myagent' > "$(env_file)"
+  "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+  case $(last_call) in
+    *'"argv":["myagent"]'*) ;;
+    *) fail "did not start the agent the env file names: $(last_call)" ;;
+  esac
+}
+
+task_new_prefers_an_exported_agent_to_the_env_file() {
+  card_demo; stub myagent; stub other
+  echo 'ENTOURAGE_AGENT=myagent' > "$(env_file)"
+  ENTOURAGE_AGENT=other "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+  case $(last_call) in
+    *'"argv":["other"]'*) ;;
+    *) fail "did not start the exported agent: $(last_call)" ;;
+  esac
+}
+
+CARD_CASES="task_new_takes_the_agent_from_the_env_file task_new_prefers_an_exported_agent_to_the_env_file
+  task_new_starts_an_agent task_new_sends_one_line_of_json task_new_takes_a_lowercase_card
   task_new_makes_no_task_folder task_new_selects_an_open_space task_new_refuses_a_branch
   task_new_refuses_a_bad_card task_new_refuses_unknown_project task_new_needs_the_skills_linked
   task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_herdr_running

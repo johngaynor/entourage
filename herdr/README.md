@@ -94,6 +94,7 @@ template is in this repo. Your own projects are in
 |---|---|
 | `PROJECT.md` | What the project is and what belongs in each repo. You write this. |
 | `repos` | One repo path per line. `entourage project add` writes it; you can edit it. |
+| `teams` | The keys of the project's Linear teams, one per line, `#` for comments. `entourage project team` writes it; you can edit it. See [Seeing a project's cards](#seeing-a-projects-cards). |
 | `links/` | Generated: a link to each repo, named after its folder. |
 | `tasks/` | One folder per task, holding a worktree of each repo. See [Tasks](#tasks). |
 | `CLAUDE.md`, `AGENTS.md` | Generated: links to `PROJECT.md`, so an agent started in the space reads it. |
@@ -126,6 +127,59 @@ template is in this repo. Your own projects are in
 A task is one piece of work in a project, usually a Linear card. You run two
 commands, in this order: `task new`, then `task start`. Two more, `task
 handoff` and `task log`, record and show how each step of the write-up ended.
+`task ls` lists the cards there are to start.
+
+### Seeing a project's cards
+
+```sh
+entourage task ls <project> [--json]
+```
+
+- **It lists the open cards of the project's Linear teams**, under their
+  statuses, in the order Linear shows the statuses. Open means not done, not
+  cancelled and not a duplicate, so a card in progress or in review is listed.
+  Each card is its ID and its title. A status with no cards is listed with a
+  count of 0.
+- **It asks Linear itself, with no agent running.** That needs two things, each
+  set once:
+
+  | Set once | With | What it is |
+  |---|---|---|
+  | Your Linear API key | `entourage linear key` | Make the key in Linear, under Settings, Account, Security & access, Personal API keys. Read permission is enough to list cards. The command asks for it without showing it, checks it with Linear, and saves it. |
+  | The project's teams | `entourage project team <project> <team>...` | A team's key is what its cards' IDs start with: `ABC` for `ABC-122`. A project can name several teams, and several projects can name the same team. With no team given, the command prints the ones that are set. |
+
+- **The key is one of entourage's variables, `LINEAR_API_KEY`.** `linear key`
+  writes it as a line of entourage's env file, `~/.config/entourage/.env`,
+  which only you can read. A key you export in your shell works too, and wins
+  over the file. See [entourage's variables](#entourages-variables).
+- **The key is never shown.** It is handed to `curl` on its stdin, never as an
+  argument, and no message prints it. To take it off the machine, delete its
+  line from the env file.
+- **When it cannot list, it says which thing is wrong:** no key saved, a key
+  Linear rejects, Linear out of reach, something between this machine and
+  Linear answering for it (a proxy's or a firewall's page), a project with no
+  team, a line of the `teams` file that is not a team key, or a team key Linear
+  does not have.
+- **The `teams` file can be edited by hand.** Keys may be in lower case, a `#`
+  starts a comment, and blank lines and spaces are skipped. A line that is
+  still not a team key is named in the message.
+- **A list it cannot fetch whole is not printed.** If Linear says it has more
+  cards but not where they start, the command fails rather than list part of
+  them. A card that comes on two pages is listed once, and a card in a status
+  Linear did not name up front is listed under that status.
+- **In the plain list, control characters in titles become spaces**, so a title
+  cannot start what looks like another card or send escape sequences to your
+  terminal. `--json` keeps the text as Linear gave it.
+- **Your `~/.curlrc` is not read**, so a line there such as `--fail` cannot
+  change what entourage reads back. A proxy set in the environment, such as
+  `HTTPS_PROXY`, is still used.
+- **`--json` prints the list as one line for programs**: the project, its
+  teams, and each status with its `name`, its `type` (`triage`, `backlog`,
+  `unstarted` or `started`) and its `cards`, each with an `id`, a `title` and a
+  `url`. When it fails it prints nothing on stdout.
+- **Two teams' cards share a group when the status has the same name**, such as
+  Backlog. A status only one team has is a group of its own.
+- **It needs `curl` and `jq`**, and says which is missing.
 
 ### Writing the card up
 
@@ -290,6 +344,46 @@ setup:
   setup.
 - **`just` has to be installed** on the machine. Without it, tasks start
   without setup and `entourage status` says so.
+
+## entourage's variables
+
+entourage reads a few environment variables. Each can be exported in your
+shell, or written as a `NAME=value` line in entourage's env file,
+`~/.config/entourage/.env`.
+
+| Variable | What it sets |
+|---|---|
+| `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
+| `ENTOURAGE_AGENT` | The agent `task new` starts. `claude` when it is not set. |
+| `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
+| `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |
+| `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills are linked. `~/.claude` when it is not set. |
+| `ENTOURAGE_HOME` | entourage's own folder. `~/.config/entourage` when it is not set. Export only: it says where the env file is, so the file cannot set it. |
+
+- **Use the file for anything a Herdr mod's run of entourage needs.** Herdr
+  starts a command without your shell's exports, so a variable set only in your
+  shell profile is missing there. The file is read every time, wherever
+  entourage is started from.
+- **A variable you export wins** over its line in the file, unless it is
+  empty: an empty one counts as not set.
+- **Of two lines for a name, the last is used**, so a line added at the end
+  takes over.
+- **The file is read, never run.** A line that is not `NAME=value` is skipped,
+  and nothing in a value is expanded. These are allowed: `export` before the
+  name, spaces around the `=`, one pair of quotes around the value, and a `#`
+  comment after a value that has no quotes. Only entourage's own variables are
+  taken from it: the ones in the table, and any other whose name starts with
+  `ENTOURAGE_`. A line for anything else, such as `PATH`, is ignored.
+- **The Linear key stays with entourage.** The other variables are passed on to
+  the programs entourage starts, so they find the same folders it does. The key
+  from the file is not: it reaches only `curl`, on its stdin.
+- **Keep the file to yourself.** It holds your Linear key. `linear key` makes
+  it readable only by you; if you make it by hand, run
+  `chmod 600 ~/.config/entourage/.env`. A file entourage cannot read stops every
+  command, with a message saying so, rather than being skipped.
+- **A linked env file is left alone.** If `.env` is a link, for example into a
+  dotfiles repo, `linear key` saves nothing and says so, so that the key does
+  not land in that repo. Add the `LINEAR_API_KEY` line yourself.
 
 ## Changing things
 
