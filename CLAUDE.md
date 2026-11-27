@@ -1,9 +1,10 @@
 # entourage
 
-Published to npm as `@johngaynor/entourage`. Machines get changes only from a
-release: `entourage update` installs npm's `latest`, and only a release moves
-it. Every push to `main` is published too, as a merge build under the npm tag
-`next`, which no machine installs unless asked.
+Published to npm as `@johngaynor/entourage`. A machine installed through npm
+gets changes only from a release: `entourage update` installs npm's `latest`,
+and only a release moves it. Every push to `main` is published too, as a merge
+build under the npm tag `next`, which such a machine gets only when asked. A
+machine running from a clone gets whatever `git pull` brings.
 
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
 are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
@@ -23,8 +24,8 @@ new test area must be added to `AREAS` in `test/run.sh`.
 **Never change `"version"` in `package.json` as part of a feature or fix PR.**
 Parallel PRs would conflict on that line, and a merge is not a release.
 
-**Cut a release only when the user asks for one.** Publishing reaches every
-machine that runs `entourage update`.
+**Cut a release only when the user asks for one.** A release reaches every
+machine installed through npm the next time it runs `entourage update`.
 
 ### Picking the level
 
@@ -49,11 +50,17 @@ git push --follow-tags
 gh release create vX.Y.Z --generate-notes
 ```
 
-Publishing the GitHub release starts the `Publish to npm` workflow, which
-checks the tag against `package.json`, runs the tests and publishes. The push
-starts a run of its own, for a merge build; the release's run is the one to
-watch. Confirm it passed with `gh run watch`, then
-`npm view @johngaynor/entourage version`.
+Publishing the GitHub release starts the `Publish to npm` workflow, which runs
+the tests, checks the tag against `package.json` and publishes. The push starts
+a run of its own, for a merge build, so name the release's run when you watch
+it:
+
+```sh
+gh run watch --exit-status "$(gh run list --workflow publish.yml --event release --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
+
+Then `npm view @johngaynor/entourage version`. npm can take a few minutes to
+show a new version, so right after the run it may still print the old one.
 
 A published version can never be published again. If a release is wrong, fix it
 and release the next patch version. Do not delete or move tags.
@@ -83,7 +90,12 @@ point, and `npm view @johngaynor/entourage@<version> gitHead` names the commit
 a build was made from.
 
 In `publish.yml`, the merge build's `npm publish` must keep `--tag next`.
-Without it the build becomes `latest` and reaches every machine.
+Without a tag npm refuses it, since a prerelease needs one; under `latest` it
+would reach every machine installed through npm. `test/release.sh` pins the
+workflow's lines that decide what is published, when and under which tag, so
+an edit to them fails the tests until the tests change too. The tests run in a
+job of their own, which cannot sign in to npm, and the publish job waits for
+it.
 
 Runs wait their turn, so every push gets a build of its own. A merge build is
 never published over a newer one: when `next` is already on a build that
@@ -93,3 +105,8 @@ does, so re-run a failed merge build only when it is for the newest commit on
 `main`; otherwise the next push publishes. A push whose `package.json` version
 has no tag also fails without publishing; that is what happens when a release
 commit is pushed without `--follow-tags`.
+
+npm takes a few minutes to show a new build, and the check on `next` sees the
+same delay. So it stops a re-run of an old run, but cannot tell apart two runs
+that publish within minutes of each other. GitHub starts waiting runs in the
+order they were queued, though it does not promise to.
