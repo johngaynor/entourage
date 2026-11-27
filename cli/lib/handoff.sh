@@ -14,8 +14,9 @@ SQLITE=${ENTOURAGE_SQLITE:-sqlite3}
 
 # The lines a block can have, in the order they are printed.
 HANDOFF_KEYS='phase status next summary flags question options answer reason'
-# The steps a block can name as its phase or as what comes next.
-HANDOFF_STEPS='define plan breakdown setup'
+# The steps a block can name as its phase or as what comes next. setup and
+# review are only names for now: nothing hands off as either of them yet.
+HANDOFF_STEPS='define plan breakdown setup build review'
 # A block is a summary. A line longer than this is not one, and a very long
 # line is slow to check and too big to hand to sqlite3 as an argument.
 HANDOFF_LINE_MAX=2000

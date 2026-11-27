@@ -120,7 +120,7 @@ honors_herdr_app_home() {
 
 install_links_skills() {
   "$E" install >/dev/null || fail "install exited non-zero"
-  for s in sdlc-define sdlc-plan sdlc-breakdown; do
+  for s in sdlc-define sdlc-plan sdlc-breakdown sdlc-build; do
     is_link_to "$SK/$s" "$REPO/skills/$s" || fail "$s not linked"
     [ -f "$SK/$s/SKILL.md" ] || fail "$s has no SKILL.md through the link"
   done
@@ -136,9 +136,10 @@ status_lists_skills() {
 
 update_links_a_new_skill() {
   "$E" install >/dev/null
-  mkdir "$REPO/skills/sdlc-build" && echo x > "$REPO/skills/sdlc-build/SKILL.md"
+  # A name no real skill has, so the folder is new to the copy of the repo.
+  mkdir "$REPO/skills/made-up-skill" && echo x > "$REPO/skills/made-up-skill/SKILL.md"
   "$E" update --no-pull >/dev/null || fail "update exited non-zero"
-  is_link_to "$SK/sdlc-build" "$REPO/skills/sdlc-build" || fail "new skill not linked"
+  is_link_to "$SK/made-up-skill" "$REPO/skills/made-up-skill" || fail "new skill not linked"
 }
 
 update_removes_a_stale_skill_link() {
