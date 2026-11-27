@@ -1,0 +1,25 @@
+# Helpers every part of the CLI uses. Sourced by cli/entourage.
+
+# A git clone updates with `git pull`; an npm install updates through npm.
+is_clone() { [ -e "$REPO/.git" ]; }
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'entourage: %s\n' "$*" >&2; exit 1; }
+
+herdr_app() {
+  if command -v herdr-app >/dev/null 2>&1; then herdr-app "$@"
+  elif [ -x "$BIN_DIR/herdr-app" ]; then "$BIN_DIR/herdr-app" "$@"
+  else return 127
+  fi
+}
+
+have_herdr() { command -v herdr-app >/dev/null 2>&1 || [ -x "$BIN_DIR/herdr-app" ]; }
+
+# Herdr answers `status` with the layout it shows only while its window is open.
+herdr_running() { herdr_app status 2>/dev/null | grep -q '"layout"'; }
+
+require_herdr() {
+  have_herdr || die "Herdr is not installed. Install it, open it once, then run this again:
+  $HERDR_INSTALL"
+  [ -d "$APP_HOME" ] || die "$APP_HOME does not exist yet. Open Herdr once so it creates its folder, then run this again."
+}

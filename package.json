@@ -7,10 +7,11 @@
   },
   "files": [
     "cli/entourage",
+    "cli/lib/",
     "herdr/"
   ],
   "scripts": {
-    "test": "cli/test.sh"
+    "test": "test/run.sh"
   },
   "os": [
     "darwin",
