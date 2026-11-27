@@ -130,9 +130,10 @@ the description. The description names the task:
       web/                      a worktree of web on the same branch
 ```
 
-If a repo has a `justfile` with a `setup` recipe, `just setup` then runs in
-the task's tab, so the checkout is ready to work in. See
-[what a repo provides](herdr/README.md#what-a-repo-provides).
+Setup is off for now, while the local environment each task gets is worked
+out. With `ENTOURAGE_SETUP=1`, a repo that has a `justfile` with a `setup`
+recipe gets `just setup` run in the task's tab, so the checkout is ready to
+work in. See [what a repo provides](herdr/README.md#what-a-repo-provides).
 
 See [herdr/README.md](herdr/README.md#tasks) for the details.
 

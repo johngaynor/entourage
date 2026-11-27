@@ -594,7 +594,33 @@ give_setup() {
   git -C "$repo" push -q origin main
 }
 
+# Setup is off unless ENTOURAGE_SETUP is 1. The cases about what it does turn
+# it on.
+setup_on() { export ENTOURAGE_SETUP=1; }
+
+task_start_leaves_setup_off() {
+  stub_just; stub_hc; task_demo api; give_setup api
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
+  [ -d "$T/x/api" ] || fail "no worktree"
+  [ "$(last_call)" = "do tab.new {\"name\":\"x\",\"folder\":\"$T/x/api\"}" ] || fail "did not open the tab: $(last_call)"
+  [ -z "$(hc_calls)" ] || fail "typed setup into the tab: $(hc_calls)"
+  case $out in *"setup     not run"*"ENTOURAGE_SETUP=1"*) ;; *) fail "did not say setup is off: $out" ;; esac
+  case $out in *"running in the tab"*) fail "said setup is running: $out" ;; esac
+  # Only 1 turns it on.
+  ENTOURAGE_SETUP=0 "$E" task start demo feat/y >/dev/null || fail "task start exited non-zero with ENTOURAGE_SETUP=0"
+  [ -z "$(hc_calls)" ] || fail "ENTOURAGE_SETUP=0 typed setup into the tab: $(hc_calls)"
+}
+
+task_start_turns_setup_on_from_the_env_file() {
+  stub_just; stub_hc; task_demo api; give_setup api
+  mkdir -p "$(dirname "$(env_file)")"
+  echo 'ENTOURAGE_SETUP=1' > "$(env_file)"; chmod 600 "$(env_file)"
+  "$E" task start demo feat/x >/dev/null || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 just setup" ] || fail "the env file did not turn setup on: $(hc_calls)"
+}
+
 task_start_runs_setup_one_repo() {
+  setup_on
   stub_just; stub_hc; task_demo api; give_setup api
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
   [ "$(hc_calls)" = "send t9 just setup" ] || fail "wrong hc calls: $(hc_calls)"
@@ -602,6 +628,7 @@ task_start_runs_setup_one_repo() {
 }
 
 task_start_sends_setup_to_the_new_tab() {
+  setup_on
   stub_just; stub_hc; task_demo api; give_setup api
   cat > "$TMP/bin/herdr-app" <<EOF
 #!/usr/bin/env bash
@@ -615,6 +642,7 @@ EOF
 }
 
 task_start_runs_setup_several_repos() {
+  setup_on
   stub_just; stub_hc; task_demo api web docs; give_setup api; give_setup docs
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
   [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'docs' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
@@ -623,6 +651,7 @@ task_start_runs_setup_several_repos() {
 }
 
 task_start_skips_setup_without_a_recipe() {
+  setup_on
   stub_just; stub_hc; task_demo api; give_setup api 'setup-db:\n\techo\npresetup:\n\techo\n'
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
   [ -z "$(hc_calls)" ] || fail "typed into the tab: $(hc_calls)"
@@ -630,6 +659,7 @@ task_start_skips_setup_without_a_recipe() {
 }
 
 task_start_skips_an_unreadable_justfile() {
+  setup_on
   stub_just; stub_hc; task_demo api; give_setup api 'BROKEN\nsetup:\n\techo\n'
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
   [ -z "$(hc_calls)" ] || fail "typed into the tab: $(hc_calls)"
@@ -637,6 +667,7 @@ task_start_skips_an_unreadable_justfile() {
 }
 
 task_start_ignores_a_parent_justfile() {
+  setup_on
   export ENTOURAGE_HOME=$TMP/outer
   mkdir -p "$ENTOURAGE_HOME"
   printf 'setup:\n\techo\n' > "$ENTOURAGE_HOME/justfile"
@@ -648,12 +679,14 @@ task_start_ignores_a_parent_justfile() {
 }
 
 task_start_quotes_repo_names() {
+  setup_on
   stub_just; stub_hc; task_demo "my api" "it's"; give_setup "my api"; give_setup "it's"
   "$E" task start demo feat/x >/dev/null || fail "task start exited non-zero"
   [ "$(hc_calls)" = "send t9 (cd ./'my api' && just setup) && (cd ./'it'\\''s' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
 }
 
 task_start_without_just() {
+  setup_on
   stub_hc; task_demo api; give_setup api
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero without just"
   [ -d "$T/x/api" ] || fail "no worktree"
@@ -662,6 +695,7 @@ task_start_without_just() {
 }
 
 task_start_without_hc() {
+  setup_on
   stub_just; task_demo api; give_setup api
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero without hc"
   [ -d "$T/x/api" ] || fail "no worktree"
@@ -669,6 +703,7 @@ task_start_without_hc() {
 }
 
 task_start_without_a_terminal() {
+  setup_on
   stub_just; stub_hc; task_demo api; give_setup api
   cat > "$TMP/bin/herdr-app" <<EOF
 #!/usr/bin/env bash
@@ -683,6 +718,7 @@ EOF
 }
 
 task_start_when_hc_send_fails() {
+  setup_on
   stub_just; stub_hc 1; task_demo api; give_setup api
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero when hc failed"
   [ -d "$T/x/api" ] || fail "no worktree"
@@ -690,7 +726,8 @@ task_start_when_hc_send_fails() {
   case $out in *"running in the tab"*) fail "said setup is running when it could not be started: $out" ;; esac
 }
 
-SETUP_CASES="task_start_runs_setup_one_repo task_start_sends_setup_to_the_new_tab
+SETUP_CASES="task_start_leaves_setup_off task_start_turns_setup_on_from_the_env_file
+  task_start_runs_setup_one_repo task_start_sends_setup_to_the_new_tab
   task_start_runs_setup_several_repos task_start_skips_setup_without_a_recipe
   task_start_skips_an_unreadable_justfile task_start_ignores_a_parent_justfile
   task_start_quotes_repo_names task_start_without_just task_start_without_hc
@@ -699,6 +736,7 @@ SETUP_CASES="task_start_runs_setup_one_repo task_start_sends_setup_to_the_new_ta
 # --- tasks: targets ---------------------------------------------------------
 
 task_start_one_target_with_a_group() {
+  setup_on
   stub_just; stub_hc; task_demo api web; give_setup api
   out=$("$E" task start demo feat/x api:athlete) || fail "task start exited non-zero"
   [ "$(branch_of "$T/x/api")" = feat/x ] || fail "no worktree for the named repo"
@@ -711,12 +749,14 @@ task_start_one_target_with_a_group() {
 }
 
 task_start_several_groups() {
+  setup_on
   stub_just; stub_hc; task_demo api; give_setup api
   "$E" task start demo feat/x api:athlete,coach >/dev/null || fail "task start exited non-zero"
   [ "$(hc_calls)" = "send t9 just setup athlete coach" ] || fail "wrong hc calls: $(hc_calls)"
 }
 
 task_start_several_targets() {
+  setup_on
   stub_just; stub_hc; task_demo api web docs; give_setup api; give_setup web
   "$E" task start demo feat/x web:coach api >/dev/null || fail "task start exited non-zero"
   [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'web' && just setup coach)" ] || fail "wrong hc calls: $(hc_calls)"
@@ -727,6 +767,7 @@ task_start_several_targets() {
 }
 
 task_start_a_target_without_a_group() {
+  setup_on
   stub_just; stub_hc; task_demo api web; give_setup web
   "$E" task start demo feat/x web >/dev/null || fail "task start exited non-zero"
   [ "$(hc_calls)" = "send t9 just setup" ] || fail "wrong hc calls: $(hc_calls)"

@@ -29,7 +29,7 @@ setup() {
   cp -R "$ROOT/skills" "$REPO/skills"
   cp -R "$ROOT/prompts" "$REPO/prompts"
   # A key exported in the shell that runs the tests must not reach a case.
-  unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT ENTOURAGE_SQLITE LINEAR_API_KEY
+  unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT ENTOURAGE_SETUP ENTOURAGE_SQLITE LINEAR_API_KEY
   SK=$HOME/.claude/skills
   unset ENTOURAGE_HOME
   P=$HOME/.config/entourage/projects

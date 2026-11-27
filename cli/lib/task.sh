@@ -116,11 +116,19 @@ task_undo() {
 # here, so that `task start` returns at once and the install is on screen
 # where the work will happen. Nothing in this step can fail the task: by now
 # it exists and its tab is open.
+#
+# Setup is off unless ENTOURAGE_SETUP is 1, while the local environment each
+# task gets is still being worked out: a recipe that starts a whole stack
+# should not run for every task in the meantime.
 #   $1 the task's folder   $2 what `tab.new` printed   $3... the task's repos
 run_setup() {
   local tdir=$1 tab=$2 repo name line='' term count ready=() groups i=0
   shift 2
   count=$#
+  if [ "${ENTOURAGE_SETUP:-}" != 1 ]; then
+    say "  setup     not run: it is off for now (ENTOURAGE_SETUP=1 turns it on)"
+    return 0
+  fi
   if ! have_just; then
     say "  setup     skipped: just is not installed (https://just.systems)"
     return 0
