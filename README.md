@@ -92,4 +92,6 @@ git push --follow-tags
 ```
 
 Then publish a GitHub release for that tag. The `Publish to npm` workflow runs
-the tests and publishes the package. It needs a repo secret `NPM_TOKEN`.
+the tests and publishes the package. It signs in to npm by
+[trusted publishing](https://docs.npmjs.com/trusted-publishers), so there is no
+token to keep.

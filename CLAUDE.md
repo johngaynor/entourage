@@ -48,4 +48,5 @@ passed with `gh run watch`, then `npm view @johngaynor/entourage version`.
 A published version can never be published again. If a release is wrong, fix it
 and release the next patch version. Do not delete or move tags.
 
-Never run `npm publish` by hand, and never read or print the `NPM_TOKEN` secret.
+Never run `npm publish` by hand. The workflow signs in to npm by trusted
+publishing, so there is no npm token; do not add one.

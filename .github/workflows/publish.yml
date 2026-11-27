@@ -1,6 +1,8 @@
 # Publishes @johngaynor/entourage to npm when a GitHub release is published.
-# Needs a repo secret NPM_TOKEN: an npm automation or granular access token
-# allowed to publish this package.
+# Signs in to npm by trusted publishing (https://docs.npmjs.com/trusted-publishers),
+# so there is no token. On npmjs.com the package's trusted publisher must name
+# this repo and this file (publish.yml). It needs npm 11.5.1 or later, which
+# Node 24 ships.
 name: Publish to npm
 
 on:
@@ -12,11 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write   # lets the job prove to npm which repo and workflow it is
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Check the release tag matches package.json
         run: |
@@ -27,5 +30,3 @@ jobs:
           fi
       - run: npm test
       - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
