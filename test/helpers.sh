@@ -28,7 +28,7 @@ setup() {
   cp "$ROOT/herdr/projects/template/PROJECT.md" "$REPO/herdr/projects/template/PROJECT.md"
   cp -R "$ROOT/skills" "$REPO/skills"
   cp -R "$ROOT/prompts" "$REPO/prompts"
-  unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT
+  unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT ENTOURAGE_SQLITE
   SK=$HOME/.claude/skills
   unset ENTOURAGE_HOME
   P=$HOME/.config/entourage/projects
@@ -50,6 +50,8 @@ EOF
 
 run_case() {
   case_name=$1 case_failed=0
+  # A name in CASES with no function behind it would otherwise print PASS.
+  declare -F "$1" >/dev/null || { fail "there is no test case with this name"; return; }
   setup
   "$1"
   [ "$case_failed" = 0 ] && echo "PASS: $case_name"

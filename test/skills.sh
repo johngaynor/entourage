@@ -35,8 +35,9 @@ handoff_block_names_every_status() {
 each_skill_hands_off_as_itself() {
   local s
   for s in $CARD_SKILL_NAMES; do
-    grep -q "^- \`phase: ${s#sdlc-}\`" "$REPO/skills/$s/SKILL.md" ||
-      fail "$s does not say to hand off with phase: ${s#sdlc-}"
+    grep -A1 -F "entourage task handoff <project> <card ID> <<'EOF'" "$REPO/skills/$s/SKILL.md" |
+      grep -qx "phase: ${s#sdlc-}" ||
+      fail "$s does not show the command for handing off with phase: ${s#sdlc-}"
   done
 }
 
@@ -93,7 +94,26 @@ a_done_block_is_written_before_the_next_step() {
     fail "the task-new prompt does not ask for each block before the next skill starts"
 }
 
+# Two real runs showed that an agent chaining skills writes no block between
+# them, whatever the wording. So the hand-off is a command it runs.
+handoffs_are_recorded_with_the_command() {
+  local s
+  case $(handoff_section sdlc-define) in
+    *"entourage task handoff <project> <card ID> <<'EOF'"*) ;;
+    *) fail "the handoff block section does not show the command to run" ;;
+  esac
+  # The quotes in <<'EOF' are what stop the shell running backticks and $()
+  # in a value. Every place a skill shows the command has to keep them.
+  for s in $CARD_SKILL_NAMES; do
+    ! grep -F 'entourage task handoff <' "$REPO/skills/$s/SKILL.md" | grep -qv "<<'EOF'\$" ||
+      fail "$s shows the command without the quoted <<'EOF'"
+  done
+  grep -qF 'entourage task handoff {project} {card}' "$REPO/prompts/task-new.md" ||
+    fail "the task-new prompt does not name the command, with the project and card filled in"
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
+  handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop
   no_skill_names_a_person a_routed_change_returns_to_breakdown
   a_done_block_is_written_before_the_next_step
