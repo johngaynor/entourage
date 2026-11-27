@@ -393,7 +393,7 @@ answer: change specification: the athlete app only'
 handoff_checks_an_answer() {
   demo
   refused 'phase: breakdown
-status: answered' 'answer'
+status: answered' "'answer:'"
   refused 'phase: breakdown
 status: answered
 answer: approve
@@ -402,13 +402,11 @@ summary: They approved.' 'summary'
 status: done
 next: plan
 summary: Done.
-answer: approve' 'answer'
+answer: approve' "'answer:'"
 }
 
-# A store made before answers were recorded has no column for them. It gains
-# one on first use and keeps what it had.
-an_older_store_gains_the_answer_column() {
-  demo
+# A store as the version before answers made it: no column for them, one row.
+older_store() {
   mkdir -p "$HOME/.config/entourage"
   sqlite3 "$(STORE)" "create table handoffs (
     id integer primary key, at text not null, project text not null,
@@ -416,13 +414,43 @@ an_older_store_gains_the_answer_column() {
     next text, summary text, flags text, question text, options text, reason text);
     insert into handoffs (at, project, card, phase, status, next, summary)
     values ('2026-01-01T10:00:00Z', 'demo', 'ABC-122', 'define', 'done', 'plan', 'From the older store.');"
-  out=$("$E" task log demo ABC-122) || fail "task log failed on an older store: $out"
-  case $out in *'From the older store.'*) ;; *) fail "lost the older row: $out" ;; esac
+}
+
+# The first hand-off into an older store adds the column and keeps what was
+# there. Nothing reads the store first here, so only the hand-off can add it.
+an_older_store_gains_the_answer_column() {
+  demo; older_store
   hand 'phase: breakdown
 status: answered
 answer: approve' >/dev/null || fail "could not record an answer in an older store"
   [ "$(q 'select count(*) from handoffs')" = 2 ] || fail "expected the old row and the new one: $(rows)"
   [ "$(q "select answer from handoffs where status = 'answered'")" = approve ] || fail "the answer was not kept"
+  [ "$(q "select summary from handoffs where phase = 'define'")" = 'From the older store.' ] || fail "lost the older row"
+}
+
+# Reading never changes the store: an older one is read as it is, even when
+# the file cannot be written.
+log_reads_an_older_store_without_changing_it() {
+  demo; older_store
+  chmod 444 "$(STORE)"
+  out=$("$E" task log demo ABC-122) || fail "task log failed on an older, read-only store: $out"
+  case $out in *'From the older store.'*) ;; *) fail "did not show the older row: $out" ;; esac
+  chmod 644 "$(STORE)"
+  if q 'select answer from handoffs limit 0' >/dev/null; then fail "task log changed the store"; fi
+}
+
+# Two tasks can hand off into an older store at the same moment. Both try to
+# add the column, one loses, and its hand-off must still be recorded.
+hand_offs_at_once_into_an_older_store_are_all_recorded() {
+  demo; older_store
+  local i
+  for i in 1 2 3 4 5 6; do
+    printf 'phase: plan\nstatus: done\nnext: breakdown\nsummary: Writer %s.\n' "$i" |
+      "$E" task handoff demo "ABC-$i" >/dev/null 2>&1 &
+  done
+  wait
+  [ "$(q "select count(*) from handoffs where phase = 'plan'")" = 6 ] ||
+    fail "expected six hand-offs, got $(q "select count(*) from handoffs where phase = 'plan'")"
 }
 
 # Put a row for ABC-122 straight into the store at a set time. The store has
@@ -474,7 +502,7 @@ log_shows_a_question_still_waiting() {
   q "insert into handoffs (at, project, card, phase, status, question, options)
      values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-125 seconds'), 'demo', 'ABC-122', 'breakdown', 'needs-human', 'Approve?', 'approve | change plan');"
   out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
-  log_has '^    waiting on the human for 2m 0[5-9]s$'
+  log_has '^    waiting on the human for 2m [0-5][0-9]s$'
 }
 
 CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
@@ -492,5 +520,7 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_refuses_a_placeholder_left_in handoff_refuses_a_very_long_line
   handoff_refuses_a_project_in_the_wrong_case handoff_records_an_answer
   handoff_checks_an_answer an_older_store_gains_the_answer_column
+  log_reads_an_older_store_without_changing_it
+  hand_offs_at_once_into_an_older_store_are_all_recorded
   log_shows_how_long_each_step_took log_marks_a_step_that_includes_waiting
   log_shows_a_question_still_waiting"

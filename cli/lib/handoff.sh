@@ -50,10 +50,15 @@ sql_str() {
   printf "'%s'" "$(printf '%s' "$1" | LC_ALL=C sed "s/'/''/g")"
 }
 
+has_answer_column() { store "$STORE" 'select answer from handoffs limit 0;' >/dev/null; }
+
 # A store made before answers were recorded has no column for them. Add it.
+# Two hand-offs can get here at the same moment: one adds the column and the
+# other's attempt fails, so look again before calling that a failure.
 store_upgrade() {
-  store "$STORE" 'select answer from handoffs limit 0;' >/dev/null ||
-    store "$STORE" 'alter table handoffs add column answer text;'
+  has_answer_column ||
+    store "$STORE" 'alter table handoffs add column answer text;' ||
+    has_answer_column
 }
 
 # Make the store if this is its first use, and bring an older one up to date.
@@ -168,11 +173,11 @@ task_handoff() {
     *) die "'$status' is not a status. Use done, needs-human, answered or failed." ;;
   esac
   for key in $need; do
-    [ -n "${!key}" ] || die "a $status hand-off needs a '$key:' line."
+    [ -n "${!key}" ] || die "a hand-off with status $status needs a '$key:' line."
   done
   for key in next summary flags question options answer reason; do
     [ -z "${!key}" ] || in_list "$key" "$need $allow" ||
-      die "a $status hand-off has no '$key:' line. Take it out."
+      die "a hand-off with status $status has no '$key:' line. Take it out."
   done
   [ -z "$next" ] || in_list "$next" "$HANDOFF_STEPS" ||
     die "'$next' is not a step that can come next. The steps are: $HANDOFF_STEPS."
@@ -214,15 +219,17 @@ task_log() {
   # `read` run two empty fields together.
   local sep=$'\x1f' count=0 key found='' what time
   local at phase status next summary flags question options answer reason since before last
+  local answer_column="''"
   if [ -e "$STORE" ]; then
-    # An older store has no answer column; without it the query below fails.
-    store_upgrade || true
+    # Reading never changes the store. An older one has no answer column, so
+    # it is read without one.
+    ! has_answer_column || answer_column="coalesce(answer, '')"
     # A store that cannot be read is an error, not an empty history.
     # since: seconds from the row before. before: that row's status.
     # last: seconds from this row to now, on the last row only.
     found=$(store -separator "$sep" "$STORE" "select at, phase, status, coalesce(next, ''),
       coalesce(summary, ''), coalesce(flags, ''), coalesce(question, ''), coalesce(options, ''),
-      coalesce(answer, ''), coalesce(reason, ''),
+      $answer_column, coalesce(reason, ''),
       coalesce(cast(strftime('%s', at) - strftime('%s', lag(at) over w) as integer), ''),
       coalesce(lag(status) over w, ''),
       case when lead(id) over w is null
