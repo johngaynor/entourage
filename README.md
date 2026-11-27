@@ -135,3 +135,13 @@ Then publish a GitHub release for that tag. The `Publish to npm` workflow runs
 the tests and publishes the package. It signs in to npm by
 [trusted publishing](https://docs.npmjs.com/trusted-publishers), so there is no
 token to keep.
+
+Every push to `main` is published too, as a merge build under the npm tag
+`next` (`0.4.1-next.3`, for example). `entourage update` does not install
+those. To try one on a machine:
+
+```sh
+ENTOURAGE_NPM_SPEC=@johngaynor/entourage@next entourage update
+```
+
+A plain `entourage update` goes back to the latest release.
