@@ -315,12 +315,38 @@ task_start() {
   say "Opened task '$task' on branch $branch"
 }
 
+# List the open cards of a project's Linear teams, grouped by status: the
+# cards `task new` can be given. Linear itself is asked in linear.sh. --json
+# prints the list as one line for programs; the cards mod reads it.
+task_ls() {
+  local name=${1:-} json=0 dir team list
+  local -a teams=()
+  dir=$(project_dir "$name")
+  case ${2:-} in
+    --json) json=1 ;;
+    '') ;;
+    *) die "unknown option for task ls: $2" ;;
+  esac
+  [ "$#" -le 2 ] || die "usage: entourage task ls <project> [--json]"
+  while IFS= read -r team; do teams+=("$team"); done < <(project_teams "$dir")
+  [ "${#teams[@]}" -gt 0 ] ||
+    die "project '$name' has no Linear team, so there are no cards to list. Set it with: entourage project team $name <team key>, like: entourage project team $name ABC"
+  list=$(linear_open_cards "$name" "${teams[@]}") || exit 1
+  if [ "$json" = 1 ]; then
+    printf '%s\n' "$list"
+    return
+  fi
+  printf '%s' "$list" |
+    jq -r '.statuses[] | "\(.name) (\(.cards | length))", (.cards[] | "  \(.id)  \(.title)")'
+}
+
 cmd_task() {
   case ${1:-} in
     new) shift; task_new "$@" ;;
+    ls | list) shift; task_ls "$@" ;;
     start) shift; task_start "$@" ;;
     handoff) shift; task_handoff "$@" ;;
     log) shift; task_log "$@" ;;
-    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...], or: entourage task handoff <project> <card>, or: entourage task log <project> <card> [--json] (see: entourage help)" ;;
+    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...], or: entourage task handoff <project> <card>, or: entourage task log <project> <card> [--json] (see: entourage help)" ;;
   esac
 }

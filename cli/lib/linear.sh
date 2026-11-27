@@ -1,0 +1,225 @@
+# Linear: the one place entourage talks to Linear. Sourced by cli/entourage.
+
+# Cards live in Linear. An agent reaches them through its own Linear tools.
+# entourage reaches them here, with a Linear API key the human saves once, so
+# that listing cards needs no agent and a Linear step goes the same way on
+# every run.
+#
+# Linear is asked through its GraphQL API with curl, and its answers are read
+# with jq. The rest of entourage needs neither, so a command here says which
+# one is missing.
+
+LINEAR_URL=https://api.linear.app/graphql
+# The key is one of entourage's variables, LINEAR_API_KEY. It comes from the
+# environment, or from entourage's env file ($ENV_FILE), which cli/entourage
+# has read by now and `linear key` writes.
+#
+# What a key is made of. Linear's are lin_api_ and then letters and digits. A
+# key with a quote, a backslash or a space in it is not one, and could not be
+# handed to curl as a line of its config.
+KEY_RE='^[A-Za-z0-9_.-]+$'
+# How many seconds to wait for Linear before giving up.
+LINEAR_WAIT=20
+# Where the human makes a key.
+KEY_PLACE='Linear, under Settings, Account, Security & access, Personal API keys'
+
+# Stop unless the two programs every Linear command needs are here.
+linear_tools() {
+  local tool
+  for tool in curl jq; do
+    command -v "$tool" >/dev/null 2>&1 ||
+      die "$tool is not installed, and entourage needs it to ask Linear anything. Install it, then run this again."
+  done
+}
+
+# Ask Linear one thing and print the data it answers with, as one line of JSON.
+#   linear_ask <key> <query> [<the query's variables, as JSON>]
+# The key goes to curl on stdin, as a line of its config: other programs on
+# the machine can read a command's arguments, and cannot read its stdin. The
+# ways this fails are told apart, because what the human does next differs:
+# check the network, or replace the key.
+linear_ask() {
+  local key=$1 query=$2 vars=${3:-} body out code=0 status said
+  [ -n "$vars" ] || vars='{}'
+  body=$(jq -cn --arg q "$query" --argjson v "$vars" '{query: $q, variables: $v}') ||
+    die "could not put a question to Linear together."
+  out=$(printf 'header = "Authorization: %s"\n' "$key" |
+    curl --silent --show-error --max-time "$LINEAR_WAIT" --config - \
+      --header 'Content-Type: application/json' --data-binary "$body" \
+      --write-out '\n%{http_code}' "$LINEAR_URL" 2>&1) || code=$?
+  if [ "$code" -ne 0 ]; then
+    said=$(printf '%s\n' "$out" | grep -m 1 '^curl: ') || said=
+    die "could not reach Linear${said:+ ($said)}. Check the network, then run this again."
+  fi
+  # curl ends what it prints with the HTTP status, on a line of its own.
+  status=${out##*$'\n'}
+  out=${out%$'\n'*}
+  # A key Linear does not know: by the status, or by how Linear marks the error.
+  if [ "$status" = 401 ] || [ "$status" = 403 ] ||
+    [ "$(printf '%s' "$out" | jq -r '[.errors[]?.extensions | ((.type // "") + " " + (.code // "")) | test("authentication"; "i")] | any' 2>/dev/null)" = true ]; then
+    die "Linear rejected the key. Make a new one in $KEY_PLACE, then save it with: entourage linear key"
+  fi
+  said=$(printf '%s' "$out" | jq -r '.errors[0].message // empty' 2>/dev/null) || said=
+  [ -z "$said" ] || die "Linear answered with an error: ${said//"$key"/<the key>}"
+  [ "$status" = 200 ] || die "Linear answered with HTTP status $status and no result. Try again in a minute."
+  printf '%s' "$out" | jq -ce '.data // empty' 2>/dev/null ||
+    die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it."
+}
+
+# Print the key entourage has been given, or stop and say how to save one.
+linear_saved_key() {
+  local key=${LINEAR_API_KEY:-}
+  [ -n "$key" ] ||
+    die "no Linear key is saved, so entourage cannot read Linear. Make one in $KEY_PLACE, then save it with: entourage linear key"
+  [[ $key =~ $KEY_RE ]] ||
+    die "LINEAR_API_KEY does not hold a Linear API key. Check your environment and $ENV_FILE, or save a new key with: entourage linear key"
+  printf '%s' "$key"
+}
+
+# The kinds of status an open card is in, as Linear names them, in the order
+# Linear shows them. A card that is done, cancelled or a duplicate is in one
+# of the other kinds, and is never asked for.
+OPEN_TYPES='["triage","backlog","unstarted","started"]'
+# How many cards to ask for at a time, and how many times to ask before
+# deciding that Linear will never say it has no more.
+LINEAR_PAGE=100
+LINEAR_PAGES=50
+
+# The teams Linear knows of those asked for, their open statuses, and one page
+# of their open cards, most recently changed first.
+LIST_QUERY='query($teams: [String!], $types: [String!], $first: Int, $after: String) {
+  teams(filter: {key: {in: $teams}}) { nodes { key } }
+  workflowStates(first: 250, filter: {team: {key: {in: $teams}}, type: {in: $types}}) {
+    nodes { name type position team { key } }
+  }
+  issues(first: $first, after: $after, orderBy: updatedAt,
+      filter: {team: {key: {in: $teams}}, state: {type: {in: $types}}}) {
+    nodes { identifier title url state { name type } }
+    pageInfo { hasNextPage endCursor }
+  }
+}'
+
+# Turn the pages Linear answered with (one line of JSON each, on stdin) into
+# the list: every open status, in Linear's order, with its cards. Teams often
+# share a status name; a status of one name and kind is one group, whichever
+# teams have it. $project, $teams and $types are given by the caller.
+LIST_SHAPE='
+  ($types | to_entries | map({key: .value, value: .key}) | from_entries) as $rank
+  | .[0] as $first
+  | [.[].issues.nodes[]] as $cards
+  | {
+      missing: ($teams - [$first.teams.nodes[].key]),
+      project: $project,
+      teams: $teams,
+      statuses: [
+        $first.workflowStates.nodes
+        | map(select($rank[.type] != null))
+        | group_by([.type, .name])
+        | map({name: .[0].name, type: .[0].type, position: (map(.position) | min)})
+        | sort_by([$rank[.type], .position, .name])
+        | .[]
+        | . as $status
+        | {
+            name: $status.name,
+            type: $status.type,
+            cards: [
+              $cards[]
+              | select(.state.name == $status.name and .state.type == $status.type)
+              | {id: .identifier, title: .title, url: .url}
+            ]
+          }
+      ]
+    }'
+
+# Print the open cards of some Linear teams as one line of JSON, grouped by
+# status:
+#   {"project":"demo","teams":["ABC"],"statuses":[
+#     {"name":"Backlog","type":"backlog","cards":[{"id":"ABC-1","title":"…","url":"…"}]}]}
+# Every open status of the teams is there, with no cards when it has none.
+#   linear_open_cards <project> <team key>...
+linear_open_cards() {
+  local project=$1 key teams vars data pages='' after='' asked=0 list missing
+  shift
+  linear_tools
+  key=$(linear_saved_key) || exit 1
+  teams=$(printf '%s\n' "$@" | jq -Rcn '[inputs]')
+  while :; do
+    asked=$((asked + 1))
+    [ "$asked" -le "$LINEAR_PAGES" ] ||
+      die "Linear still had more cards after $LINEAR_PAGES pages of $LINEAR_PAGE, which is more than entourage lists."
+    vars=$(jq -cn --argjson teams "$teams" --argjson types "$OPEN_TYPES" --argjson first "$LINEAR_PAGE" \
+      --arg after "$after" \
+      '{teams: $teams, types: $types, first: $first, after: (if $after == "" then null else $after end)}')
+    data=$(linear_ask "$key" "$LIST_QUERY" "$vars") || exit 1
+    pages+=$data$'\n'
+    after=$(printf '%s' "$data" |
+      jq -r 'if .issues.pageInfo.hasNextPage then .issues.pageInfo.endCursor // "" else "" end' 2>/dev/null) ||
+      die "Linear's answer was not one entourage can read."
+    [ -n "$after" ] || break
+  done
+  # The pages go to jq on stdin, not as an argument: a long list of cards is
+  # more than a command's arguments may hold.
+  list=$(printf '%s' "$pages" |
+    jq -cs --arg project "$project" --argjson teams "$teams" --argjson types "$OPEN_TYPES" "$LIST_SHAPE" 2>/dev/null) ||
+    die "Linear's answer was not one entourage can read."
+  missing=$(printf '%s' "$list" | jq -r '.missing | join(", ")')
+  [ -z "$missing" ] ||
+    die "Linear has no team with the key $missing that the saved key can see. See the project's teams with: entourage project team $project"
+  printf '%s' "$list" | jq -c 'del(.missing)'
+}
+
+# Save the human's Linear API key as LINEAR_API_KEY in entourage's env file,
+# once Linear has said whose it is. The key is asked for or read from stdin,
+# never taken as an argument, so that it stays out of the shell's history.
+linear_key() {
+  local key='' data who tmp key_line='^[[:space:]]*(export[[:space:]]+)?LINEAR_API_KEY='
+  [ "$#" -eq 0 ] ||
+    die "usage: entourage linear key (it asks for the key, or reads it from stdin; the key is never an argument)"
+  linear_tools
+  if [ -t 0 ]; then
+    printf 'Linear API key (it is not shown as you type or paste it): ' >&2
+    IFS= read -rs key || true
+    printf '\n' >&2
+  else
+    IFS= read -r key || true
+  fi
+  # A pasted key often brings a space or a line ending with it.
+  key=${key%$'\r'}
+  key=${key#"${key%%[![:space:]]*}"}
+  key=${key%"${key##*[![:space:]]}"}
+  [ -n "$key" ] || die "no key was given. Make one in $KEY_PLACE, then run this again."
+  [[ $key =~ $KEY_RE ]] ||
+    die "that is not a Linear API key. A key is lin_api_ and then letters and digits. Make one in $KEY_PLACE."
+  data=$(linear_ask "$key" 'query { viewer { name } }') || die "the key was not saved."
+  who=$(printf '%s' "$data" | jq -r '.viewer.name // empty' 2>/dev/null) || who=
+
+  # The file is the human's too: every other line of it is kept, and the key
+  # gets one line, in place of any it had. It is written beside itself and
+  # moved into place whole, so a run cut short leaves the old file or the new
+  # one, never half of one. It is made for its owner's eyes only.
+  mkdir -p "$ENT_HOME"
+  tmp=$ENV_FILE.entourage.$$
+  if (umask 077
+      {
+        [ ! -f "$ENV_FILE" ] || grep -v -E "$key_line" "$ENV_FILE" || true
+        printf 'LINEAR_API_KEY=%s\n' "$key"
+      } > "$tmp") 2>/dev/null && mv -f "$tmp" "$ENV_FILE" 2>/dev/null; then
+    chmod 600 "$ENV_FILE" 2>/dev/null || true
+  else
+    rm -f "$tmp" 2>/dev/null || true
+    die "could not write $ENV_FILE, so the key was not saved."
+  fi
+  say "Saved the Linear key of ${who:-a user with no name} in $ENV_FILE"
+  # A key exported in the shell wins over the file, so a different one there
+  # would go on being used.
+  if [ -n "$KEY_EXPORTED" ] && [ "${LINEAR_API_KEY:-}" != "$key" ]; then
+    say "  note      LINEAR_API_KEY is also set in your environment, to another key. That one is used while it is set, not the one just saved."
+  fi
+}
+
+cmd_linear() {
+  case ${1:-} in
+    key) shift; linear_key "$@" ;;
+    *) die "usage: entourage linear key (see: entourage help)" ;;
+  esac
+}
