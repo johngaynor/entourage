@@ -9,7 +9,7 @@ layouts (whole-window arrangements of mods).
 |---|---|
 | `mods/cpu/` | Live CPU usage with a scrolling history. macOS only (reads `/usr/bin/top`). |
 | `mods/layout-switch/` | A dropdown that shows the current layout and switches to another. |
-| `mods/projects/` | Every project in your config, open or not. Click one to show its space. |
+| `mods/projects/` | Every project in your config, open or not. Click one to show its space; `+` makes a new one. |
 | `layouts/default.json` | Herdr's own layout, plus the layout dropdown. |
 | `layouts/test.json` | `default` with the projects list in place of spaces, plus the CPU mod in the sidebar. |
 | `projects/template/` | The starting `PROJECT.md` for every new project. |
@@ -99,7 +99,14 @@ template is in this repo. Your own projects are in
 
 - **Make one:** `entourage project new <name>`, then
   `entourage project add <name> <path>` for each repo. The repo must already
-  be cloned on this machine.
+  be cloned on this machine. Paths after the name add those repos as the
+  project is made: `entourage project new <name> <path>...`. Every one is
+  checked first, and a path that is not a repo stops it with nothing made.
+- **Make one in Herdr:** click the `+` above the projects list (on the `test`
+  layout) and choose a repo's folder. A dialog suggests a name from the
+  folder, lists the repo, and can add more. Create makes the project with
+  `entourage project new` and shows its space; whatever the command refuses
+  (a name in use, a folder that is not a repo) is shown in the dialog.
 - **Open it:** `entourage project open <name>` rebuilds the links and shows
   the project's space, making it if it is not open. The space's folder is the
   project folder.

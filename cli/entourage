@@ -14,10 +14,10 @@ Usage:
   entourage install            first-time setup: link everything into the tools on this machine
   entourage update [--no-pull] get the latest entourage, link anything new, drop stale links, refresh Herdr
   entourage status             show what is linked and what is not, and check your projects
-  entourage project new <name>         make a project from the template
-  entourage project add <name> <path>  add a repo that is already on this machine
-  entourage project open <name>        show the project as a Herdr space
-  entourage project ls [--json]        list projects and their repos (--json for programs)
+  entourage project new <name> [<path>...]  make a project from the template, with the repos at those paths
+  entourage project add <name> <path>       add a repo that is already on this machine
+  entourage project open <name>             show the project as a Herdr space
+  entourage project ls [--json]             list projects and their repos (--json for programs)
   entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
   entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab

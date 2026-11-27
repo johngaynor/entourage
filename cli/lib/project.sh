@@ -71,41 +71,70 @@ sync_links() {
   done
 }
 
+# Print the real folder of the repo a path names, or stop if it is not one.
+repo_at() {
+  local path=$1 abs
+  [ -d "$path" ] || die "$path is not a folder"
+  abs=$(cd "$path" && pwd -P)
+  is_repo "$abs" || die "$abs is not a git repo (the top folder of a clone is needed)"
+  printf '%s\n' "$abs"
+}
+
+# Add a line for a repo to a project's repos file, with ~/ for the home folder.
+store_repo() {
+  local dir=$1 abs=$2
+  case $abs in
+    "$HOME"/*) abs="~/${abs#"$HOME"/}" ;;
+  esac
+  printf '%s\n' "$abs" >> "$dir/repos"
+}
+
+# With repo paths after the name, the project starts with those repos. The
+# projects mod makes a project this way, in one command.
 project_new() {
-  local name=${1:-} dir
+  local name=${1:-} dir path abs other
+  local -a repos=()
   valid_name "$name" || die "a project name is lowercase letters, digits and dashes, like: my-project"
   dir=$PROJECTS/$name
   [ ! -e "$dir" ] || die "project '$name' already exists at $dir"
   [ -f "$TEMPLATE/PROJECT.md" ] || die "the project template is missing from $TEMPLATE"
+  shift
+  # Every repo is checked before anything is made, so that a bad one does not
+  # leave a project behind with only some of them.
+  for path in "$@"; do
+    abs=$(repo_at "$path")
+    for other in ${repos[@]+"${repos[@]}"}; do
+      [ "$other" != "$abs" ] || die "$abs is listed twice"
+      [ "${other##*/}" != "${abs##*/}" ] ||
+        die "$other and $abs are both called ${abs##*/}; two repos in a project cannot share a folder name"
+    done
+    repos+=("$abs")
+  done
   mkdir -p "$dir"
   sed "s/__NAME__/$name/" "$TEMPLATE/PROJECT.md" > "$dir/PROJECT.md"
   : > "$dir/repos"
+  for abs in ${repos[@]+"${repos[@]}"}; do store_repo "$dir" "$abs"; done
   sync_links "$dir"
   trust_project "$name"
   say "Made project '$name' at $dir"
+  for abs in ${repos[@]+"${repos[@]}"}; do say "  added ${abs##*/}"; done
   say "Next:"
-  say "  entourage project add $name <path to a repo>"
+  [ "${#repos[@]}" -gt 0 ] || say "  entourage project add $name <path to a repo>"
   say "  fill in $dir/PROJECT.md"
   say "  entourage project open $name"
 }
 
 project_add() {
-  local name=${1:-} path=${2:-} dir abs other stored
+  local name=${1:-} path=${2:-} dir abs other
   dir=$(project_dir "$name")
   [ -n "$path" ] || die "which repo? Usage: entourage project add $name <path>"
-  [ -d "$path" ] || die "$path is not a folder"
-  abs=$(cd "$path" && pwd -P)
-  is_repo "$abs" || die "$abs is not a git repo (the top folder of a clone is needed)"
+  abs=$(repo_at "$path")
   while IFS= read -r other; do
     [ "$other" != "$abs" ] || die "$abs is already in project '$name'"
     [ "${other##*/}" != "${abs##*/}" ] ||
       die "project '$name' already has a repo called ${abs##*/} ($other); two repos in a project cannot share a folder name"
   done < <(project_repos "$dir")
-  case $abs in
-    "$HOME"/*) stored="~/${abs#"$HOME"/}" ;;
-    *) stored=$abs ;;
-  esac
-  printf '%s\n' "$stored" >> "$dir/repos"
+  store_repo "$dir" "$abs"
   sync_links "$dir"
   say "Added ${abs##*/} to project '$name'"
   say "Describe what it owns in $dir/PROJECT.md"

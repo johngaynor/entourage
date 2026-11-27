@@ -26,6 +26,35 @@ project_new_refuses_bad_name() {
   [ ! -e "$HOME/.config/entourage/up" ] || fail "wrote outside the projects folder"
 }
 
+# What the projects mod runs: the project and its repos in one command.
+project_new_takes_repos() {
+  make_repo "$HOME/code/api"; make_repo "$HOME/my code/web app"; make_repo "$TMP/elsewhere/tools"
+  out=$(cd "$HOME/code" && "$E" project new demo api "$HOME/my code/web app" "$TMP/elsewhere/tools") ||
+    fail "new with repos exited non-zero"
+  want=$(printf '%s\n' '~/code/api' '~/my code/web app' "$TMP/elsewhere/tools")
+  [ "$(cat "$P/demo/repos")" = "$want" ] || fail "repos file is: $(cat "$P/demo/repos")"
+  is_link_to "$P/demo/links/api" "$HOME/code/api" || fail "relative path not linked"
+  is_link_to "$P/demo/links/web app" "$HOME/my code/web app" || fail "path with spaces not linked"
+  is_link_to "$P/demo/links/tools" "$TMP/elsewhere/tools" || fail "repo outside the home folder not linked"
+  grep -q '^# demo$' "$P/demo/PROJECT.md" || fail "doc not made from the template"
+  case $out in *"entourage project add"*) fail "told to add a repo when it has some: $out" ;; esac
+  case $out in *"entourage project open demo"*) ;; *) fail "no hint to open it: $out" ;; esac
+}
+
+# A dialog that failed must leave nothing to clean up before the next try.
+project_new_makes_nothing_when_a_repo_is_bad() {
+  make_repo "$HOME/code/api"; make_repo "$HOME/other/api"; mkdir -p "$HOME/code/plain"
+  out=$("$E" project new demo "$HOME/code/api" "$HOME/code/plain" 2>&1) && fail "took a folder that is not a repo"
+  case $out in *"code/plain is not a git repo"*) ;; *) fail "did not say which folder: $out" ;; esac
+  "$E" project new demo "$HOME/code/api" "$HOME/code/nowhere" >/dev/null 2>&1 && fail "took a folder that does not exist"
+  out=$("$E" project new demo "$HOME/code/api" "$HOME/code/api" 2>&1) && fail "took the same repo twice"
+  case $out in *"twice"*) ;; *) fail "did not say it was given twice: $out" ;; esac
+  out=$("$E" project new demo "$HOME/code/api" "$HOME/other/api" 2>&1) && fail "took two repos with the same folder name"
+  case $out in *"cannot share a folder name"*) ;; *) fail "did not explain the clash: $out" ;; esac
+  [ ! -e "$P/demo" ] || fail "left a project behind"
+  "$E" project new demo "$HOME/code/api" >/dev/null || fail "could not make it after the failures"
+}
+
 # --- project new: the folder is trusted by Claude Code ----------------------
 
 project_new_trusts_its_folder() {
@@ -488,6 +517,7 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   status_is_quiet_when_setup_exists status_ignores_a_parent_justfile
   status_notes_an_unreadable_justfile status_says_once_when_just_is_missing
   project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name
+  project_new_takes_repos project_new_makes_nothing_when_a_repo_is_bad
   project_new_trusts_its_folder project_new_without_claude_state_writes_none
   project_new_without_jq_leaves_claude_state project_new_leaves_broken_claude_state
   project_new_survives_a_temp_file_it_cannot_remove project_new_survives_a_sleep_that_fails
