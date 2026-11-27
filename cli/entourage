@@ -359,6 +359,20 @@ base_ref() {
 # The repos whose worktree the current `task new` has made.
 MADE=()
 
+# Remove what a failed `task new` made. The branch did not exist before the
+# run (task_new checks), so deleting it here never deletes someone's work.
+task_undo() {
+  local tdir=$1 branch=$2 repo
+  for repo in "${MADE[@]}"; do
+    git -C "$repo" worktree remove --force "$tdir/${repo##*/}" >/dev/null 2>&1 || true
+    git -C "$repo" worktree prune
+    git -C "$repo" branch -q -D "$branch" >/dev/null 2>&1 || true
+  done
+  rm -f "$tdir/CLAUDE.md" "$tdir/AGENTS.md"
+  rmdir "$tdir" 2>/dev/null || true
+  rmdir "${tdir%/*}" 2>/dev/null || true
+}
+
 task_new() {
   local name=${1:-} branch=${2:-} dir task
   dir=$(project_dir "$name")
@@ -397,10 +411,20 @@ task_new() {
   MADE=()
   for repo in "${repos[@]}"; do
     base=$(base_ref "$repo")
-    git -C "$repo" worktree add -q -b "$branch" "$tdir/${repo##*/}" "$base"
+    # Recorded before the attempt: a failed `worktree add` can leave its branch.
     MADE+=("$repo")
+    if ! git -C "$repo" worktree add -q -b "$branch" "$tdir/${repo##*/}" "$base"; then
+      task_undo "$tdir" "$branch"
+      die "could not make a worktree in ${repo##*/}; nothing was left behind"
+    fi
     say "  worktree  ${repo##*/} (from $base)"
   done
+  # With several repos the session starts in the task folder, so the project's
+  # doc is linked there for an agent to read.
+  if [ "${#repos[@]}" -gt 1 ]; then
+    ln -s ../../PROJECT.md "$tdir/CLAUDE.md"
+    ln -s ../../PROJECT.md "$tdir/AGENTS.md"
+  fi
 }
 
 cmd_task() {

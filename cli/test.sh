@@ -529,7 +529,36 @@ task_new_after_hand_deletion() {
   [ -d "$T/x/api" ] || fail "no worktree after remaking"
 }
 
-TASK_CASES="task_new_refuses_bad_branch task_new_refuses_unknown_project task_usage_on_unknown_subcommand
+task_new_several_repos() {
+  task_demo api web
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  [ "$(branch_of "$T/x/api")" = feat/x ] || fail "api worktree not on feat/x"
+  [ "$(branch_of "$T/x/web")" = feat/x ] || fail "web worktree not on feat/x"
+  is_link_to "$T/x/CLAUDE.md" ../../PROJECT.md || fail "CLAUDE.md not linked to the project doc"
+  is_link_to "$T/x/AGENTS.md" ../../PROJECT.md || fail "AGENTS.md not linked to the project doc"
+  [ -f "$T/x/CLAUDE.md" ] || fail "the CLAUDE.md link does not resolve"
+}
+
+task_new_one_repo_has_no_links() {
+  task_demo api
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  [ ! -e "$T/x/CLAUDE.md" ] && [ ! -L "$T/x/CLAUDE.md" ] || fail "linked CLAUDE.md beside a single repo"
+}
+
+task_new_undoes_a_failed_run() {
+  task_demo api web
+  # A file where git keeps its worktrees makes `git worktree add` fail in web.
+  : > "$HOME/Dev/web/.git/worktrees"
+  "$E" task new demo feat/x >/dev/null 2>&1 && fail "exited zero when a worktree could not be made"
+  rm -f "$HOME/Dev/web/.git/worktrees"
+  [ ! -e "$T/x" ] || fail "left the task folder behind"
+  has_branch "$API" feat/x && fail "left the branch behind in api"
+  has_branch "$HOME/Dev/web" feat/x && fail "left the branch behind in web"
+  [ "$(git -C "$API" worktree list | wc -l | tr -d ' ')" = 1 ] || fail "left the worktree behind in api"
+}
+
+TASK_CASES="task_new_several_repos task_new_one_repo_has_no_links task_new_undoes_a_failed_run
+  task_new_refuses_bad_branch task_new_refuses_unknown_project task_usage_on_unknown_subcommand
   task_new_makes_a_worktree task_new_accepts_every_spec_name task_new_starts_from_the_latest_default_branch
   task_new_works_offline task_new_without_origin_uses_local_default task_new_refuses_no_repos
   task_new_refuses_missing_repo task_new_refuses_existing_task task_new_refuses_existing_branch
