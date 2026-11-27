@@ -81,13 +81,43 @@ merge_build_fails_without_the_release_tag() {
   refuses_naming v0.4.0
 }
 
+# How it really happens: a release commit pushed without --follow-tags. The
+# older tags are there, and counting from one of them would number the build
+# as if the release had not happened.
+merge_build_does_not_count_from_an_older_tag() {
+  release_repo 0.3.0
+  more_commits 2
+  bump_to 0.4.0 untagged
+  refuses_naming v0.4.0
+}
+
+# With the history cut short, the count stops where the clone does.
+merge_build_fails_on_a_shallow_clone() {
+  release_repo 0.4.0
+  more_commits 3
+  mv "$TMP/pkg" "$TMP/full"
+  git clone -q --depth 1 "file://$TMP/full" "$TMP/pkg"
+  pkg_git fetch -q --depth 1 origin 'refs/tags/v0.4.0:refs/tags/v0.4.0'
+  refuses_naming shallow
+}
+
 merge_build_refuses_a_version_that_is_not_a_release() {
   release_repo 0.4.1-next.2
   refuses_naming 0.4.1-next.2
   bump_to 0.4
   refuses_naming 0.4
   echo '{ "name": "x" }' > "$TMP/pkg/package.json"
-  refuses_naming package.json
+  refuses_naming 'has no version'
+}
+
+# npm never writes one, and bash would read 010 as eight.
+merge_build_refuses_a_number_with_a_leading_zero() {
+  release_repo 1.2.010
+  refuses_naming 1.2.010
+  bump_to 1.2.08
+  refuses_naming 1.2.08
+  bump_to 01.2.3
+  refuses_naming 01.2.3
 }
 
 # --- next never moves backwards ---------------------------------------------
@@ -287,7 +317,10 @@ CASES="merge_build_at_the_release_commit_is_next_0
   merge_build_counts_from_the_tag_package_json_names
   merge_build_adds_one_as_a_number
   merge_build_fails_without_the_release_tag
+  merge_build_does_not_count_from_an_older_tag
+  merge_build_fails_on_a_shallow_clone
   merge_build_refuses_a_version_that_is_not_a_release
+  merge_build_refuses_a_number_with_a_leading_zero
   next_moves_forward_when_nothing_is_on_next
   next_moves_forward_from_an_older_commit
   next_does_not_move_back_to_an_older_commit
