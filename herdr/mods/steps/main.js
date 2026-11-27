@@ -122,12 +122,14 @@ export default class Steps extends View {
   }
 
   // What the panel shows: the card of the selected tab; else the card chosen
-  // from the list, until another tab is selected; else the list.
+  // from the list; else the list. A card chosen from the list is let go as
+  // soon as another tab is seen selected, so coming back to that tab shows
+  // the list. The panel is drawn again whenever a tab is selected.
   shown() {
     const now = selected();
-    const picked = !now.card && this.picked?.tab === now.tab ? this.picked.card : null;
-    const card = now.card ?? picked;
-    return { folder: now.folder, card, picked: Boolean(picked), tab: now.tab, key: `${now.folder ?? ""}\n${card ?? ""}` };
+    if (this.picked && (now.card || this.picked.tab !== now.tab)) this.picked = null;
+    const card = now.card ?? this.picked?.card ?? null;
+    return { folder: now.folder, card, picked: Boolean(this.picked), key: `${now.folder ?? ""}\n${card ?? ""}` };
   }
 
   // Show a card chosen from the list, or the list again with null.
@@ -144,7 +146,6 @@ export default class Steps extends View {
   look(cx) {
     if (this.busy || window()?.visible === false || narrow()) return;
     const now = this.shown();
-    if (this.picked && !now.picked) this.picked = null;
     const stale = Boolean(this.project) && Date.now() - this.readAt >= REREAD_MS;
     if (now.key === this.key && !stale) return;
     this.busy = true;
@@ -249,9 +250,9 @@ export default class Steps extends View {
 
   render() {
     const t = theme();
+    const now = this.shown();
     if (narrow()) return v_flex().size_full().bg(t.chrome);
     const sample = checking();
-    const now = this.shown();
     const read = now.key === this.key;
     const view = sample ? SAMPLE : this.view;
     const list = sample ? SAMPLE_CARDS : this.view;
@@ -266,15 +267,16 @@ export default class Steps extends View {
       if (view.state) items.push(note(view.state, view.waiting ? t.blocked : t.dim));
       steps.forEach((s, i) => items.push(this.row(s, i, t, sample || this.open === s.at)));
     };
+    // A card chosen from the list always has the way back, even while it
+    // loads or when it could not be read.
+    if (sample || now.picked) items.push(this.back(t));
     if (sample) {
       cards.forEach((c, i) => items.push(this.card(c, i, t)));
-      items.push(this.back(t));
       rows();
     } else if (!read) items.push(note("Loading…", t.dim));
     else if (this.error) items.push(note(this.error, t.blocked));
     else if (!this.project) items.push(note("This space is not an entourage project.", t.dim));
     else if (now.card) {
-      if (now.picked) items.push(this.back(t));
       if (steps.length === 0) items.push(note(`No hand-offs recorded for ${now.card} yet.`, t.dim));
       else rows();
     } else if (cards.length === 0) items.push(note("No hand-offs recorded in this project yet.", t.dim));

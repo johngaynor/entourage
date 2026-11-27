@@ -332,7 +332,7 @@ task_log() {
 
   # Reading never changes the store. An older one has no answer column, so it
   # is read without one.
-  local answer_column=null view found=''
+  local answer_column=null view='' found=''
   if [ -e "$STORE" ]; then
     ! has_answer_column || answer_column=answer
     view=$(log_view "$name" "$card" "$answer_column")

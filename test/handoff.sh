@@ -665,16 +665,18 @@ log_lists_the_projects_cards_newest_first() {
   j_is '.cards[1] | has("waiting")' true
   j_is '.cards[2].state' 'plan done, then breakdown'; j_is '.cards[2].next' breakdown
   j_is '.cards[2].at' 2026-01-01T10:05:00Z
-  [ "$(j '.cards[2].seconds')" -gt 86400 ] || fail "ABC-1 has stood there for $(j '.cards[2].seconds') seconds"
-  # The list says what the plain list says, and where each card stands is
-  # what that card's own view says. ABC-3's time is still running, so it can
-  # tick between one read and the next; the others are in days and hours.
+  [ "$(j '.cards[2].seconds')" -gt 86400 ] 2>/dev/null || fail "ABC-1 has stood there for $(j '.cards[2].seconds') seconds"
+  # How long, as the plain list words it. Each time is still running, so one
+  # read is not compared with another's.
+  j '.cards[0].for' | grep -Eq '^2m [0-5][0-9]s$' || fail "ABC-3 has stood there for '$(j '.cards[0].for')'"
+  j '.cards[2].for' | grep -Eq '^[0-9]+d [0-9]{2}h$' || fail "ABC-1 has stood there for '$(j '.cards[2].for')'"
+  # The plain list says where each card stands as the JSON does, and that
+  # is what the card's own view says.
   local i card
-  for i in 1 2; do
-    case $text in *"for $(j ".cards[$i].for")"*) ;; *) fail "the plain list does not show '$(j ".cards[$i].for")': $text" ;; esac
-  done
   for i in 0 1 2; do
     card=$(j ".cards[$i].card")
+    printf '%s\n' "$text" | grep -Eq "^$card +$(j ".cards[$i].state") +for " ||
+      fail "the plain list does not say $card is '$(j ".cards[$i].state")': $text"
     [ "$("$E" task log demo "$card" --json | jq -r .state)" = "$(j ".cards[$i].state")" ] ||
       fail "$card's own view does not say '$(j ".cards[$i].state")'"
   done
