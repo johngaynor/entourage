@@ -39,16 +39,30 @@ project_ls_lists() {
 project_ls_json_lists() {
   out=$("$E" project ls --json) || fail "ls --json exited non-zero with no projects"
   [ "$out" = '{"projects":[]}' ] || fail "empty listing is: $out"
-  make_repo "$HOME/code/api"; make_repo "$HOME/code/we\"b"
+  make_repo "$HOME/code/api"; make_repo "$HOME/code/we\"b"; make_repo "$HOME/code/back\\slash"
   "$E" project new demo >/dev/null
   "$E" project add demo "$HOME/code/api" >/dev/null
   "$E" project add demo "$HOME/code/we\"b" >/dev/null
+  "$E" project add demo "$HOME/code/back\\slash" >/dev/null
   "$E" project new alpha >/dev/null
   rm "$P/alpha/repos"
   out=$("$E" project ls --json) || fail "ls --json exited non-zero"
-  want=$(printf '{"projects":[{"name":"alpha","folder":"%s/alpha","repos":[]},{"name":"demo","folder":"%s/demo","repos":["%s/code/api","%s/code/we\\"b"]}]}' "$P" "$P" "$HOME" "$HOME")
+  want=$(printf '{"projects":[{"name":"alpha","folder":"%s/alpha","repos":[]},{"name":"demo","folder":"%s/demo","repos":["%s/code/api","%s/code/we\\"b","%s/code/back\\\\slash"]}]}' "$P" "$P" "$HOME" "$HOME" "$HOME")
   [ "$out" = "$want" ] || fail "listing is: $out"
   "$E" project ls --bogus >/dev/null 2>&1 && fail "accepted an unknown option"
+}
+
+# The projects mod asks for this list every 15 seconds, so names and paths
+# that need no escaping must not each start helper programs.
+project_ls_json_starts_no_helpers_for_plain_paths() {
+  make_repo "$HOME/code/api"
+  "$E" project new demo >/dev/null; "$E" project add demo "$HOME/code/api" >/dev/null
+  printf '#!/bin/sh\necho x >> "%s"\nexec /usr/bin/awk "$@"\n' "$TMP/awk-calls.log" > "$TMP/bin/awk"
+  chmod +x "$TMP/bin/awk"
+  out=$("$E" project ls --json) || fail "ls --json exited non-zero"
+  [ "$out" = "{\"projects\":[{\"name\":\"demo\",\"folder\":\"$P/demo\",\"repos\":[\"$HOME/code/api\"]}]}" ] || fail "listing is: $out"
+  [ ! -e "$TMP/awk-calls.log" ] ||
+    fail "started a helper $(grep -c x "$TMP/awk-calls.log") times for strings that need no escaping"
 }
 
 project_add_links_repo() {
@@ -292,7 +306,8 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   status_is_quiet_when_setup_exists status_ignores_a_parent_justfile
   status_notes_an_unreadable_justfile status_says_once_when_just_is_missing
   project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name
-  project_ls_lists project_ls_json_lists project_add_links_repo project_add_takes_a_relative_path
+  project_ls_lists project_ls_json_lists project_ls_json_starts_no_helpers_for_plain_paths
+  project_add_links_repo project_add_takes_a_relative_path
   project_add_refuses_non_repo project_add_refuses_duplicates project_add_handles_spaces
   project_add_unknown_project a_repo_can_be_in_two_projects stale_link_removed_real_file_kept
   project_open_makes_space project_open_selects_existing project_open_ignores_closed_spaces project_open_warns_missing_repo
