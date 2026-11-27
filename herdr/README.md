@@ -102,6 +102,8 @@ template is in this repo. Your own projects are in
 - **Open it:** `entourage project open <name>` rebuilds the links and shows
   the project's space, making it if it is not open. The space's folder is the
   project folder.
+- **List them:** `entourage project ls`. `--json` prints the same list as
+  JSON with each project's folder; the projects mod reads it.
 - **Check them:** `entourage status` reports a repo that has moved or gone,
   and a `PROJECT.md` that is still the template. Delete the template's first
   line once you have filled it in.

@@ -35,6 +35,22 @@ project_ls_lists() {
   case $out in *demo*"$HOME/code/api"*) ;; *) fail "ls did not list the project and repo: $out" ;; esac
 }
 
+# What the projects mod reads: one line of JSON, each project with its folder.
+project_ls_json_lists() {
+  out=$("$E" project ls --json) || fail "ls --json exited non-zero with no projects"
+  [ "$out" = '{"projects":[]}' ] || fail "empty listing is: $out"
+  make_repo "$HOME/code/api"; make_repo "$HOME/code/we\"b"
+  "$E" project new demo >/dev/null
+  "$E" project add demo "$HOME/code/api" >/dev/null
+  "$E" project add demo "$HOME/code/we\"b" >/dev/null
+  "$E" project new alpha >/dev/null
+  rm "$P/alpha/repos"
+  out=$("$E" project ls --json) || fail "ls --json exited non-zero"
+  want=$(printf '{"projects":[{"name":"alpha","folder":"%s/alpha","repos":[]},{"name":"demo","folder":"%s/demo","repos":["%s/code/api","%s/code/we\\"b"]}]}' "$P" "$P" "$HOME" "$HOME")
+  [ "$out" = "$want" ] || fail "listing is: $out"
+  "$E" project ls --bogus >/dev/null 2>&1 && fail "accepted an unknown option"
+}
+
 project_add_links_repo() {
   make_repo "$HOME/code/api"
   "$E" project new demo >/dev/null
@@ -276,7 +292,7 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   status_is_quiet_when_setup_exists status_ignores_a_parent_justfile
   status_notes_an_unreadable_justfile status_says_once_when_just_is_missing
   project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name
-  project_ls_lists project_add_links_repo project_add_takes_a_relative_path
+  project_ls_lists project_ls_json_lists project_add_links_repo project_add_takes_a_relative_path
   project_add_refuses_non_repo project_add_refuses_duplicates project_add_handles_spaces
   project_add_unknown_project a_repo_can_be_in_two_projects stale_link_removed_real_file_kept
   project_open_makes_space project_open_selects_existing project_open_ignores_closed_spaces project_open_warns_missing_repo
