@@ -34,6 +34,30 @@ Your projects live in `~/.config/entourage/projects`, outside this repo, so
 they are never published and survive updates. See
 [herdr/README.md](herdr/README.md#projects) for how a project is laid out.
 
+## Tasks
+
+A task is one piece of work in a project. Starting one makes a branch and a
+git worktree of it in every repo of the project, and opens a tab for it in the
+project's Herdr space:
+
+```sh
+entourage task new my-project feat/abc-122-insert-task-here
+```
+
+The branch is `<type>/<description>`, following
+[Conventional Branch](https://conventionalbranch.org), with the card's ID in
+the description. The description names the task:
+
+```
+~/.config/entourage/projects/my-project/
+  tasks/
+    abc-122-insert-task-here/   one folder per task
+      api/                      a worktree of api on feat/abc-122-insert-task-here
+      web/                      a worktree of web on the same branch
+```
+
+See [herdr/README.md](herdr/README.md#tasks) for the details.
+
 To work on entourage itself, clone the repo and run `cli/entourage install`
 from the clone instead. Run the CLI's tests with `npm test`.
 
