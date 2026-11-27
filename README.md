@@ -45,6 +45,12 @@ entourage project add my-project ~/Dev/web
 entourage project open my-project
 ```
 
+`project new` also takes the repos after the name, to do the first three
+lines in one: `entourage project new my-project ~/Dev/api ~/Dev/web`.
+
+In Herdr, the `+` above the projects list does the same without a terminal:
+choose a repo's folder, name the project, and its space opens.
+
 Your projects live in `~/.config/entourage/projects`, outside this repo, so
 they are never published and survive updates. See
 [herdr/README.md](herdr/README.md#projects) for how a project is laid out.
