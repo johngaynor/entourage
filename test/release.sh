@@ -90,10 +90,29 @@ merge_build_refuses_a_version_that_is_not_a_release() {
   refuses_naming package.json
 }
 
+# The workflow cannot be run before it is merged, so its text is pinned. A
+# merge build published without --tag next becomes `latest`, which every
+# machine installs on its next update.
+publish_workflow_keeps_merge_builds_off_latest() {
+  local publishes
+  publishes=$(grep -E '^[[:space:]]*(-[[:space:]]+)?(run:[[:space:]]*)?npm publish( |$)' "$WORKFLOW")
+  [ "$(printf '%s\n' "$publishes" | grep -c .)" = 2 ] ||
+    fail "expected two npm publish commands, one for a release and one for a merge build"
+  [ "$(printf '%s\n' "$publishes" | grep -c -- '--tag next')" = 1 ] ||
+    fail "exactly one npm publish must carry --tag next"
+  grep -qF '.github/scripts/merge-build-version.sh' "$WORKFLOW" ||
+    fail "the workflow does not number the merge build with the script"
+  grep -qF 'fetch-depth: 0' "$WORKFLOW" ||
+    fail "the checkout needs fetch-depth: 0, or the release tag is not there to count from"
+  grep -qF 'cancel-in-progress: false' "$WORKFLOW" ||
+    fail "runs must queue, not cancel one that is publishing"
+}
+
 CASES="merge_build_at_the_release_commit_is_next_0
   merge_build_counts_commits_since_the_tag
   merge_build_counts_a_merged_branch_as_git_describe_does
   merge_build_counts_from_the_tag_package_json_names
   merge_build_adds_one_as_a_number
   merge_build_fails_without_the_release_tag
-  merge_build_refuses_a_version_that_is_not_a_release"
+  merge_build_refuses_a_version_that_is_not_a_release
+  publish_workflow_keeps_merge_builds_off_latest"
