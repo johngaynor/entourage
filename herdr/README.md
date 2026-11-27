@@ -9,8 +9,9 @@ layouts (whole-window arrangements of mods).
 |---|---|
 | `mods/cpu/` | Live CPU usage with a scrolling history. macOS only (reads `/usr/bin/top`). |
 | `mods/layout-switch/` | A dropdown that shows the current layout and switches to another. |
+| `mods/projects/` | Every project in your config, open or not. Click one to show its space. |
 | `layouts/default.json` | Herdr's own layout, plus the layout dropdown. |
-| `layouts/test.json` | `default` plus the CPU mod in the sidebar. |
+| `layouts/test.json` | `default` with the projects list in place of spaces, plus the CPU mod in the sidebar. |
 | `projects/template/` | The starting `PROJECT.md` for every new project. |
 
 The skills are in [../skills/](../skills/), outside this folder. They are
@@ -102,6 +103,8 @@ template is in this repo. Your own projects are in
 - **Open it:** `entourage project open <name>` rebuilds the links and shows
   the project's space, making it if it is not open. The space's folder is the
   project folder.
+- **List them:** `entourage project ls`. `--json` prints the same list as
+  JSON with each project's folder; the projects mod reads it.
 - **Check them:** `entourage status` reports a repo that has moved or gone,
   and a `PROJECT.md` that is still the template. Delete the template's first
   line once you have filled it in.

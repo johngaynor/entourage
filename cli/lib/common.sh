@@ -38,9 +38,15 @@ require_herdr() {
   [ -d "$APP_HOME" ] || die "$APP_HOME does not exist yet. Open Herdr once so it creates its folder, then run this again."
 }
 
-# Print a string as the inside of a JSON string. sed and awk do the work so
-# that the result does not depend on the bash version's quoting rules.
+# Print a string as the inside of a JSON string. Most strings have nothing to
+# escape and are printed as they are, with no program started. For the rest,
+# sed and awk do the work so that the result does not depend on the bash
+# version's quoting rules.
 json_str() {
+  case $1 in
+    *[\\\"[:cntrl:]]*) ;;
+    *) printf '%s' "$1"; return ;;
+  esac
   printf '%s' "$1" | tr '\t\r' '  ' |
     sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
     awk 'BEGIN { ORS = "" } NR > 1 { print "\\n" } { print }'
