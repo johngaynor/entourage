@@ -597,7 +597,80 @@ SETUP_CASES="task_start_runs_setup_one_repo task_start_sends_setup_to_the_new_ta
   task_start_quotes_repo_names task_start_without_just task_start_without_hc
   task_start_without_a_terminal task_start_when_hc_send_fails"
 
-CASES="$SETUP_CASES $CARD_CASES task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
+# --- tasks: targets ---------------------------------------------------------
+
+task_start_one_target_with_a_group() {
+  stub_just; stub_hc; task_demo api web; give_setup api
+  out=$("$E" task start demo feat/x api:athlete) || fail "task start exited non-zero"
+  [ "$(branch_of "$T/x/api")" = feat/x ] || fail "no worktree for the named repo"
+  [ ! -e "$T/x/web" ] || fail "made a worktree for a repo that was not named"
+  has_branch "$HOME/Dev/web" feat/x && fail "made a branch in a repo that was not named"
+  [ ! -e "$T/x/CLAUDE.md" ] && [ ! -L "$T/x/CLAUDE.md" ] || fail "linked the project doc beside one repo"
+  [ "$(hc_calls)" = "send t9 just setup athlete" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(last_call)" = "do tab.new {\"name\":\"x\",\"folder\":\"$T/x/api\"}" ] || fail "the tab is not in the worktree: $(last_call)"
+  case $out in *"setup     api athlete (running in the tab)"*) ;; *) fail "did not report the group: $out" ;; esac
+}
+
+task_start_several_groups() {
+  stub_just; stub_hc; task_demo api; give_setup api
+  "$E" task start demo feat/x api:athlete,coach >/dev/null || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 just setup athlete coach" ] || fail "wrong hc calls: $(hc_calls)"
+}
+
+task_start_several_targets() {
+  stub_just; stub_hc; task_demo api web docs; give_setup api; give_setup web
+  "$E" task start demo feat/x web:coach api >/dev/null || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'web' && just setup coach)" ] || fail "wrong hc calls: $(hc_calls)"
+  [ -d "$T/x/api" ] && [ -d "$T/x/web" ] || fail "missing a named repo's worktree"
+  [ ! -e "$T/x/docs" ] || fail "made a worktree for a repo that was not named"
+  is_link_to "$T/x/CLAUDE.md" ../../PROJECT.md || fail "no project doc link for a task of several repos"
+  [ "$(last_call)" = "do tab.new {\"name\":\"x\",\"folder\":\"$T/x\"}" ] || fail "the tab is not in the task folder: $(last_call)"
+}
+
+task_start_a_target_without_a_group() {
+  stub_just; stub_hc; task_demo api web; give_setup web
+  "$E" task start demo feat/x web >/dev/null || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 just setup" ] || fail "wrong hc calls: $(hc_calls)"
+  [ ! -e "$T/x/api" ] || fail "made a worktree for a repo that was not named"
+}
+
+# A repo the task did not name can be broken without stopping it.
+task_start_ignores_an_unnamed_broken_repo() {
+  task_demo api web
+  rm -rf "$HOME/Dev/web"
+  "$E" task start demo feat/x api >/dev/null 2>&1 || fail "a missing repo that was not named stopped the task"
+  [ -d "$T/x/api" ] || fail "no worktree"
+}
+
+task_start_refuses_bad_targets() {
+  task_demo api web
+  local t
+  for t in nope api:athlete,nope/x "api:" "api:a,,b" "api:Athlete" "api:a b" "api:a;b" 'api:$x' "api:a'b" "api:-a" ":athlete"; do
+    "$E" task start demo feat/x "$t" >/dev/null 2>&1 && fail "accepted the target '$t'"
+    [ ! -e "$T" ] || { fail "made a tasks folder for the target '$t'"; rm -rf "$T"; }
+    has_branch "$API" feat/x && fail "made a branch for the target '$t'"
+  done
+}
+
+task_start_refuses_a_repo_named_twice() {
+  task_demo api web
+  "$E" task start demo feat/x api:athlete api:coach >/dev/null 2>"$TMP/err" && fail "accepted a repo named twice"
+  grep -q comma "$TMP/err" || fail "did not say to use a comma: $(cat "$TMP/err")"
+  [ ! -e "$T" ] || fail "made a tasks folder"
+}
+
+task_start_lists_repos_for_an_unknown_target() {
+  task_demo api web
+  "$E" task start demo feat/x nope >/dev/null 2>"$TMP/err" && fail "accepted an unknown repo"
+  grep -q api "$TMP/err" && grep -q web "$TMP/err" || fail "did not list the project's repos: $(cat "$TMP/err")"
+}
+
+TARGET_CASES="task_start_one_target_with_a_group task_start_several_groups task_start_several_targets
+  task_start_a_target_without_a_group task_start_ignores_an_unnamed_broken_repo
+  task_start_refuses_bad_targets task_start_refuses_a_repo_named_twice
+  task_start_lists_repos_for_an_unknown_target"
+
+CASES="$TARGET_CASES $SETUP_CASES $CARD_CASES task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
   task_start_keeps_the_task_when_the_space_fails task_start_branch_has_no_upstream
   task_start_refusal_keeps_the_first_task task_start_refusal_keeps_an_existing_branch
   task_start_over_a_folder_deleted_by_hand task_start_leaves_other_worktrees_alone

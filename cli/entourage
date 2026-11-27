@@ -19,7 +19,8 @@ Usage:
   entourage project open <name>        show the project as a Herdr space
   entourage project ls                 list projects and their repos
   entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
-  entourage task start <project> <branch>  start the work: a worktree per repo, opened as a tab
+  entourage task start <project> <branch> [<repo>[:<group>] ...]
+                                           start the work: a worktree per repo, opened as a tab
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
@@ -34,6 +35,8 @@ feat/abc-122-short-title (https://conventionalbranch.org). It makes a folder
 in the project's tasks/ folder with a worktree of each repo on that branch,
 and opens a tab for it. A repo with a justfile that has a `setup` recipe
 gets `just setup` run in that tab, so the checkout is ready to work in.
+Targets after the branch narrow the task: `app` takes only that repo, and
+`app:athlete` sets it up for its athlete group (`just setup athlete`).
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
 Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another
