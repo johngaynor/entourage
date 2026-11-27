@@ -53,13 +53,17 @@ export default class Projects extends View {
     this.refresh(cx);
   }
 
-  // Runs the entourage command: the one on PATH, else the copy this mod is
-  // linked from (Herdr may have been started without the user's PATH).
-  async entourage(args) {
+  // Runs the entourage command. With `fallback`, a command that cannot run is
+  // tried again as the copy this mod is linked from (Herdr may have been
+  // started without the user's PATH). Only the listing asks for that: it is
+  // safe to run twice, and it has answered before there is a row to click. An
+  // open never does, because its failure may be a timeout with the first run
+  // still making the space.
+  async entourage(args, { fallback = false } = {}) {
     try {
       return await exec(this.cmd, args, { timeout: TIMEOUT_MS });
     } catch (e) {
-      if (this.cmd !== "entourage") throw e;
+      if (!fallback || this.cmd !== "entourage") throw e;
       const link = await exec("readlink", [`${appHome()}/mods/projects`]);
       const at = link.stdout.trim();
       if (link.code !== 0 || !at.endsWith(LINKED_AT)) throw e;
@@ -74,7 +78,7 @@ export default class Projects extends View {
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
-        const r = await this.entourage(["project", "ls", "--json"]);
+        const r = await this.entourage(["project", "ls", "--json"], { fallback: true });
         const list = r.code === 0 ? parse(r.stdout) : null;
         if (list) this.projects = list;
         this.error = list ? null : r.code === 0 ? OLD_CLI : said(r) || "entourage project ls failed";
