@@ -36,10 +36,10 @@
           "type": "column",
           "children": [
             {
-              "id": "spaces",
+              "id": "projects",
               "type": "block",
               "content": {
-                "mod": "spaces"
+                "mod": "projects"
               },
               "size": {
                 "weight": 1
