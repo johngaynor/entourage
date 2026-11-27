@@ -340,6 +340,10 @@ entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
 - **Where the tab starts:** in the worktree when the task has one repo; in
   the task folder when it has several. That folder has `CLAUDE.md` and
   `AGENTS.md` links to the project's `PROJECT.md`.
+- **Setup is off for now**, while the local environment each task gets is
+  worked out. The output says it was not run. Set `ENTOURAGE_SETUP=1` (see
+  [entourage's variables](#entourages-variables)) to turn it on. The next
+  two points describe it when it is on, and groups in targets only matter then.
 - **Setup runs in the tab.** For each repo that has a `setup` recipe (see
   [What a repo provides](#what-a-repo-provides)), `just setup`, followed by
   the target's groups if it named any, is typed into
@@ -365,7 +369,7 @@ have the same names in every repo. entourage only knows the names.
 
 | Recipe | What it must do | Used by |
 |---|---|---|
-| `setup` | Make a fresh checkout ready to work in: install dependencies and anything else a new worktree lacks. Safe to run twice. Called with group names (`just setup athlete coach`), make ready only what those groups need, and fail with a clear message for a group the repo does not have. | `entourage task start` |
+| `setup` | Make a fresh checkout ready to work in: install dependencies and anything else a new worktree lacks. Safe to run twice. Called with group names (`just setup athlete coach`), make ready only what those groups need, and fail with a clear message for a group the repo does not have. | `entourage task start`, when `ENTOURAGE_SETUP=1` |
 
 ```just
 setup:
@@ -395,6 +399,7 @@ shell, or written as a `NAME=value` line in entourage's env file,
 | `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
 | `ENTOURAGE_AGENT` | The agent `task new` starts. `claude` when it is not set. |
 | `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
+| `ENTOURAGE_SETUP` | `1` makes `task start` run each repo's `setup` recipe. Off when it is not set, for now. |
 | `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |
 | `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills are linked. `~/.claude` when it is not set. |
 | `ENTOURAGE_HOME` | entourage's own folder. `~/.config/entourage` when it is not set. Export only: it says where the env file is, so the file cannot set it. |
