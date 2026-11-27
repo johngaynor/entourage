@@ -13,7 +13,7 @@ STORE=$ENT_HOME/entourage.db
 SQLITE=${ENTOURAGE_SQLITE:-sqlite3}
 
 # The lines a block can have, in the order they are printed.
-HANDOFF_KEYS='phase status next summary flags question options reason'
+HANDOFF_KEYS='phase status next summary flags question options answer reason'
 # The steps a block can name as its phase or as what comes next.
 HANDOFF_STEPS='define plan breakdown setup'
 # A block is a summary. A line longer than this is not one, and a very long
@@ -30,7 +30,8 @@ summary: One to three sentences on what was done.
 EOF
 
 status is done (needs next and summary, may have flags), needs-human (needs
-question and options, may have summary) or failed (needs reason). phase and
+question and options, may have summary), answered (needs answer: what the
+human replied to a needs-human hand-off) or failed (needs reason). phase and
 next are one of: $HANDOFF_STEPS. Every value goes on one line."
 
 have_sqlite() { command -v "$SQLITE" >/dev/null 2>&1; }
@@ -49,23 +50,35 @@ sql_str() {
   printf "'%s'" "$(printf '%s' "$1" | LC_ALL=C sed "s/'/''/g")"
 }
 
-# Make the store if this is its first use.
+has_answer_column() { store "$STORE" 'select answer from handoffs limit 0;' >/dev/null; }
+
+# A store made before answers were recorded has no column for them. Add it.
+# Two hand-offs can get here at the same moment: one adds the column and the
+# other's attempt fails, so look again before calling that a failure.
+store_upgrade() {
+  has_answer_column ||
+    store "$STORE" 'alter table handoffs add column answer text;' ||
+    has_answer_column
+}
+
+# Make the store if this is its first use, and bring an older one up to date.
 store_ready() {
   mkdir -p "$ENT_HOME"
   store "$STORE" 'create table if not exists handoffs (
     id integer primary key, at text not null, project text not null,
     card text not null, phase text not null, status text not null,
-    next text, summary text, flags text, question text, options text, reason text);'
+    next text, summary text, flags text, question text, options text,
+    answer text, reason text);' && store_upgrade
 }
 
 # Record one hand-off, timed now in UTC:
-#   store_handoff <project> <card> <phase> <status> <next> <summary> <flags> <question> <options> <reason>
+#   store_handoff <project> <card> <phase> <status> <next> <summary> <flags> <question> <options> <answer> <reason>
 store_handoff() {
   local at values='' v
   at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   for v in "$at" "$@"; do values="$values${values:+, }$(sql_str "$v")"; done
   store "$STORE" "insert into handoffs
-    (at, project, card, phase, status, next, summary, flags, question, options, reason)
+    (at, project, card, phase, status, next, summary, flags, question, options, answer, reason)
     values ($values);"
 }
 
@@ -77,7 +90,7 @@ record_start() {
     say "  note      $SQLITE is not installed, so hand-offs are not recorded"
     return 0
   fi
-  { store_ready && store_handoff "$1" "$2" new done define '' '' '' '' ''; } ||
+  { store_ready && store_handoff "$1" "$2" new done define '' '' '' '' '' ''; } ||
     say "  note      could not record the start in $STORE"
 }
 
@@ -122,7 +135,7 @@ task_handoff() {
   [ "$#" -le 2 ] || die "$HANDOFF_USAGE"
   [ ! -t 0 ] || die "$HANDOFF_USAGE"
 
-  local phase='' status='' next='' summary='' flags='' question='' options='' reason=''
+  local phase='' status='' next='' summary='' flags='' question='' options='' answer='' reason=''
   local line key value n=0 seen=' '
   local re='^[[:space:]]*([a-z]+):[[:space:]]*(.*)$' blank='^[[:space:]]*$' hint='^<.*>$'
   while IFS= read -r line || [ -n "$line" ]; do
@@ -150,34 +163,50 @@ task_handoff() {
 
   [ -n "$phase" ] || die "the block has no 'phase:' line, the step that is handing off."
   in_list "$phase" "$HANDOFF_STEPS" || die "'$phase' is not a step. The steps are: $HANDOFF_STEPS."
-  [ -n "$status" ] || die "the block has no 'status:' line. Use done, needs-human or failed."
+  [ -n "$status" ] || die "the block has no 'status:' line. Use done, needs-human, answered or failed."
   local need allow
   case $status in
     done) need='next summary' allow='flags' ;;
     needs-human) need='question options' allow='summary' ;;
+    answered) need='answer' allow='' ;;
     failed) need='reason' allow='' ;;
-    *) die "'$status' is not a status. Use done, needs-human or failed." ;;
+    *) die "'$status' is not a status. Use done, needs-human, answered or failed." ;;
   esac
   for key in $need; do
-    [ -n "${!key}" ] || die "a $status hand-off needs a '$key:' line."
+    [ -n "${!key}" ] || die "a hand-off with status $status needs a '$key:' line."
   done
-  for key in next summary flags question options reason; do
+  for key in next summary flags question options answer reason; do
     [ -z "${!key}" ] || in_list "$key" "$need $allow" ||
-      die "a $status hand-off has no '$key:' line. Take it out."
+      die "a hand-off with status $status has no '$key:' line. Take it out."
   done
   [ -z "$next" ] || in_list "$next" "$HANDOFF_STEPS" ||
     die "'$next' is not a step that can come next. The steps are: $HANDOFF_STEPS."
 
   have_sqlite ||
     die "$SQLITE is not installed, so the hand-off was not recorded. Write the block in your message instead."
-  { store_ready && store_handoff "$name" "$card" "$phase" "$status" "$next" "$summary" "$flags" "$question" "$options" "$reason"; } ||
+  { store_ready && store_handoff "$name" "$card" "$phase" "$status" "$next" "$summary" "$flags" "$question" "$options" "$answer" "$reason"; } ||
     die "the hand-off was not recorded: could not write to $STORE. Write the block in your message instead."
   for key in $HANDOFF_KEYS; do
     [ -z "${!key}" ] || printf '%s: %s\n' "$key" "${!key}"
   done
 }
 
-# List a card's hand-offs, oldest first.
+# Print a length of time: 50s, 1m 44s, 1h 02m.
+took() {
+  local s=$1
+  [ "$s" -ge 0 ] 2>/dev/null || s=0
+  if [ "$s" -lt 60 ]; then printf '%ss' "$s"
+  elif [ "$s" -lt 3600 ]; then printf '%dm %02ds' $((s / 60)) $((s % 60))
+  else printf '%dh %02dm' $((s / 3600)) $((s % 3600 / 60))
+  fi
+}
+
+# List a card's hand-offs, oldest first, with how long each step took.
+#
+# Nothing about time is stored beyond each row's own. A step's time is from
+# the row before it to its own row. The time from a needs-human row to its
+# answered row is waiting on the human and belongs to no step. A needs-human
+# row with nothing after it is still waiting, measured to now.
 task_log() {
   local name=${1:-} card=${2:-}
   [ -n "$name" ] || die "usage: entourage task log <project> <card>"
@@ -188,24 +217,52 @@ task_log() {
 
   # The unit separator: no value can hold it, and unlike a tab it does not let
   # `read` run two empty fields together.
-  local sep=$'\x1f' count=0 key found=''
-  local at phase status next summary flags question options reason
+  local sep=$'\x1f' count=0 key found='' what time
+  local at phase status next summary flags question options answer reason since before last
+  local answer_column="''"
   if [ -e "$STORE" ]; then
+    # Reading never changes the store. An older one has no answer column, so
+    # it is read without one.
+    ! has_answer_column || answer_column="coalesce(answer, '')"
     # A store that cannot be read is an error, not an empty history.
+    # since: seconds from the row before. before: that row's status.
+    # last: seconds from this row to now, on the last row only.
     found=$(store -separator "$sep" "$STORE" "select at, phase, status, coalesce(next, ''),
       coalesce(summary, ''), coalesce(flags, ''), coalesce(question, ''), coalesce(options, ''),
-      coalesce(reason, '') from handoffs
-      where project = $(sql_str "$name") and card = $(sql_str "$card") order by id;") ||
+      $answer_column, coalesce(reason, ''),
+      coalesce(cast(strftime('%s', at) - strftime('%s', lag(at) over w) as integer), ''),
+      coalesce(lag(status) over w, ''),
+      case when lead(id) over w is null
+        then cast(strftime('%s', 'now') - strftime('%s', at) as integer) else '' end
+      from handoffs
+      where project = $(sql_str "$name") and card = $(sql_str "$card")
+      window w as (order by id) order by id;") ||
       die "could not read the hand-offs in $STORE. It may not be entourage's store."
   fi
-  while IFS=$sep read -r at phase status next summary flags question options reason; do
+  while IFS=$sep read -r at phase status next summary flags question options answer reason since before last; do
     [ -n "$at" ] || continue
     [ "$count" -gt 0 ] || say "$card in '$name'"
     count=$((count + 1))
-    printf '%s  %-10s %s%s\n' "$at" "$phase" "$status" "${next:+, then $next}"
-    for key in summary flags question options reason; do
+    what=$status${next:+, then $next}
+    time=''
+    if [ -n "$since" ]; then
+      time=$(took "$since")
+      if [ "$status" = answered ] && [ "$before" = needs-human ]; then
+        time="waited $time"
+      elif [ "$before" = needs-human ]; then
+        # No answer was recorded, so the wait cannot be told from the work.
+        time="$time, includes waiting on the human"
+      fi
+    fi
+    if [ -n "$time" ]; then printf '%s  %-10s %-22s %s\n' "$at" "$phase" "$what" "$time"
+    else printf '%s  %-10s %s\n' "$at" "$phase" "$what"
+    fi
+    for key in summary flags question options answer reason; do
       [ -z "${!key}" ] || printf '    %s: %s\n' "$key" "${!key}"
     done
+    if [ "$status" = needs-human ] && [ -n "$last" ]; then
+      printf '    waiting on the human for %s\n' "$(took "$last")"
+    fi
   done <<< "$found"
   [ "$count" -gt 0 ] || say "No hand-offs recorded for $card in '$name'."
 }

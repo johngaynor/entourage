@@ -184,6 +184,12 @@ entourage task log <project> <card>
   commands.
 - **`task new` records the start,** so the time each step took can be read
   from the hand-offs alone.
+- **It records your answers too.** When you reply to a question, the agent
+  records a hand-off with `status: answered` and what you said in a few
+  words. `task log` shows how long each step took, and the time a question
+  waited on you as a line of its own, counted in no step. A question with no
+  answer yet shows how long it has been waiting. A step that followed a
+  question with no recorded answer is marked as including the wait.
 - **They are kept in `~/.config/entourage/entourage.db`,** a SQLite file
   beside your projects, on this machine only. It needs `sqlite3`, which macOS
   ships; `ENTOURAGE_SQLITE` picks another command. Without it `task new`

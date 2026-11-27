@@ -19,7 +19,8 @@ name, such as `/sdlc-define ABC-122`.
 Whenever a skill ends or pauses, it hands off with a block: which step it was,
 and whether it is `done`, `needs-human` or `failed`. A `done` block also names
 the step that comes next. The agent records each block with
-`entourage task handoff`, and `entourage task log` shows them for a card.
+`entourage task handoff`, and your answer when you reply to a question.
+`entourage task log` shows them for a card, with how long each step took.
 
 ## Setting up a machine
 
@@ -75,7 +76,8 @@ entourage task new my-project ABC-122
 ```
 
 As it goes, the agent records how each step ended. `task log` lists that for
-a card, oldest first:
+a card, oldest first, with how long each step took and how long a question
+waited for your answer:
 
 ```sh
 entourage task log my-project ABC-122

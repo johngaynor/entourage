@@ -127,6 +127,7 @@ summary: <one to three sentences on what you did>
 flags: <what the human should know but wasn't asked>
 question: <one question>
 options: <the answers you expect, your recommendation first, separated by " | ">
+answer: <what the human said, in a few words>
 reason: <what went wrong, and what you already tried>
 EOF
 ```
@@ -137,12 +138,13 @@ EOF
 |---|---|---|
 | `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
 | `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `answered` | The human has replied to a `needs-human` hand-off | `phase`, `status`, `answer` |
 | `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
 
 - **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage project, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a project or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
 - **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
-- **`needs-human` is a pause, not an ending.** Wait for the answer, then carry on with this step. The step is over only at `done` or `failed`.
+- **`needs-human` is a pause, not an ending.** Wait for the answer. When it comes, record it before anything else, as a hand-off with `status: answered` and what they said in a few words. That is how the time spent waiting on them is told from your own work. Then carry on with this step. The step is over only at `done` or `failed`.
 - **Ask one question per block.** If you have two, ask first the one whose answer could change the other. The human can always answer in their own words, so `options` are suggestions.
 - **After `done`, this step is over.** Record the hand-off before anything else. If another step sent you here to revise this section, go back to that step and ignore `next`. Otherwise go on to the step in `next` only if you were asked to run more than this one step, and if you weren't, stop there.
 - **After `failed`, change nothing more.** Leave the card as it is for the human.

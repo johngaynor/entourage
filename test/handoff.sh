@@ -272,7 +272,7 @@ options: yes | write a new one' >/dev/null
       printf '%s\n' "$out" | grep -qF -- "  $want" ||
       fail "the log has no line '$want': $out"
   done
-  printf '%s\n' "$out" | grep -q 'plan  *needs-human$' || fail "the row with no next is printed wrongly: $out"
+  printf '%s\n' "$out" | grep -Eq 'plan +needs-human( |$)' || fail "the row with no next is printed wrongly: $out"
   case $out in *'Another card entirely.'*) fail "showed another card's hand-off: $out" ;; esac
   case $out in *'Another project entirely.'*) fail "showed another project's hand-off: $out" ;; esac
 }
@@ -377,6 +377,134 @@ log_says_when_nothing_is_recorded() {
   case $out in *'No hand-offs'*) ;; *) fail "does not say there are none for that card: $out" ;; esac
 }
 
+# --- answers and times ------------------------------------------------------
+
+handoff_records_an_answer() {
+  demo
+  block='phase: breakdown
+status: answered
+answer: change specification: the athlete app only'
+  out=$(hand "$block") || fail "task handoff exited non-zero"
+  [ "$out" = "$block" ] || fail "did not print the block back: $out"
+  [ "$(q "select phase || '|' || status || '|' || answer from handoffs")" = 'breakdown|answered|change specification: the athlete app only' ] ||
+    fail "wrong row: $(q 'select * from handoffs')"
+}
+
+handoff_checks_an_answer() {
+  demo
+  refused 'phase: breakdown
+status: answered' "'answer:'"
+  refused 'phase: breakdown
+status: answered
+answer: approve
+summary: They approved.' 'summary'
+  refused 'phase: define
+status: done
+next: plan
+summary: Done.
+answer: approve' "'answer:'"
+}
+
+# A store as the version before answers made it: no column for them, one row.
+older_store() {
+  mkdir -p "$HOME/.config/entourage"
+  sqlite3 "$(STORE)" "create table handoffs (
+    id integer primary key, at text not null, project text not null,
+    card text not null, phase text not null, status text not null,
+    next text, summary text, flags text, question text, options text, reason text);
+    insert into handoffs (at, project, card, phase, status, next, summary)
+    values ('2026-01-01T10:00:00Z', 'demo', 'ABC-122', 'define', 'done', 'plan', 'From the older store.');"
+}
+
+# The first hand-off into an older store adds the column and keeps what was
+# there. Nothing reads the store first here, so only the hand-off can add it.
+an_older_store_gains_the_answer_column() {
+  demo; older_store
+  hand 'phase: breakdown
+status: answered
+answer: approve' >/dev/null || fail "could not record an answer in an older store"
+  [ "$(q 'select count(*) from handoffs')" = 2 ] || fail "expected the old row and the new one: $(rows)"
+  [ "$(q "select answer from handoffs where status = 'answered'")" = approve ] || fail "the answer was not kept"
+  [ "$(q "select summary from handoffs where phase = 'define'")" = 'From the older store.' ] || fail "lost the older row"
+}
+
+# Reading never changes the store: an older one is read as it is, even when
+# the file cannot be written.
+log_reads_an_older_store_without_changing_it() {
+  demo; older_store
+  chmod 444 "$(STORE)"
+  out=$("$E" task log demo ABC-122) || fail "task log failed on an older, read-only store: $out"
+  case $out in *'From the older store.'*) ;; *) fail "did not show the older row: $out" ;; esac
+  chmod 644 "$(STORE)"
+  if q 'select answer from handoffs limit 0' >/dev/null; then fail "task log changed the store"; fi
+}
+
+# Two tasks can hand off into an older store at the same moment. Both try to
+# add the column, one loses, and its hand-off must still be recorded.
+hand_offs_at_once_into_an_older_store_are_all_recorded() {
+  demo; older_store
+  local i
+  for i in 1 2 3 4 5 6; do
+    printf 'phase: plan\nstatus: done\nnext: breakdown\nsummary: Writer %s.\n' "$i" |
+      "$E" task handoff demo "ABC-$i" >/dev/null 2>&1 &
+  done
+  wait
+  [ "$(q "select count(*) from handoffs where phase = 'plan'")" = 6 ] ||
+    fail "expected six hand-offs, got $(q "select count(*) from handoffs where phase = 'plan'")"
+}
+
+# Put a row for ABC-122 straight into the store at a set time. The store has
+# to exist first, so each case that uses this records one row for another card.
+#   put <time> <phase> <status> [<next>] [<answer>]
+put() {
+  q "insert into handoffs (at, project, card, phase, status, next, answer)
+     values ('$1', 'demo', 'ABC-122', '$2', '$3', nullif('${4:-}', ''), nullif('${5:-}', ''));"
+}
+make_store() { printf '%s\n' "$DONE_BLOCK" | "$E" task handoff demo ABC-1 >/dev/null; }
+# Does the log in $out have a line matching the extended regex in $1?
+log_has() { printf '%s\n' "$out" | grep -Eq -- "$1" || fail "the log has no line like '$1': $out"; }
+
+log_shows_how_long_each_step_took() {
+  demo; make_store
+  put 2026-01-01T10:00:00Z new done define
+  put 2026-01-01T10:00:50Z define done plan
+  put 2026-01-01T10:02:34Z plan done breakdown
+  put 2026-01-01T10:02:39Z breakdown needs-human
+  put 2026-01-01T10:09:43Z breakdown answered '' 'change specification'
+  put 2026-01-01T10:10:03Z define done plan
+  put 2026-01-01T11:12:03Z plan done breakdown
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  log_has 'new +done, then define$'
+  log_has 'define +done, then plan +50s$'
+  log_has 'plan +done, then breakdown +1m 44s$'
+  log_has 'breakdown +needs-human +5s$'
+  # The wait is a line of its own, and the step after it counts only its own time.
+  log_has 'breakdown +answered +waited 7m 04s$'
+  log_has '^    answer: change specification$'
+  log_has 'define +done, then plan +20s$'
+  log_has 'plan +done, then breakdown +1h 02m$'
+  case $out in *'waiting on the human for'*) fail "says it is waiting, though the last row is not a question: $out" ;; esac
+}
+
+# Rows from before answers were recorded: the step after a question cannot be
+# told from the wait before it, and the log says so.
+log_marks_a_step_that_includes_waiting() {
+  demo; make_store
+  put 2026-01-01T10:02:39Z breakdown needs-human
+  put 2026-01-01T10:10:03Z define done plan
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  log_has 'define +done, then plan +7m 24s, includes waiting on the human$'
+}
+
+log_shows_a_question_still_waiting() {
+  demo; make_store
+  put 2026-01-01T10:00:00Z plan done breakdown
+  q "insert into handoffs (at, project, card, phase, status, question, options)
+     values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-125 seconds'), 'demo', 'ABC-122', 'breakdown', 'needs-human', 'Approve?', 'approve | change plan');"
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  log_has '^    waiting on the human for 2m [0-5][0-9]s$'
+}
+
 CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_question handoff_records_a_failure handoff_refuses_a_missing_line
   handoff_refuses_what_it_does_not_know handoff_refuses_a_line_that_does_not_belong
@@ -390,4 +518,9 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_refuses_two_steps_in_one_value handoff_refuses_a_control_character
   handoff_takes_crlf_lines handoff_takes_indented_lines
   handoff_refuses_a_placeholder_left_in handoff_refuses_a_very_long_line
-  handoff_refuses_a_project_in_the_wrong_case"
+  handoff_refuses_a_project_in_the_wrong_case handoff_records_an_answer
+  handoff_checks_an_answer an_older_store_gains_the_answer_column
+  log_reads_an_older_store_without_changing_it
+  hand_offs_at_once_into_an_older_store_are_all_recorded
+  log_shows_how_long_each_step_took log_marks_a_step_that_includes_waiting
+  log_shows_a_question_still_waiting"
