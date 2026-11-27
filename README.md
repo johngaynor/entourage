@@ -49,6 +49,12 @@ Your projects live in `~/.config/entourage/projects`, outside this repo, so
 they are never published and survive updates. See
 [herdr/README.md](herdr/README.md#projects) for how a project is laid out.
 
+`project new` also marks the project's folder as trusted in Claude Code's own
+file, `~/.claude.json`, so an agent started there is not stopped by the "do
+you trust this folder?" question. Only a project folder that entourage made
+is marked: never a repo, and not a project folder you linked in from somewhere
+else. This needs `jq`; without it Claude Code asks once.
+
 ## Tasks
 
 A task is one piece of work in a project, usually a Linear card. It has two

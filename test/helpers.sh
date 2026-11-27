@@ -9,6 +9,8 @@ TMP=
 fail() { printf 'FAIL: %s: %s\n' "$case_name" "$*"; failures=$((failures + 1)); case_failed=1; }
 
 setup() {
+  # The case before may have left a PATH inside its own folder, now removed.
+  export PATH=/usr/bin:/bin
   TMP=$(mktemp -d)
   TMP=$(cd -P "$TMP" && pwd)
   REPO=$TMP/repo
@@ -88,3 +90,38 @@ stub_hc() {
   chmod +x "$TMP/bin/hc"
 }
 hc_calls() { cat "$TMP/hc-calls.log" 2>/dev/null; }
+
+# --- Claude Code's own file -------------------------------------------------
+
+# Claude Code's own file in the throwaway HOME, holding the given JSON ({} when
+# none is given), with the permissions Claude Code gives it.
+claude_state() {
+  local json=${1:-}
+  [ -n "$json" ] || json='{}'
+  printf '%s\n' "$json" > "$HOME/.claude.json"
+  chmod 600 "$HOME/.claude.json"
+}
+
+# Whether Claude Code would start in a folder without asking. $2 is the state
+# file, when it is not the one in HOME.
+is_trusted() {
+  jq -e --arg d "$1" '.projects[$d].hasTrustDialogAccepted == true' "${2:-$HOME/.claude.json}" >/dev/null 2>&1
+}
+
+# A PATH with every command but jq, for a machine that does not have it.
+hide_jq() {
+  mkdir "$TMP/nojq"
+  ln -s /usr/bin/* /bin/* "$TMP/nojq/" 2>/dev/null
+  rm -f "$TMP/nojq/jq"
+  export PATH=$TMP/bin:$TMP/nojq
+}
+
+# Fail if a run left a temp file or a lock beside the state file. $1 is the
+# folder the state file is in, when it is not HOME.
+no_trust_litter() {
+  local f
+  for f in "${1:-$HOME}"/.claude.json.*; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    fail "left behind: $f"
+  done
+}

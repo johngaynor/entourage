@@ -151,6 +151,75 @@ task_new_escapes_the_folder() {
   esac
 }
 
+# The agent starts in the project's folder, so Claude Code has to trust it by
+# then. `project new` does that; `task new` checks again.
+
+task_new_trusts_a_project_made_before() {
+  card_demo
+  claude_state
+  "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+  is_trusted "$P/demo" || fail "the project's folder is not trusted: $(cat "$HOME/.claude.json")"
+  [ "$(tab_calls)" = 1 ] || fail "no tab was opened"
+  no_trust_litter
+}
+
+task_new_trusts_before_the_tab_opens() {
+  card_demo
+  claude_state
+  # A stub Herdr that notes whether the folder is trusted when a tab is asked for.
+  cat > "$TMP/bin/herdr-app" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/herdr-calls.log"
+[ "\$1" = status ] && echo '  "layout": "test",'
+if [ "\$2" = tab.new ]; then
+  jq -e --arg d "$P/demo" '.projects[\$d].hasTrustDialogAccepted == true' "$HOME/.claude.json" >/dev/null 2>&1 &&
+    : > "$TMP/trusted-at-tab"
+  echo '  "terminal": "t9"'
+fi
+exit 0
+EOF
+  "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+  [ "$(tab_calls)" = 1 ] || fail "no tab was opened"
+  [ -e "$TMP/trusted-at-tab" ] || fail "the tab was opened before the folder was trusted"
+}
+
+task_new_leaves_trusted_claude_state_alone() {
+  claude_state
+  card_demo
+  is_trusted "$P/demo" || fail "project new did not trust the folder"
+  local before out
+  before=$(ls -i "$HOME/.claude.json")
+  out=$("$E" task new demo ABC-122) || fail "task new exited non-zero"
+  [ "$(ls -i "$HOME/.claude.json")" = "$before" ] || fail "rewrote a state file that already trusts the folder"
+  case $out in
+    *"  trusted   "* | *"  note      "*) fail "spoke of trust when there was nothing to do: $out" ;;
+  esac
+}
+
+# A project name that is a link leads to a folder entourage did not make,
+# perhaps a repo. entourage answers only for folders it made.
+task_new_does_not_trust_a_linked_project() {
+  card_demo
+  mv "$P/demo" "$TMP/elsewhere"
+  ln -s "$TMP/elsewhere" "$P/demo"
+  claude_state
+  cp "$HOME/.claude.json" "$TMP/before"
+  "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+  [ "$(tab_calls)" = 1 ] || fail "no tab was opened"
+  cmp -s "$HOME/.claude.json" "$TMP/before" ||
+    fail "trusted a folder entourage did not make: $(cat "$HOME/.claude.json")"
+}
+
+task_new_starts_when_trust_cannot_be_written() {
+  card_demo
+  printf '{broken' > "$HOME/.claude.json"
+  local out
+  out=$("$E" task new demo ABC-122) || fail "task new exited non-zero"
+  [ "$(tab_calls)" = 1 ] || fail "no tab was opened"
+  [ "$(cat "$HOME/.claude.json")" = '{broken' ] || fail "the state file changed"
+  case $out in *"could not be updated"*) ;; *) fail "did not say why the folder is not trusted: $out" ;; esac
+}
+
 # --- tasks: starting the work -----------------------------------------------
 
 task_start_refuses_bad_branch() {
@@ -481,7 +550,10 @@ CARD_CASES="task_new_starts_an_agent task_new_sends_one_line_of_json task_new_ta
   task_new_makes_no_task_folder task_new_selects_an_open_space task_new_refuses_a_branch
   task_new_refuses_a_bad_card task_new_refuses_unknown_project task_new_needs_the_skills_linked
   task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_herdr_running
-  task_new_says_when_the_tab_fails task_new_escapes_the_folder"
+  task_new_says_when_the_tab_fails task_new_escapes_the_folder
+  task_new_trusts_a_project_made_before task_new_trusts_before_the_tab_opens
+  task_new_leaves_trusted_claude_state_alone task_new_starts_when_trust_cannot_be_written
+  task_new_does_not_trust_a_linked_project"
 
 # --- tasks: setup -----------------------------------------------------------
 

@@ -26,6 +26,162 @@ project_new_refuses_bad_name() {
   [ ! -e "$HOME/.config/entourage/up" ] || fail "wrote outside the projects folder"
 }
 
+# --- project new: the folder is trusted by Claude Code ----------------------
+
+project_new_trusts_its_folder() {
+  claude_state '{"numStartups":3,"cost":0.1234,"at":1764259200123,"name":"café","projects":{"/other":{"allowedTools":["x"],"hasTrustDialogAccepted":false}}}'
+  local out
+  out=$("$E" project new demo) || fail "new exited non-zero"
+  is_trusted "$P/demo" || fail "the project's folder is not trusted: $(cat "$HOME/.claude.json")"
+  jq -e '.numStartups == 3 and .cost == 0.1234 and .at == 1764259200123 and .name == "café"
+    and .projects["/other"].allowedTools == ["x"] and .projects["/other"].hasTrustDialogAccepted == false' \
+    "$HOME/.claude.json" >/dev/null || fail "the rest of the file changed: $(cat "$HOME/.claude.json")"
+  case $(ls -l "$HOME/.claude.json") in -rw-------*) ;; *) fail "permissions changed: $(ls -l "$HOME/.claude.json")" ;; esac
+  case $'\n'$out in *$'\n'"  trusted   $P/demo "*) ;; *) fail "did not say the folder is trusted: $out" ;; esac
+  no_trust_litter
+}
+
+project_new_without_claude_state_writes_none() {
+  local out
+  out=$("$E" project new demo) || fail "new exited non-zero"
+  [ -f "$P/demo/PROJECT.md" ] || fail "the project was not made"
+  [ ! -e "$HOME/.claude.json" ] || fail "made a state file for Claude Code"
+  case $out in *"  note      "*"there is no $HOME/.claude.json yet"*) ;; *) fail "did not say why the folder is not trusted: $out" ;; esac
+  no_trust_litter
+}
+
+project_new_without_jq_leaves_claude_state() {
+  claude_state
+  cp "$HOME/.claude.json" "$TMP/before"
+  hide_jq
+  local out
+  out=$("$E" project new demo) || fail "new exited non-zero"
+  [ -f "$P/demo/PROJECT.md" ] || fail "the project was not made"
+  cmp -s "$HOME/.claude.json" "$TMP/before" || fail "the state file changed"
+  # "may ask": without jq there is no telling whether the folder is trusted already.
+  case $out in
+    *"Claude Code may ask to trust $P/demo: jq is not installed"*) ;;
+    *) fail "did not say jq is missing: $out" ;;
+  esac
+  no_trust_litter
+}
+
+# An rm that cannot remove the temp file, as when the state file is immutable
+# and so is every copy of it.
+project_new_survives_a_temp_file_it_cannot_remove() {
+  claude_state
+  cat > "$TMP/bin/rm" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do
+  case $a in *.claude.json.entourage.*) echo "rm: $a: Operation not permitted" >&2; exit 1 ;; esac
+done
+exec /bin/rm "$@"
+EOF
+  chmod +x "$TMP/bin/rm"
+  local out
+  out=$("$E" project new demo 2>&1) || fail "new exited non-zero: $out"
+  case $out in *"Made project 'demo'"*) ;; *) fail "the project was not reported made: $out" ;; esac
+  case $out in *"Operation not permitted"*) fail "showed a raw error: $out" ;; esac
+  is_trusted "$P/demo" || fail "the folder is not trusted"
+  [ ! -e "$HOME/.claude.json.lock" ] || fail "left the lock behind"
+}
+
+# A sleep that fails, as one that does not take a fraction of a second would.
+project_new_survives_a_sleep_that_fails() {
+  claude_state
+  mkdir "$HOME/.claude.json.lock"
+  stub sleep 1
+  local out
+  out=$("$E" project new demo 2>&1) || fail "new exited non-zero: $out"
+  case $out in *"is in use"*"Made project 'demo'"*) ;; *) fail "did not carry on past the wait: $out" ;; esac
+}
+
+# Reading through a link is harmless, so a linked file that already trusts the
+# folder is nothing to speak of.
+project_new_is_quiet_when_a_linked_claude_state_trusts_it() {
+  printf '{"projects":{"%s":{"hasTrustDialogAccepted":true}}}\n' "$P/demo" > "$TMP/real.json"
+  ln -s "$TMP/real.json" "$HOME/.claude.json"
+  local out
+  out=$("$E" project new demo) || fail "new exited non-zero"
+  case $out in
+    *"  note      "* | *"  trusted   "*) fail "spoke of trust for a folder that is trusted already: $out" ;;
+  esac
+  [ -L "$HOME/.claude.json" ] || fail "the link was replaced"
+}
+
+# Not JSON, empty (jq prints nothing for it and exits zero), and JSON that is
+# not the object Claude Code keeps.
+project_new_leaves_broken_claude_state() {
+  local name text out
+  for name in a b c d; do
+    case $name in a) text='{broken' ;; b) text='' ;; c) text='[]' ;; d) text='null' ;; esac
+    printf '%s' "$text" > "$HOME/.claude.json"
+    cp "$HOME/.claude.json" "$TMP/before"
+    out=$("$E" project new "$name") || fail "new exited non-zero with the state file '$text'"
+    [ -f "$P/$name/PROJECT.md" ] || fail "the project was not made with the state file '$text'"
+    cmp -s "$HOME/.claude.json" "$TMP/before" || fail "the state file '$text' changed: $(cat "$HOME/.claude.json")"
+    case $out in *"could not be updated"*) ;; *) fail "did not say the state file '$text' was left alone: $out" ;; esac
+    no_trust_litter
+  done
+}
+
+project_new_leaves_linked_claude_state() {
+  echo '{}' > "$TMP/real.json"
+  ln -s "$TMP/real.json" "$HOME/.claude.json"
+  local out
+  out=$("$E" project new demo) || fail "new exited non-zero"
+  [ -L "$HOME/.claude.json" ] || fail "the link was replaced"
+  [ "$(cat "$TMP/real.json")" = '{}' ] || fail "the linked file changed"
+  case $out in *"is a link"*) ;; *) fail "did not say the state file is a link: $out" ;; esac
+  no_trust_litter
+}
+
+# Claude Code holds a lock, a folder beside the file, while it writes.
+project_new_leaves_claude_state_in_use() {
+  claude_state
+  cp "$HOME/.claude.json" "$TMP/before"
+  mkdir "$HOME/.claude.json.lock"
+  local out
+  out=$("$E" project new demo) || fail "new exited non-zero"
+  [ -f "$P/demo/PROJECT.md" ] || fail "the project was not made"
+  cmp -s "$HOME/.claude.json" "$TMP/before" || fail "the state file changed while another program held it"
+  [ -d "$HOME/.claude.json.lock" ] || fail "removed a lock it did not make"
+  case $out in *"is in use"*) ;; *) fail "did not say the state file is in use: $out" ;; esac
+  set -- "$HOME"/.claude.json.entourage.*
+  [ ! -e "$1" ] || fail "left a temp file behind: $1"
+}
+
+project_new_trust_honors_claude_config_dir() {
+  export CLAUDE_CONFIG_DIR=$TMP/cc
+  mkdir "$CLAUDE_CONFIG_DIR"
+  echo '{}' > "$CLAUDE_CONFIG_DIR/.claude.json"
+  echo '{}' > "$HOME/.claude.json"
+  "$E" project new demo >/dev/null || fail "new exited non-zero"
+  is_trusted "$P/demo" "$CLAUDE_CONFIG_DIR/.claude.json" || fail "did not use CLAUDE_CONFIG_DIR"
+  [ "$(cat "$HOME/.claude.json")" = '{}' ] || fail "wrote to the file in HOME too"
+  no_trust_litter "$CLAUDE_CONFIG_DIR"
+}
+
+project_new_trusts_a_path_with_quotes() {
+  claude_state
+  export ENTOURAGE_HOME="$TMP/it's a \"home\""
+  "$E" project new demo >/dev/null || fail "new exited non-zero"
+  is_trusted "$ENTOURAGE_HOME/projects/demo" || fail "wrong key for a path with quotes: $(cat "$HOME/.claude.json")"
+  no_trust_litter
+}
+
+# Claude Code looks a folder up by its real path, and /tmp on macOS is a link.
+project_new_trusts_the_real_path() {
+  claude_state
+  mkdir "$TMP/real"
+  ln -s "$TMP/real" "$TMP/link"
+  export ENTOURAGE_HOME=$TMP/link
+  "$E" project new demo >/dev/null || fail "new exited non-zero"
+  is_trusted "$TMP/real/projects/demo" || fail "the real path is not trusted: $(cat "$HOME/.claude.json")"
+  is_trusted "$TMP/link/projects/demo" && fail "the path through the link was written as a key"
+  no_trust_litter
+}
+
 project_ls_lists() {
   out=$("$E" project ls) || fail "ls exited non-zero with no projects"
   case $out in *"No projects yet"*) ;; *) fail "no hint when empty: $out" ;; esac
@@ -306,6 +462,13 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   status_is_quiet_when_setup_exists status_ignores_a_parent_justfile
   status_notes_an_unreadable_justfile status_says_once_when_just_is_missing
   project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name
+  project_new_trusts_its_folder project_new_without_claude_state_writes_none
+  project_new_without_jq_leaves_claude_state project_new_leaves_broken_claude_state
+  project_new_survives_a_temp_file_it_cannot_remove project_new_survives_a_sleep_that_fails
+  project_new_is_quiet_when_a_linked_claude_state_trusts_it
+  project_new_leaves_linked_claude_state project_new_leaves_claude_state_in_use
+  project_new_trust_honors_claude_config_dir project_new_trusts_a_path_with_quotes
+  project_new_trusts_the_real_path
   project_ls_lists project_ls_json_lists project_ls_json_starts_no_helpers_for_plain_paths
   project_add_links_repo project_add_takes_a_relative_path
   project_add_refuses_non_repo project_add_refuses_duplicates project_add_handles_spaces
