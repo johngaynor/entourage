@@ -109,12 +109,15 @@ project_new_is_quiet_when_a_linked_claude_state_trusts_it() {
   [ -L "$HOME/.claude.json" ] || fail "the link was replaced"
 }
 
-# Not JSON, empty (jq prints nothing for it and exits zero), and JSON that is
-# not the object Claude Code keeps.
+# Not JSON, empty (jq prints nothing for it and exits zero), JSON that is not
+# the object Claude Code keeps, and two values where there should be one.
 project_new_leaves_broken_claude_state() {
   local name text out
-  for name in a b c d; do
-    case $name in a) text='{broken' ;; b) text='' ;; c) text='[]' ;; d) text='null' ;; esac
+  for name in a b c d e; do
+    case $name in
+      a) text='{broken' ;; b) text='' ;; c) text='[]' ;; d) text='null' ;;
+      e) text='{"a":1} {"b":2}' ;;
+    esac
     printf '%s' "$text" > "$HOME/.claude.json"
     cp "$HOME/.claude.json" "$TMP/before"
     out=$("$E" project new "$name") || fail "new exited non-zero with the state file '$text'"
@@ -123,6 +126,29 @@ project_new_leaves_broken_claude_state() {
     case $out in *"could not be updated"*) ;; *) fail "did not say the state file '$text' was left alone: $out" ;; esac
     no_trust_litter
   done
+}
+
+# jq 1.6, which Debian 12 and Ubuntu 22.04 ship, exits zero for an empty file
+# even when it is asked to judge its answer. The stand-in here does the same.
+project_new_is_not_fooled_by_an_old_jq() {
+  local real out
+  real=$(command -v jq)
+  cat > "$TMP/bin/jq" <<EOF
+#!/usr/bin/env bash
+"$real" "\$@"
+code=\$?
+[ "\$code" = 4 ] && exit 0
+exit "\$code"
+EOF
+  chmod +x "$TMP/bin/jq"
+  : > "$HOME/.claude.json"
+  out=$("$E" project new demo) || fail "new exited non-zero"
+  [ ! -s "$HOME/.claude.json" ] || fail "the empty state file changed: $(cat "$HOME/.claude.json")"
+  case $out in
+    *"could not be updated"*) ;;
+    *) fail "took an empty state file for one that trusts the folder: $out" ;;
+  esac
+  no_trust_litter
 }
 
 project_new_leaves_linked_claude_state() {
@@ -465,7 +491,7 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   project_new_trusts_its_folder project_new_without_claude_state_writes_none
   project_new_without_jq_leaves_claude_state project_new_leaves_broken_claude_state
   project_new_survives_a_temp_file_it_cannot_remove project_new_survives_a_sleep_that_fails
-  project_new_is_quiet_when_a_linked_claude_state_trusts_it
+  project_new_is_quiet_when_a_linked_claude_state_trusts_it project_new_is_not_fooled_by_an_old_jq
   project_new_leaves_linked_claude_state project_new_leaves_claude_state_in_use
   project_new_trust_honors_claude_config_dir project_new_trusts_a_path_with_quotes
   project_new_trusts_the_real_path

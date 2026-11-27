@@ -14,6 +14,12 @@
 # The jq test for "this folder is trusted". $d is the folder.
 TRUST_TEST='.projects[$d].hasTrustDialogAccepted == true'
 
+# Whether a state file ($2) says a folder ($1) is trusted. The answer is read
+# from what jq prints, never from its exit code: jq 1.6 exits zero for an
+# empty file even with -e. One "true" and nothing else is a yes, so a file
+# holding two values where there should be one is a no as well.
+trust_recorded() { [ "$(jq --arg d "$1" "$TRUST_TEST" "$2" 2>/dev/null)" = true ]; }
+
 # "may ask": not every case below can tell whether the folder is trusted.
 trust_note() { say "  note      Claude Code may ask to trust $1: $2"; }
 
@@ -29,7 +35,7 @@ trust_folder() {
   if ! command -v jq >/dev/null 2>&1; then trust_note "$dir" "jq is not installed"; return 0; fi
   # Reading is harmless, through a link too, so this comes before anything
   # that refuses to write.
-  if jq -e --arg d "$dir" "$TRUST_TEST" "$file" >/dev/null 2>&1; then return 0; fi
+  if trust_recorded "$dir" "$file"; then return 0; fi
   # Replacing a link with a plain file would break whatever keeps the real
   # file somewhere else.
   if [ -L "$file" ]; then trust_note "$dir" "$file is a link, so it was left alone"; return 0; fi
@@ -48,7 +54,7 @@ trust_folder() {
   if (umask 077 && jq --arg d "$dir" \
       'if type == "object" then .projects[$d].hasTrustDialogAccepted = true else error("not an object") end' \
       "$file" > "$tmp") 2>/dev/null &&
-    jq -e --arg d "$dir" "$TRUST_TEST" "$tmp" >/dev/null 2>&1 &&
+    trust_recorded "$dir" "$tmp" &&
     mv -f "$tmp" "$file" 2>/dev/null; then
     ok=1
   fi
