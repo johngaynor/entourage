@@ -626,7 +626,94 @@ EOF
   grep -qF "$T/x/api" "$TMP/err" || fail "did not say where the task is: $(cat "$TMP/err")"
 }
 
-TASK_CASES="task_new_opens_a_tab_one_repo task_new_opens_a_tab_several_repos task_new_selects_an_open_space
+# --- tasks: what must survive, and what must not be left half-made ----------
+
+task_new_refuses_a_repo_with_no_commits() {
+  task_demo api
+  git init -q -b main "$HOME/Dev/web"
+  "$E" project add demo "$HOME/Dev/web" >/dev/null
+  "$E" task new demo feat/x >/dev/null 2>&1 && fail "accepted a repo with no commits"
+  [ ! -e "$T" ] || fail "left a tasks folder behind"
+  has_branch "$API" feat/x && fail "left the branch behind in api"
+}
+
+# web's post-checkout hook interrupts entourage while it is making worktrees.
+task_new_undoes_an_interrupted_run() {
+  task_demo api web
+  mkdir -p "$HOME/Dev/web/.git/hooks"
+  printf '#!/bin/sh\nkill -TERM "$(ps -o ppid= -p $PPID | tr -d " ")"\n' > "$HOME/Dev/web/.git/hooks/post-checkout"
+  chmod +x "$HOME/Dev/web/.git/hooks/post-checkout"
+  "$E" task new demo feat/x >/dev/null 2>&1 && fail "exited zero after being interrupted"
+  [ ! -e "$T" ] || fail "left a tasks folder behind: $(ls "$T" "$T"/* 2>/dev/null | tr '\n' ' ')"
+  has_branch "$API" feat/x && fail "left the branch behind in api"
+  has_branch "$HOME/Dev/web" feat/x && fail "left the branch behind in web"
+}
+
+# The space could not be shown: the task is kept, and the message says where it is.
+task_new_keeps_the_task_when_the_space_fails() {
+  task_demo api
+  cat > "$TMP/bin/herdr-app" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = status ] && echo '  "layout": "test",'
+[ "$2" = space.new ] && exit 1
+exit 0
+STUB
+  "$E" task new demo feat/x >/dev/null 2>"$TMP/err" && fail "exited zero when the space could not be shown"
+  [ -d "$T/x/api" ] || fail "removed the task"
+  grep -qF "$T/x/api" "$TMP/err" || fail "did not say where the task is: $(cat "$TMP/err")"
+}
+
+task_new_branch_has_no_upstream() {
+  task_demo api
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  git -C "$T/x/api" rev-parse -q --verify '@{u}' >/dev/null 2>&1 && fail "the new branch tracks $(git -C "$T/x/api" rev-parse --abbrev-ref '@{u}')"
+}
+
+task_new_refusal_keeps_the_first_task() {
+  task_demo api
+  "$E" task new demo feat/x >/dev/null || fail "first task new exited non-zero"
+  echo work > "$T/x/api/work.txt"
+  "$E" task new demo fix/x >/dev/null 2>&1 && fail "made a second task with the same name"
+  [ "$(cat "$T/x/api/work.txt" 2>/dev/null)" = work ] || fail "the first task's work is gone"
+  [ "$(branch_of "$T/x/api")" = feat/x ] || fail "the first task's worktree is gone"
+}
+
+task_new_refusal_keeps_an_existing_branch() {
+  task_demo api
+  git -C "$API" branch feat/x
+  local before
+  before=$(head_of "$API" feat/x)
+  "$E" task new demo feat/x >/dev/null 2>&1 && fail "reused an existing branch"
+  has_branch "$API" feat/x || fail "deleted the branch that was already there"
+  [ "$(head_of "$API" feat/x)" = "$before" ] || fail "moved the branch that was already there"
+}
+
+# A task folder deleted by hand leaves git thinking its worktree is still there.
+task_new_over_a_folder_deleted_by_hand() {
+  task_demo api
+  "$E" task new demo feat/x >/dev/null || fail "first task new exited non-zero"
+  rm -rf "$T/x"
+  "$E" task new demo fix/x >/dev/null 2>&1 || fail "could not make a task where one was deleted by hand"
+  [ "$(branch_of "$T/x/api")" = fix/x ] || fail "no worktree on fix/x"
+}
+
+# A worktree whose folder is away for a while (an unmounted drive) must still work when it is back.
+task_new_leaves_other_worktrees_alone() {
+  task_demo api
+  mkdir -p "$TMP/drive"
+  git -C "$API" worktree add -q -b other "$TMP/drive/other" main
+  echo staged > "$TMP/drive/other/f.txt"; git -C "$TMP/drive/other" add f.txt
+  mv "$TMP/drive" "$TMP/drive.away"
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  mv "$TMP/drive.away" "$TMP/drive"
+  [ "$(git -C "$TMP/drive/other" status --porcelain 2>/dev/null)" = "A  f.txt" ] || fail "another worktree was broken: $(git -C "$TMP/drive/other" status --porcelain 2>&1)"
+}
+
+TASK_CASES="task_new_refuses_a_repo_with_no_commits task_new_undoes_an_interrupted_run
+  task_new_keeps_the_task_when_the_space_fails task_new_branch_has_no_upstream
+  task_new_refusal_keeps_the_first_task task_new_refusal_keeps_an_existing_branch
+  task_new_over_a_folder_deleted_by_hand task_new_leaves_other_worktrees_alone
+  task_new_opens_a_tab_one_repo task_new_opens_a_tab_several_repos task_new_selects_an_open_space
   task_new_needs_herdr_running task_new_repo_path_with_a_space task_new_keeps_the_task_when_the_tab_fails
   task_new_several_repos task_new_one_repo_has_no_links task_new_undoes_a_failed_run
   task_new_refuses_bad_branch task_new_refuses_unknown_project task_usage_on_unknown_subcommand

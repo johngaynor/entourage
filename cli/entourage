@@ -372,21 +372,25 @@ base_ref() {
   git -C "$repo" rev-parse --abbrev-ref HEAD
 }
 
-# The repos whose worktree the current `task new` has made.
-MADE=()
+# What the current `task new` is in the middle of making, so that it can be
+# removed if the run fails or is interrupted. Empty when nothing is half-made.
+UNDO_DIR='' UNDO_BRANCH=''
+MADE=()   # the repos a worktree has been started in
 
-# Remove what a failed `task new` made. The branch did not exist before the
-# run (task_new checks), so deleting it here never deletes someone's work.
+# Remove a half-made task. The task folder and the branch did not exist before
+# the run (task_new checks both), so this never removes someone's work.
 task_undo() {
-  local tdir=$1 branch=$2 repo
-  for repo in "${MADE[@]}"; do
+  local tdir=$UNDO_DIR branch=$UNDO_BRANCH repo
+  [ -n "$tdir" ] || return 0
+  UNDO_DIR=''
+  for repo in ${MADE[@]+"${MADE[@]}"}; do
     git -C "$repo" worktree remove --force "$tdir/${repo##*/}" >/dev/null 2>&1 || true
-    git -C "$repo" worktree prune
     git -C "$repo" branch -q -D "$branch" >/dev/null 2>&1 || true
   done
   rm -f "$tdir/CLAUDE.md" "$tdir/AGENTS.md"
   rmdir "$tdir" 2>/dev/null || true
   rmdir "${tdir%/*}" 2>/dev/null || true
+  [ ! -e "$tdir" ] || printf 'entourage: could not remove everything in %s\n' "$tdir" >&2
 }
 
 task_new() {
@@ -402,7 +406,7 @@ task_new() {
   herdr_running || die "Herdr is not running. Open it, then run this again."
 
   # Check everything before making anything.
-  local repos=() repo base tdir=$dir/tasks/$task
+  local repos=() bases=() repo base i tdir=$dir/tasks/$task
   while IFS= read -r repo; do repos+=("$repo"); done < <(project_repos "$dir")
   [ "${#repos[@]}" -gt 0 ] ||
     die "project '$name' has no repos. Add one with: entourage project add $name <path>"
@@ -418,24 +422,33 @@ task_new() {
       say "  warning: could not fetch ${repo##*/}; starting from what is local"
   done
   for repo in "${repos[@]}"; do
-    # Forget worktrees whose folders were deleted by hand.
-    git -C "$repo" worktree prune
     if resolves "$repo" "refs/heads/$branch" || resolves "$repo" "refs/remotes/origin/$branch"; then
       die "branch '$branch' already exists in ${repo##*/}"
     fi
+    base=$(base_ref "$repo" 2>/dev/null) && resolves "$repo" "$base" ||
+      die "${repo##*/} has no commit to start a branch from"
+    bases+=("$base")
   done
+  sync_links "$dir"
 
   say "Making task '$task' in $tdir"
+  # From here until the worktrees and links are all made, any failure or
+  # interruption removes what was made.
+  MADE=() UNDO_DIR=$tdir UNDO_BRANCH=$branch
+  trap task_undo EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   mkdir -p "$tdir"
-  MADE=()
+  i=0
   for repo in "${repos[@]}"; do
-    base=$(base_ref "$repo")
+    base=${bases[$i]}; i=$((i + 1))
     # Recorded before the attempt: a failed `worktree add` can leave its branch.
     MADE+=("$repo")
-    if ! git -C "$repo" worktree add -q -b "$branch" "$tdir/${repo##*/}" "$base"; then
-      task_undo "$tdir" "$branch"
-      die "could not make a worktree in ${repo##*/}; nothing was left behind"
-    fi
+    # --no-track: the branch is new work, not a copy of the default branch, so
+    # a plain push or pull must not go to or from it.
+    # -f: reuse a path git still has registered for a folder deleted by hand.
+    git -C "$repo" worktree add -q -f --no-track -b "$branch" "$tdir/${repo##*/}" "$base" ||
+      die "could not make a worktree in ${repo##*/}; the task was not made"
     say "  worktree  ${repo##*/} (from $base)"
   done
   # With several repos the session starts in the task folder, so the project's
@@ -444,13 +457,16 @@ task_new() {
     ln -s ../../PROJECT.md "$tdir/CLAUDE.md"
     ln -s ../../PROJECT.md "$tdir/AGENTS.md"
   fi
+  UNDO_DIR=''
+  trap - EXIT INT TERM
 
   # One repo: the tab starts in its worktree, where git and the repo's own
   # docs work as usual. Several: it starts in the task folder above them.
   local folder=$tdir
   [ "${#repos[@]}" -gt 1 ] || folder=$tdir/${repos[0]##*/}
-  sync_links "$dir"
-  show_space "$name" "$dir"
+  # The task exists now. If Herdr cannot show it, keep it and say where it is.
+  (show_space "$name" "$dir") ||
+    die "made the task at $folder but could not show it in Herdr. Open that folder in the project's space yourself."
   # No `space` argument: the tab goes in the selected space, which show_space
   # has just selected or made.
   herdr_app do tab.new "{\"name\":\"$task\",\"folder\":\"$folder\"}" >/dev/null 2>&1 ||
