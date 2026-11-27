@@ -24,7 +24,7 @@ skills_share_one_handoff_block() {
 handoff_block_names_every_status() {
   local section status
   section=$(handoff_section sdlc-define)
-  for status in done needs-human failed; do
+  for status in done needs-human answered failed; do
     case $section in
       *"\`$status\`"*) ;;
       *) fail "the handoff block section does not name the $status status" ;;
@@ -112,7 +112,19 @@ handoffs_are_recorded_with_the_command() {
     fail "the task-new prompt does not name the command, with the project and card filled in"
 }
 
+# Waiting on the human can only be told from work if the agent says when the
+# answer came.
+the_answer_is_recorded_first() {
+  case $(handoff_section sdlc-define) in
+    *'record it before anything else'*'status: answered'*) ;;
+    *) fail "the handoff block section does not say to record the answer first" ;;
+  esac
+  grep -qF 'record my answer' "$REPO/prompts/task-new.md" ||
+    fail "the task-new prompt does not say to record the answer"
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
+  the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop
   no_skill_names_a_person a_routed_change_returns_to_breakdown
