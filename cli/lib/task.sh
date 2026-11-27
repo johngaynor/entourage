@@ -40,6 +40,10 @@ task_new() {
   prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$CARD_PROMPT")
 
   sync_links "$dir"
+  # `project new` does this too. Here it covers a project made before it did,
+  # or on a day Claude Code's file could not be written. It comes before the
+  # tab, because the agent meets the trust question the moment it starts.
+  trust_folder "$dir"
   (show_space "$name" "$dir") ||
     die "could not show the space for '$name', so no agent was started."
   # No `space` argument: the tab goes in the selected space, which show_space
