@@ -101,7 +101,9 @@ the task's tab, so the checkout is ready to work in. See
 See [herdr/README.md](herdr/README.md#tasks) for the details.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
-from the clone instead. Run the CLI's tests with `npm test`.
+from the clone instead. Run the CLI's tests with `npm test`. The cases run
+side by side, one per processor; `ENTOURAGE_TEST_JOBS=1 npm test` runs them
+one at a time.
 
 ## Releasing
 
