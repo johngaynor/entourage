@@ -207,7 +207,67 @@ honors_entourage_home() {
   [ ! -e "$P/demo" ] || fail "wrote to the default folder too"
 }
 
-CASES="project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name
+# --- status: what a repo provides -------------------------------------------
+
+# The project "demo" with a filled-in doc and a repo folder for each name given.
+status_demo() {
+  local r
+  "$E" install >/dev/null
+  "$E" project new demo >/dev/null
+  echo "# demo" > "$P/demo/PROJECT.md"
+  for r in "$@"; do
+    make_repo "$HOME/Dev/$r"
+    "$E" project add demo "$HOME/Dev/$r" >/dev/null
+  done
+}
+
+status_notes_a_repo_without_a_justfile() {
+  stub_just; status_demo api
+  out=$("$E" status) || fail "status exited non-zero for a note"
+  case $out in *"note       demo: api has no justfile, so tasks start without setup"*) ;; *) fail "no note: $out" ;; esac
+  case $out in *"ok         demo"*) ;; *) fail "the project is no longer ok: $out" ;; esac
+}
+
+status_notes_a_justfile_without_setup() {
+  stub_just; status_demo api
+  printf 'setup-db:\n\techo\npresetup:\n\techo\n' > "$HOME/Dev/api/justfile"
+  out=$("$E" status) || fail "status exited non-zero for a note"
+  case $out in *"note       demo: api's justfile has no setup recipe"*) ;; *) fail "no note: $out" ;; esac
+}
+
+status_is_quiet_when_setup_exists() {
+  stub_just; status_demo api web
+  printf 'setup:\n\techo\n' > "$HOME/Dev/api/justfile"
+  printf 'build:\n\techo\nsetup: build\n\techo\n' > "$HOME/Dev/web/Justfile"
+  out=$("$E" status) || fail "status exited non-zero"
+  case $out in *note*) fail "a note for repos that have setup: $out" ;; esac
+}
+
+status_ignores_a_parent_justfile() {
+  stub_just; status_demo api
+  printf 'setup:\n\techo\n' > "$HOME/Dev/justfile"
+  out=$("$E" status) || fail "status exited non-zero"
+  case $out in *"api has no justfile"*) ;; *) fail "used a justfile from the folder above: $out" ;; esac
+}
+
+status_notes_an_unreadable_justfile() {
+  stub_just; status_demo api
+  printf 'BROKEN\nsetup:\n\techo\n' > "$HOME/Dev/api/justfile"
+  out=$("$E" status) || fail "status exited non-zero for a note"
+  case $out in *"note       demo: api's justfile could not be read by just"*) ;; *) fail "no note: $out" ;; esac
+}
+
+status_says_once_when_just_is_missing() {
+  status_demo api web
+  out=$("$E" status) || fail "status exited non-zero without just"
+  [ "$(printf '%s\n' "$out" | grep -c 'just is not installed')" = 1 ] || fail "did not say once that just is missing: $out"
+  case $out in *"has no justfile"*) fail "checked recipes without just: $out" ;; esac
+}
+
+CASES="status_notes_a_repo_without_a_justfile status_notes_a_justfile_without_setup
+  status_is_quiet_when_setup_exists status_ignores_a_parent_justfile
+  status_notes_an_unreadable_justfile status_says_once_when_just_is_missing
+  project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name
   project_ls_lists project_add_links_repo project_add_takes_a_relative_path
   project_add_refuses_non_repo project_add_refuses_duplicates project_add_handles_spaces
   project_add_unknown_project a_repo_can_be_in_two_projects stale_link_removed_real_file_kept

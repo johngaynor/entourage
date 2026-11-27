@@ -62,3 +62,19 @@ stub() {
 
 # The last thing asked of Herdr.
 last_call() { tail -n 1 "$TMP/herdr-calls.log"; }
+
+# A stand-in for `just`, for tests that want it installed. It answers
+# `just --justfile <file> --summary` with the file's recipe names on one line,
+# and fails for a file that contains the line BROKEN, as just does for a
+# justfile it cannot parse. Every call is logged.
+stub_just() {
+  cat > "$TMP/bin/just" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/just-calls.log"
+[ "\$1" = --justfile ] && [ "\$3" = --summary ] || exit 2
+grep -qx BROKEN "\$2" && { echo "error: could not parse" >&2; exit 1; }
+sed -n 's/^\([a-zA-Z0-9_-][a-zA-Z0-9_-]*\):.*/\1/p' "\$2" | tr '\n' ' ' | sed 's/ \$//'
+echo
+EOF
+  chmod +x "$TMP/bin/just"
+}

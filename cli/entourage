@@ -74,7 +74,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common links project task commands; do
+for part in common links recipes project task commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null
