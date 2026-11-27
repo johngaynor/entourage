@@ -8,7 +8,9 @@
   "files": [
     "cli/entourage",
     "cli/lib/",
-    "herdr/"
+    "herdr/",
+    "prompts/",
+    "skills/"
   ],
   "scripts": {
     "test": "test/run.sh"

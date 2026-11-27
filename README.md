@@ -4,7 +4,17 @@ A collection of agent skills for the software development lifecycle (SDLC).
 
 ## Status
 
-Early setup. Skills are being ported in.
+Early setup. Three skills are in, and none has been run on a real card yet:
+
+| Skill | What it does |
+|---|---|
+| `sdlc-define` | Sets a card's type and writes its Specification |
+| `sdlc-plan` | Reads the card and the code, and writes the Plan |
+| `sdlc-breakdown` | Decides whether the card is one piece or several slices, then asks you to approve it |
+
+They live in [skills/](skills/). `entourage install` links them into
+`~/.claude/skills`, so any Claude Code session on the machine can run one by
+name, such as `/sdlc-define ABC-122`.
 
 ## Setting up a machine
 
@@ -14,8 +24,8 @@ entourage install
 ```
 
 `entourage install` links this repo into the tools on a machine, and
-`entourage update` keeps it current. Today that covers the Herdr setup; see
-[herdr/README.md](herdr/README.md) for the full walkthrough.
+`entourage update` keeps it current. That covers the Herdr setup and the
+skills; see [herdr/README.md](herdr/README.md) for the full walkthrough.
 
 ## Projects
 
@@ -36,12 +46,22 @@ they are never published and survive updates. See
 
 ## Tasks
 
-A task is one piece of work in a project. Starting one makes a branch and a
-git worktree of it in every repo of the project, and opens a tab for it in the
-project's Herdr space:
+A task is one piece of work in a project, usually a Linear card. It has two
+commands, used in this order.
+
+`task new` writes the card up. It opens a tab in the project's Herdr space and
+starts an agent there, which runs the three skills on the card and then asks
+you to approve it:
 
 ```sh
-entourage task new my-project feat/abc-122-insert-task-here
+entourage task new my-project ABC-122
+```
+
+`task start` starts the work. It makes a branch and a git worktree of it in
+every repo of the project, and opens a tab for it:
+
+```sh
+entourage task start my-project feat/abc-122-insert-task-here
 ```
 
 The branch is `<type>/<description>`, following

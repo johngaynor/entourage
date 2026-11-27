@@ -24,6 +24,10 @@ setup() {
   echo '{}' > "$REPO/herdr/layouts/test.json"
   mkdir -p "$REPO/herdr/projects/template"
   cp "$ROOT/herdr/projects/template/PROJECT.md" "$REPO/herdr/projects/template/PROJECT.md"
+  cp -R "$ROOT/skills" "$REPO/skills"
+  cp -R "$ROOT/prompts" "$REPO/prompts"
+  unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT
+  SK=$HOME/.claude/skills
   unset ENTOURAGE_HOME
   P=$HOME/.config/entourage/projects
   mkdir -p "$APP/mods" "$APP/layouts" "$TMP/bin"
@@ -49,3 +53,12 @@ run_case() {
 }
 
 is_link_to() { [ -L "$1" ] && [ "$(readlink "$1")" = "$2" ]; }
+
+# A stub command that logs its arguments and exits with the given code.
+stub() {
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s"\nexit %s\n' "$TMP/$1-calls.log" "${2:-0}" > "$TMP/bin/$1"
+  chmod +x "$TMP/bin/$1"
+}
+
+# The last thing asked of Herdr.
+last_call() { tail -n 1 "$TMP/herdr-calls.log"; }

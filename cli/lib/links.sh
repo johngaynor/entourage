@@ -1,9 +1,10 @@
-# Linking mods and layouts into Herdr. Sourced by cli/entourage.
+# Linking mods and layouts into Herdr, and skills into Claude Code. Sourced by
+# cli/entourage.
 
 # Every (source, destination) pair this repo wants linked, one per line,
 # tab-separated.
 wanted() {
-  local m l
+  local m l s
   for m in "$REPO"/herdr/mods/*/; do
     [ -d "$m" ] || continue
     m=${m%/}
@@ -12,6 +13,11 @@ wanted() {
   for l in "$REPO"/herdr/layouts/*.json; do
     [ -f "$l" ] || continue
     printf '%s\t%s\n' "$l" "$APP_HOME/layouts/${l##*/}"
+  done
+  for s in "$REPO"/skills/*/; do
+    [ -f "$s/SKILL.md" ] || continue
+    s=${s%/}
+    printf '%s\t%s\n' "$s" "$SKILLS_HOME/${s##*/}"
   done
 }
 
@@ -25,12 +31,20 @@ state_of() {
   fi
 }
 
-label() { local dst=$1; say "${dst#"$APP_HOME"/}"; }
+# A short name for a destination: mods/cpu, layouts/default.json, skills/sdlc-plan.
+label() {
+  local dst=$1
+  case $dst in
+    "$SKILLS_HOME"/*) say "skills/${dst#"$SKILLS_HOME"/}" ;;
+    *) say "${dst#"$APP_HOME"/}" ;;
+  esac
+}
 
 # Link what is missing. Never touches a real file or someone else's link.
 link_all() {
   local src dst added=0 skipped=0
   mkdir -p "$APP_HOME/mods" "$APP_HOME/layouts"
+  [ ! -d "$REPO/skills" ] || mkdir -p "$SKILLS_HOME"
   while IFS=$'\t' read -r src dst; do
     case $(state_of "$src" "$dst") in
       linked) ;;
@@ -45,13 +59,13 @@ link_all() {
 }
 
 # Remove links that point into this repo at something that no longer exists
-# (a mod or layout that was deleted or renamed upstream).
+# (a mod, layout or skill that was deleted or renamed upstream).
 prune() {
   local dst target
-  for dst in "$APP_HOME"/mods/* "$APP_HOME"/layouts/*; do
+  for dst in "$APP_HOME"/mods/* "$APP_HOME"/layouts/* "$SKILLS_HOME"/*; do
     [ -L "$dst" ] || continue
     target=$(readlink "$dst")
-    case $target in "$REPO"/herdr/*) ;; *) continue ;; esac
+    case $target in "$REPO"/herdr/* | "$REPO"/skills/*) ;; *) continue ;; esac
     if [ ! -e "$target" ]; then
       rm "$dst"; say "  removed  $(label "$dst") (no longer in the repo)"
       CHANGED=$((CHANGED + 1))

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # entourage: set up and maintain this machine's copy of the software factory.
-# It links the Herdr mods and layouts under herdr/, and manages projects
-# (groups of repos that show up in Herdr as spaces) and their tasks (a
-# worktree of each repo on one branch, shown as a tab in the project's space).
+# It links the Herdr mods and layouts under herdr/ and the agent skills under
+# skills/, and manages projects (groups of repos that show up in Herdr as
+# spaces) and their tasks (a card an agent writes up, then a worktree of each
+# repo on one branch, each shown as a tab in the project's space).
 set -euo pipefail
 
 usage() {
@@ -17,18 +18,25 @@ Usage:
   entourage project add <name> <path>  add a repo that is already on this machine
   entourage project open <name>        show the project as a Herdr space
   entourage project ls                 list projects and their repos
-  entourage task new <project> <branch>  start a task: a worktree per repo, opened as a tab
+  entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
+  entourage task start <project> <branch>  start the work: a worktree per repo, opened as a tab
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
 each repo is for. A repo can be in several projects.
 
-A task is one piece of work in a project. Its branch is <type>/<description>,
-like feat/abc-122-short-title (https://conventionalbranch.org). The task gets
-a folder in the project's tasks/ folder with a worktree of each repo on that
-branch, and a tab in the project's Herdr space.
+A task is one piece of work in a project, usually a Linear card.
+`task new` takes the card's ID, like ABC-122. It opens a tab in the project's
+Herdr space and starts an agent there, which writes the card up with the
+sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
+`task start` takes a branch, <type>/<description>, like
+feat/abc-122-short-title (https://conventionalbranch.org). It makes a folder
+in the project's tasks/ folder with a worktree of each repo on that branch,
+and opens a tab for it.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
+Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another
+~/.claude). The agent is claude (ENTOURAGE_AGENT picks another command).
 Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage).
 EOF
@@ -47,6 +55,8 @@ done
 REPO=$(cd -P "$(dirname "$self")/.." && pwd)
 
 APP_HOME=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
+# Where Claude Code looks for a person's own skills.
+SKILLS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
 BIN_DIR=$HOME/.local/bin
 HERDR_INSTALL='curl -fsSL https://releases.herdr.dev/app/install.sh | sh'
 # What `update` reinstalls when entourage came from npm rather than a git clone.
