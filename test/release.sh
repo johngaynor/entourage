@@ -229,6 +229,15 @@ workflow_step() {
     on' | sed 's/^[[:space:]]*//'
 }
 
+# The lines of the job named $1, from `  $1:` to the next job.
+workflow_job() {
+  workflow_code | awk -v name="  $1:" '
+    $0 == name { on = 1; print; next }
+    on && /^  [^[:space:]]/ { exit }
+    on && /^[^[:space:]]/ { exit }
+    on'
+}
+
 # Fail unless the step named $1 has each of the other arguments as a whole line.
 step_has() {
   local step=$1 line
@@ -237,6 +246,15 @@ step_has() {
     workflow_step "$step" | grep -qxF -- "$line" ||
       fail "the step '$step' has no line: $line"
   done
+}
+
+# Fail unless, in the step named $1, the line $2 comes before the line $3.
+step_runs_before() {
+  local first second
+  first=$(workflow_step "$1" | grep -nxF -- "$2" | head -n 1 | cut -d: -f1)
+  second=$(workflow_step "$1" | grep -nxF -- "$3" | head -n 1 | cut -d: -f1)
+  [ -n "$first" ] && [ -n "$second" ] && [ "$first" -lt "$second" ] ||
+    fail "in the step '$1', '$2' does not come before '$3'"
 }
 
 publish_workflow_publishes_in_two_places_only() {
@@ -268,16 +286,22 @@ publish_workflow_queues_runs_for_each_way_in() {
 
 # Without the whole history and the tags, there is no release tag to count from.
 publish_workflow_fetches_history_and_tags() {
-  workflow_code | grep -Eq '^[[:space:]]+fetch-depth: 0([[:space:]]|$)' ||
-    fail "the checkout does not set fetch-depth: 0"
+  workflow_job publish | grep -Eq '^[[:space:]]+fetch-depth: 0([[:space:]]|$)' ||
+    fail "the publish job's checkout does not set fetch-depth: 0"
 }
 
-publish_workflow_tests_before_it_publishes() {
-  local tests publish
-  tests=$(workflow_code | grep -n '^      - run: npm test$' | head -n 1 | cut -d: -f1)
-  publish=$(workflow_code | grep -n 'npm publish' | head -n 1 | cut -d: -f1)
-  [ -n "$tests" ] && [ -n "$publish" ] && [ "$tests" -lt "$publish" ] ||
-    fail "npm test does not run, for every event, before the first npm publish"
+# The tests run in a job of their own, which cannot sign in to npm, and the
+# publish job starts only when that job has passed. So nothing the tests run
+# holds the publishing identity, now that they run on every merge.
+publish_workflow_publishes_only_after_the_tests_pass() {
+  workflow_job test | grep -qx '      - run: npm test' ||
+    fail "the test job does not run npm test"
+  ! workflow_job test | grep -q 'id-token' ||
+    fail "the test job can sign in to npm"
+  workflow_job publish | grep -qx '    needs: test' ||
+    fail "the publish job does not wait for the test job"
+  ! workflow_job publish | grep -q 'npm test' ||
+    fail "the publish job runs the tests itself"
 }
 
 publish_workflow_releases_only_a_stable_tagged_version() {
@@ -295,20 +319,23 @@ publish_workflow_publishes_a_merge_build_only_as_next() {
     "if: github.event_name == 'push'" \
     'version=$(.github/scripts/merge-build-version.sh)' \
     'npm version "$version" --no-git-tag-version'
+  # The whole number has to be X.Y.Z-next.N, not just contain -next.
+  local is_merge_build='[[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+-next\.[0-9]+$ ]] || {'
   step_has 'Publish the merge build' \
     "if: github.event_name == 'push'" \
-    '*-next.*) ;;' \
-    '*) echo "Refusing to publish $version as a merge build" >&2; exit 1 ;;' \
     '.github/scripts/next-moves-forward.sh' \
     'npm publish --access public --tag next'
-  # The check on next comes before the publish, not after it.
-  local check publish
-  check=$(workflow_step 'Publish the merge build' |
-    grep -nxF '.github/scripts/next-moves-forward.sh' | cut -d: -f1)
-  publish=$(workflow_step 'Publish the merge build' |
-    grep -nxF 'npm publish --access public --tag next' | cut -d: -f1)
-  [ -n "$check" ] && [ -n "$publish" ] && [ "$check" -lt "$publish" ] ||
-    fail "next-moves-forward.sh does not run before the merge build is published"
+  local refusal="$is_merge_build"'
+echo "Refusing to publish $version as a merge build" >&2
+exit 1
+}'
+  [ "$(workflow_step 'Publish the merge build' | grep -A3 -xF -- "$is_merge_build")" = "$refusal" ] ||
+    fail "the step 'Publish the merge build' does not refuse with: $refusal"
+  # Both checks come before the publish, not after it.
+  step_runs_before 'Publish the merge build' "$is_merge_build" \
+    'npm publish --access public --tag next'
+  step_runs_before 'Publish the merge build' '.github/scripts/next-moves-forward.sh' \
+    'npm publish --access public --tag next'
 }
 
 CASES="merge_build_at_the_release_commit_is_next_0
@@ -331,6 +358,6 @@ CASES="merge_build_at_the_release_commit_is_next_0
   publish_workflow_runs_for_releases_and_pushes_to_main
   publish_workflow_queues_runs_for_each_way_in
   publish_workflow_fetches_history_and_tags
-  publish_workflow_tests_before_it_publishes
+  publish_workflow_publishes_only_after_the_tests_pass
   publish_workflow_releases_only_a_stable_tagged_version
   publish_workflow_publishes_a_merge_build_only_as_next"
