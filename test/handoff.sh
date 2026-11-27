@@ -538,6 +538,7 @@ log_json_is_the_same_view_on_one_line() {
   j_is '.steps[5].took' 20s;                           j_is '.steps[5].kind' step
   j_is '.steps[6].took' '1h 02m';                      j_is '.steps[6].next' breakdown
   j_is .state 'plan done, then breakdown';             j_is .waiting null
+  j_is 'has("waiting")' true;                          j_is .run 1
   # And it says what the plain log says.
   text=$("$E" task log demo ABC-122)
   for i in 1 2 3 4 5 6; do
@@ -549,10 +550,15 @@ log_json_is_the_same_view_on_one_line() {
 log_json_with_nothing_recorded() {
   demo
   out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero with no store"
-  j_is '.steps | length' 0; j_is .card ABC-122; j_is .state null
+  none=$out
+  # An empty list, not a missing one, and every key a reader looks for.
+  j_is '.steps | type' array; j_is '.steps | length' 0; j_is .card ABC-122; j_is .state null
+  j_is '[has("project", "card", "state", "waiting", "run", "steps")] | all' true
   make_store
   out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero for a card with none"
-  j_is '.steps | length' 0; j_is .project demo
+  j_is '.steps | type' array; j_is '.steps | length' 0; j_is .project demo
+  # No store and a store with nothing for this card look the same to a reader.
+  [ "$(j -S .)" = "$(printf '%s' "$none" | jq -S .)" ] || fail "no store gives $none, an empty one gives $out"
 }
 
 log_json_says_when_a_question_is_still_waiting() {
@@ -591,6 +597,7 @@ a_start_row_shows_no_time() {
   log_has 'define +done, then plan +46s$'
   out=$("$E" task log demo ABC-122 --json)
   j_is '.steps[2].took' ''; j_is '.steps[2].seconds' null; j_is '.steps[3].took' 46s
+  j_is '.steps[2] | has("seconds")' true
   # Each step says which run it belongs to, and the view names the latest,
   # so a reader can show that one alone.
   j_is '.steps[0].run' 1; j_is '.steps[1].run' 1; j_is '.steps[2].run' 2; j_is '.steps[3].run' 2
@@ -603,7 +610,7 @@ log_json_fails_as_the_plain_log_does() {
   echo 'not a database' > "$HOME/.config/entourage/entourage.db"
   if out=$("$E" task log demo ABC-122 --json 2>&1); then fail "read a file that is not a database: $out"; fi
   case $out in *'could not read'*) ;; *) fail "does not say it could not read the store: $out" ;; esac
-  if out=$("$E" task log demo ABC-122 --yaml 2>&1); then fail "took an option it does not have"; fi
+  if out=$("$E" task log demo --yaml ABC-122 2>&1); then fail "took an option it does not have"; fi
   case $out in *'--json'*) ;; *) fail "does not say which options there are: $out" ;; esac
 }
 

@@ -16,7 +16,6 @@ const TIMEOUT_MS = 10000;
 const LINKED_AT = "/herdr/mods/steps";
 // A tab is a card's when it is named as `entourage task new` names it.
 const CARD = /^[A-Za-z][A-Za-z0-9]*-[0-9]+$/;
-const OLD_CLI = "This entourage cannot give a card's steps as JSON. Run: entourage update";
 // A time longer than this goes on a line of its own.
 const SHORT = 14;
 
@@ -57,6 +56,13 @@ function parse(text) {
 // What a failed command said, without the name it starts its errors with.
 const said = (r) => (r.stderr || r.stdout).trim().replace(/^entourage: /, "");
 
+const OLD_CLI = "This entourage cannot give a card's steps as JSON. Run: entourage update";
+// An entourage from before --json answers with its usage line, not JSON.
+const failure = (r, what) => {
+  const text = said(r);
+  return text.startsWith("usage:") ? OLD_CLI : text || `${what} failed`;
+};
+
 // What is selected on this computer: the shown space's folder, and the card
 // its shown tab is for, if it is a card's tab.
 function selected() {
@@ -77,6 +83,7 @@ export default class Steps extends View {
     this.error = null;
     this.busy = false;
     this.readAt = 0;
+    this.drawn = null; // what the last redraw showed, to redraw only on a change
     if (checking()) return;
     cx.timer.every(LOOK_MS, (cx) => this.look(cx));
     this.look(cx);
@@ -99,10 +106,13 @@ export default class Steps extends View {
   }
 
   // Read again when another card is selected, or the one on hand is stale.
+  // Nothing is read while nobody can see the panel, and a tab that is not a
+  // card's has nothing to read again.
   look(cx) {
-    if (this.busy || window()?.visible === false) return;
+    if (this.busy || window()?.visible === false || narrow()) return;
     const now = selected();
-    if (now.key === this.key && Date.now() - this.readAt < REREAD_MS) return;
+    const stale = Boolean(now.card) && Date.now() - this.readAt >= REREAD_MS;
+    if (now.key === this.key && !stale) return;
     this.busy = true;
     cx.spawn(async (cx) => {
       let project = null;
@@ -116,7 +126,7 @@ export default class Steps extends View {
             this.projects = list;
             this.projectsAt = Date.now();
           } else {
-            error = r.code === 0 ? OLD_CLI : said(r) || "entourage project ls failed";
+            error = r.code === 0 ? OLD_CLI : failure(r, "entourage project ls");
           }
         }
         project = (this.projects ?? []).find((p) => p.folder === now.folder)?.name ?? null;
@@ -124,7 +134,7 @@ export default class Steps extends View {
           const r = await this.entourage(["task", "log", project, now.card, "--json"]);
           const got = r.code === 0 ? parse(r.stdout) : null;
           if (got && Array.isArray(got.steps)) view = got;
-          else error = r.code === 0 ? OLD_CLI : said(r) || "entourage task log failed";
+          else error = r.code === 0 ? OLD_CLI : failure(r, "entourage task log");
         }
       } catch (e) {
         error = `Could not run entourage: ${e?.message ?? e}`;
@@ -135,7 +145,13 @@ export default class Steps extends View {
       this.error = error;
       this.readAt = Date.now();
       this.busy = false;
-      cx.notify();
+      // A redraw of a mod redraws the whole window, so only when what it
+      // shows has changed.
+      const drawn = JSON.stringify([now.key, project, view, error]);
+      if (drawn !== this.drawn) {
+        this.drawn = drawn;
+        cx.notify();
+      }
     });
   }
 
