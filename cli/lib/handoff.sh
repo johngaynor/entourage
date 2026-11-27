@@ -194,8 +194,10 @@ task_handoff() {
 # --- the log ----------------------------------------------------------------
 
 # One query works out a card's view: each hand-off with its label, how long it
-# took and whether it is a wait. The plain log and the JSON both read it, so
-# they cannot disagree, and a Herdr mod that draws the JSON formats nothing.
+# took, whether it is a wait, and where the card stood after it. The plain log
+# and the JSON both read it, so they cannot disagree, and a Herdr mod that
+# draws the JSON formats nothing. With no card it works out the view of every
+# card in the project at once, and the list of cards is each one's latest row.
 #
 # Nothing about time is stored beyond each row's own. A step's time is from
 # the row before it to its own row. The time from a needs-human row to its
@@ -203,25 +205,29 @@ task_handoff() {
 # row with nothing after it is still waiting, measured to now. A `new` row
 # starts a run, so it has no time, however long ago the run before it ended.
 
-# SQL for a number of seconds as text: 50s, 1m 44s, 1h 02m.
+# SQL for a number of seconds as text: 50s, 1m 44s, 1h 02m, 3d 04h. @ stands
+# for the column that holds the seconds.
 sql_took() {
-  local s=$1
-  printf "case when %s < 60 then %s || 's'
-    when %s < 3600 then (%s / 60) || 'm ' || printf('%%02d', %s %% 60) || 's'
-    else (%s / 3600) || 'h ' || printf('%%02d', %s %% 3600 / 60) || 'm' end" \
-    "$s" "$s" "$s" "$s" "$s" "$s" "$s"
+  local t="case when @ < 60 then @ || 's'
+    when @ < 3600 then (@ / 60) || 'm ' || printf('%02d', @ % 60) || 's'
+    when @ < 86400 then (@ / 3600) || 'h ' || printf('%02d', @ % 3600 / 60) || 'm'
+    else (@ / 86400) || 'd ' || printf('%02d', @ % 86400 / 3600) || 'h' end"
+  printf '%s' "${t//@/$1}"
 }
 
-# SQL that starts a query on one card's view, as the table `shown`.
-#   log_view <project> <card> <answer column, or null in a store without one>
+# SQL that starts a query on one card's view, or on every card's in the
+# project, as the table `shown`. Each card's rows are worked out on their own.
+#   log_view <project> <card, or empty for all> <answer column, or null in a store without one>
 log_view() {
+  local cards=''
+  [ -z "$2" ] || cards="and card = $(sql_str "$2")"
   printf "with base as (
-      select id, at, phase, status, next, summary, flags, question, options,
+      select id, at, card, phase, status, next, summary, flags, question, options,
         %s as answer, reason,
         lag(at) over w as prev_at, lag(status) over w as before, lead(id) over w as after,
         sum(case when phase = 'new' then 1 else 0 end) over w as run
-      from handoffs where project = %s and card = %s
-      window w as (order by id)),
+      from handoffs where project = %s %s
+      window w as (partition by card order by id)),
     timed as (
       select *,
         case when phase = 'new' or prev_at is null then null
@@ -229,7 +235,7 @@ log_view() {
         case when after is null and status = 'needs-human'
           then max(cast(strftime('%%s', 'now') - strftime('%%s', at) as integer), 0) end as open_seconds
       from base),
-    shown as (
+    labeled as (
       select *,
         case when phase = 'new' then 'start'
           when status = 'answered' and before = 'needs-human' then 'wait'
@@ -248,16 +254,64 @@ log_view() {
           else (%s) end as took,
         case when open_seconds is null then ''
           else 'waiting on the human for ' || (%s) end as waiting
-      from timed)" \
-    "$3" "$(sql_str "$1")" "$(sql_str "$2")" \
+      from timed),
+    shown as (
+      select *,
+        case when status = 'needs-human' then 'waiting on the human'
+          when phase = 'new' then 'started'
+          else label || substr(what, length(status) + 1) end as state
+      from labeled)" \
+    "$3" "$(sql_str "$1")" "$cards" \
     "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took seconds)" \
     "$(sql_took open_seconds)"
 }
 
-LOG_USAGE='usage: entourage task log <project> <card> [--json]'
+LOG_USAGE='usage: entourage task log <project> [<card>] [--json]'
+
+# The project's cards that have hand-offs, newest first by their latest row:
+# where each stands and how long it has stood there. With --json, the same as
+# one line of JSON.
+#   log_cards <project> <json: 1 or 0> <view>
+log_cards() {
+  local name=$1 json=$2 list
+  # Each card's latest row is the one with nothing after it.
+  list="$3, latest as (
+      select *, max(cast(strftime('%s', 'now') - strftime('%s', at) as integer), 0) as since
+      from shown where after is null)"
+  if [ "$json" = 1 ]; then
+    if [ ! -e "$STORE" ]; then
+      printf '{"project":"%s","cards":[]}\n' "$(json_str "$name")"
+      return
+    fi
+    store "$STORE" "$list
+      select json_object('project', $(sql_str "$name"),
+        'cards', (select json_group_array(json(c)) from (
+          select json_object('card', card, 'at', at, 'state', state,
+            'waiting', nullif(waiting, ''), 'for', $(sql_took since), 'seconds', since,
+            'run', run, 'phase', phase, 'status', status, 'next', next) as c
+          from latest order by at desc, id desc)));" ||
+      die "could not read the hand-offs in $STORE. It may not be entourage's store."
+    return
+  fi
+
+  local sep=$'\x1f' found='' count=0 card state for
+  if [ -e "$STORE" ]; then
+    found=$(store -separator "$sep" "$STORE" "$list
+      select card, state, $(sql_took since) from latest order by at desc, id desc;") ||
+      die "could not read the hand-offs in $STORE. It may not be entourage's store."
+  fi
+  while IFS=$sep read -r card state for; do
+    [ -n "$card" ] || continue
+    [ "$count" -gt 0 ] || say "Cards in '$name' with hand-offs, newest first"
+    count=$((count + 1))
+    printf '%-10s %-28s for %s\n' "$card" "$state" "$for"
+  done <<< "$found"
+  [ "$count" -gt 0 ] || say "No hand-offs recorded in '$name'."
+}
 
 # List a card's hand-offs, oldest first, with how long each step took. With
-# --json, the same view as one line of JSON.
+# no card, list the project's cards instead. With --json, the same view as
+# one line of JSON.
 task_log() {
   local json=0 a
   local args=()
@@ -272,16 +326,20 @@ task_log() {
   local name=${1:-} card=${2:-}
   [ -n "$name" ] || die "$LOG_USAGE"
   project_named "$name" || die "there is no entourage project called '$name'. See: entourage project ls"
-  card=$(handoff_card "$name" "$card" log) || exit 1
   [ "$#" -le 2 ] || die "$LOG_USAGE"
+  [ -z "$card" ] || card=$(handoff_card "$name" "$card" log) || exit 1
   have_sqlite || die "$SQLITE is not installed, so no hand-offs have been recorded on this machine."
 
   # Reading never changes the store. An older one has no answer column, so it
   # is read without one.
-  local answer_column=null view found=''
+  local answer_column=null view='' found=''
   if [ -e "$STORE" ]; then
     ! has_answer_column || answer_column=answer
     view=$(log_view "$name" "$card" "$answer_column")
+  fi
+  if [ -z "$card" ]; then
+    log_cards "$name" "$json" "$view"
+    return
   fi
 
   if [ "$json" = 1 ]; then
@@ -294,9 +352,7 @@ task_log() {
     # cannot be read is an error, not an empty history.
     store "$STORE" "$view
       select json_object('project', $(sql_str "$name"), 'card', $(sql_str "$card"),
-        'state', (select case when status = 'needs-human' then 'waiting on the human'
-            when phase = 'new' then 'started' else label || substr(what, length(status) + 1) end
-          from shown order by id desc limit 1),
+        'state', (select state from shown order by id desc limit 1),
         'waiting', (select nullif(waiting, '') from shown order by id desc limit 1),
         'run', (select max(run) from shown),
         'steps', (select json_group_array(json(step)) from (

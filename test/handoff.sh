@@ -618,6 +618,99 @@ log_json_fails_as_the_plain_log_does() {
   case $out in *'--json'*) ;; *) fail "does not say which options there are: $out" ;; esac
 }
 
+# --- the project's cards ----------------------------------------------------
+
+# Put a row for any card of demo straight into the store at a set time.
+#   put_for <card> <time> <phase> <status> [<next>]
+put_for() {
+  q "insert into handoffs (at, project, card, phase, status, next)
+     values ('$2', 'demo', '$1', '$3', '$4', nullif('${5:-}', ''));"
+}
+# Three cards of demo, put in so that the order their first rows came in is
+# not the order their latest rows came in. ABC-3 is still waiting on a
+# question asked 125 seconds ago. The store is made by a hand-off for another
+# project's card, which must not be listed.
+three_cards() {
+  "$E" project new other >/dev/null
+  printf 'phase: define\nstatus: done\nnext: plan\nsummary: Another project entirely.\n' |
+    "$E" task handoff other ABC-9 >/dev/null
+  put_for ABC-2 2026-01-01T09:00:00Z new done define
+  put_for ABC-1 2026-01-01T10:00:00Z new done define
+  put_for ABC-1 2026-01-01T10:01:00Z define done plan
+  put_for ABC-1 2026-01-01T10:05:00Z plan done breakdown
+  put_for ABC-3 2026-01-01T10:30:00Z new done define
+  put_for ABC-2 2026-01-01T11:00:00Z define failed
+  q "insert into handoffs (at, project, card, phase, status, question, options)
+     values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-125 seconds'), 'demo', 'ABC-3', 'define', 'needs-human', 'Approve?', 'approve | change');"
+}
+
+log_lists_the_projects_cards_newest_first() {
+  demo; three_cards
+  out=$("$E" task log demo) || fail "task log with no card exited non-zero"
+  [ "$(printf '%s\n' "$out" | grep -Eo 'ABC-[0-9]+' | tr '\n' ' ')" = 'ABC-3 ABC-2 ABC-1 ' ] ||
+    fail "not newest first by each card's latest row, or another project's card is shown: $out"
+  # Where each stands, and for how long. A time of a day or more is in days.
+  log_has '^ABC-3 +waiting on the human +for 2m [0-5][0-9]s$'
+  log_has '^ABC-2 +define failed +for [0-9]+d [0-9]{2}h$'
+  log_has '^ABC-1 +plan done, then breakdown +for [0-9]+d [0-9]{2}h$'
+  text=$out
+
+  out=$("$E" task log demo --json) || fail "task log --json with no card exited non-zero"
+  [ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" = 1 ] || fail "not one line: $out"
+  printf '%s' "$out" | jq -e . >/dev/null || fail "not JSON: $out"
+  j_is .project demo; j_is '[.cards[].card] | join(" ")' 'ABC-3 ABC-2 ABC-1'
+  j_is '.cards[0].state' 'waiting on the human'; j_is '.cards[0].status' needs-human
+  j .cards[0].waiting | grep -Eq '^waiting on the human for 2m [0-5][0-9]s$' || fail "wrong waiting line: $(j .cards[0].waiting)"
+  j_is '.cards[1].state' 'define failed';        j_is '.cards[1].waiting' null
+  j_is '.cards[1] | has("waiting")' true
+  j_is '.cards[2].state' 'plan done, then breakdown'; j_is '.cards[2].next' breakdown
+  j_is '.cards[2].at' 2026-01-01T10:05:00Z
+  [ "$(j '.cards[2].seconds')" -gt 86400 ] 2>/dev/null || fail "ABC-1 has stood there for $(j '.cards[2].seconds') seconds"
+  # How long, as the plain list words it. Each time is still running, so one
+  # read is not compared with another's.
+  j '.cards[0].for' | grep -Eq '^2m [0-5][0-9]s$' || fail "ABC-3 has stood there for '$(j '.cards[0].for')'"
+  j '.cards[2].for' | grep -Eq '^[0-9]+d [0-9]{2}h$' || fail "ABC-1 has stood there for '$(j '.cards[2].for')'"
+  # The plain list says where each card stands as the JSON does, and that
+  # is what the card's own view says.
+  local i card
+  for i in 0 1 2; do
+    card=$(j ".cards[$i].card")
+    printf '%s\n' "$text" | grep -Eq "^$card +$(j ".cards[$i].state") +for " ||
+      fail "the plain list does not say $card is '$(j ".cards[$i].state")': $text"
+    [ "$("$E" task log demo "$card" --json | jq -r .state)" = "$(j ".cards[$i].state")" ] ||
+      fail "$card's own view does not say '$(j ".cards[$i].state")'"
+  done
+}
+
+log_list_with_nothing_recorded() {
+  demo
+  out=$("$E" task log demo) || fail "task log with no card exited non-zero with no store"
+  case $out in *"No hand-offs recorded in 'demo'."*) ;; *) fail "does not say there are none: $out" ;; esac
+  out=$("$E" task log demo --json) || fail "task log --json with no card exited non-zero with no store"
+  none=$out
+  j_is .project demo; j_is '.cards | type' array; j_is '.cards | length' 0
+  # A store with only another project's cards looks the same to a reader.
+  "$E" project new other >/dev/null
+  printf '%s\n' "$DONE_BLOCK" | "$E" task handoff other ABC-1 >/dev/null
+  out=$("$E" task log demo) || fail "task log with no card exited non-zero"
+  case $out in *"No hand-offs recorded in 'demo'."*) ;; *) fail "does not say there are none: $out" ;; esac
+  out=$("$E" task log demo --json)
+  [ "$(j -S .)" = "$(printf '%s' "$none" | jq -S .)" ] || fail "no store gives $none, an empty one gives $out"
+}
+
+log_list_fails_when_the_store_cannot_be_read() {
+  demo
+  mkdir -p "$HOME/.config/entourage"
+  echo 'not a database' > "$HOME/.config/entourage/entourage.db"
+  for json in '' --json; do
+    if out=$("$E" task log demo $json 2>&1); then fail "read a file that is not a database: $out"; fi
+    case $out in *'could not read'*) ;; *) fail "does not say it could not read the store: $out" ;; esac
+    case $out in *'No hand-offs'*|*'"cards":[]'*) fail "claimed there are no hand-offs: $out" ;; esac
+  done
+  if out=$("$E" task log demo ABC-1 ABC-2 2>&1); then fail "took two cards"; fi
+  case $out in *'[<card>]'*) ;; *) fail "the usage does not say the card can be left out: $out" ;; esac
+}
+
 CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_question handoff_records_a_failure handoff_refuses_a_missing_line
   handoff_refuses_what_it_does_not_know handoff_refuses_a_line_that_does_not_belong
@@ -639,4 +732,6 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   log_shows_a_question_still_waiting
   log_json_is_the_same_view_on_one_line log_json_with_nothing_recorded
   log_json_says_when_a_question_is_still_waiting log_json_keeps_awkward_text
-  a_start_row_shows_no_time log_json_fails_as_the_plain_log_does"
+  a_start_row_shows_no_time log_json_fails_as_the_plain_log_does
+  log_lists_the_projects_cards_newest_first log_list_with_nothing_recorded
+  log_list_fails_when_the_store_cannot_be_read"

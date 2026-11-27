@@ -24,8 +24,9 @@ Usage:
   entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
-  entourage task log <project> <card> [--json]
-                                           list a card's hand-offs and how long each step took
+  entourage task log <project> [<card>] [--json]
+                                           list a card's hand-offs and how long each step took,
+                                           or with no card the cards that have hand-offs and where each stands
   entourage linear key                     save your Linear API key, so entourage can read Linear
   entourage help
 
@@ -59,8 +60,10 @@ Join several groups with a comma: `app:athlete,coach`.
 when the human answers a question. It reads a handoff block on stdin (phase,
 status, next and so on, one per line), refuses one that breaks the rules, and
 records it. `task log` lists what was recorded for a card, with how long each
-step took and how long it waited on the human. With --json it prints the
-same view as one line, for programs: the Steps panel in Herdr draws it. Run
+step took and how long it waited on the human. With no card it lists the
+project's cards that have hand-offs, newest first, each with where it stands
+and for how long. With --json it prints the same view as one line, for
+programs: the Steps panel in Herdr draws it. Run
 `entourage task handoff <project> <card>` with no block to see the rules.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).

@@ -22,6 +22,7 @@ the step that comes next. The agent records each block with
 `entourage task handoff`, and your answer when you reply to a question.
 `entourage task log` shows them for a card, with how long each step took, and
 the Steps panel in Herdr shows the same for the card whose tab is selected.
+With no card, both list the project's cards and where each stands.
 
 ## Setting up a machine
 
@@ -94,6 +95,13 @@ waited for your answer:
 
 ```sh
 entourage task log my-project ABC-122
+```
+
+Leave the card out to see every card in the project that has hand-offs,
+newest first, with where each stands, such as waiting on you:
+
+```sh
+entourage task log my-project
 ```
 
 `task start` starts the work. It makes a branch and a git worktree of it in
