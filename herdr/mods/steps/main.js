@@ -4,6 +4,8 @@
 // All of that is worked out by `entourage task log <project> <card> --json`.
 // This mod draws the view that command returns and holds no rules about
 // hand-offs: every label and every length of time arrives as text.
+//
+// A step is one line. A click on it opens what the step said.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, spaces, theme, layout, window, checking, appHome } from "herdr";
@@ -16,21 +18,20 @@ const TIMEOUT_MS = 10000;
 const LINKED_AT = "/herdr/mods/steps";
 // A tab is a card's when it is named as `entourage task new` names it.
 const CARD = /^[A-Za-z][A-Za-z0-9]*-[0-9]+$/;
-const OLD_CLI = "This entourage cannot give a card's steps as JSON. Run: entourage update";
-// A time longer than this goes on a line of its own.
-const SHORT = 14;
 
 // `herdr-app check` draws the mod once, with no card selected, which would
-// show one line of text and none of the rows. It is given these to draw, so a
-// mistake in a row fails the check.
+// show one line of text and none of the rows. It is given these to draw, all
+// of them open, so a mistake in a row fails the check.
 const SAMPLE = {
   run: 1,
+  state: "waiting on the human",
+  waiting: "waiting on the human for 2m 05s",
   steps: [
-    { run: 1, clock: "10:00", kind: "start", label: "started", took: "" },
-    { run: 1, clock: "10:00", kind: "step", label: "define done", took: "50s", summary: "A summary.", flags: "A flag." },
-    { run: 1, clock: "10:09", kind: "wait", label: "answered", took: "waited 7m 04s", answer: "approve" },
-    { run: 1, clock: "10:17", kind: "step", label: "plan done", took: "7m 24s, includes waiting on the human" },
-    { run: 1, clock: "10:17", kind: "step", label: "breakdown asked a question", took: "5s", question: "Approve?", waiting: "waiting on the human for 2m 05s" },
+    { run: 1, at: "a", clock: "10:00", kind: "start", label: "started", took: "", short: "" },
+    { run: 1, at: "b", clock: "10:00", kind: "step", label: "define done", took: "50s", short: "50s", summary: "A summary.", flags: "A flag." },
+    { run: 1, at: "c", clock: "10:09", kind: "wait", label: "answered", took: "waited 7m 04s", short: "7m 04s", answer: "approve" },
+    { run: 1, at: "d", clock: "10:17", kind: "step", label: "plan done", took: "7m 24s, includes waiting on the human", short: "7m 24s" },
+    { run: 1, at: "e", clock: "10:17", kind: "step", label: "breakdown asked a question", took: "5s", short: "5s", question: "Approve?", waiting: "waiting on the human for 2m 05s" },
   ],
 };
 
@@ -57,6 +58,13 @@ function parse(text) {
 // What a failed command said, without the name it starts its errors with.
 const said = (r) => (r.stderr || r.stdout).trim().replace(/^entourage: /, "");
 
+const OLD_CLI = "This entourage cannot give a card's steps as JSON. Run: entourage update";
+// An entourage from before --json answers with its usage line, not JSON.
+const failure = (r, what) => {
+  const text = said(r);
+  return text.startsWith("usage:") ? OLD_CLI : text || `${what} failed`;
+};
+
 // What is selected on this computer: the shown space's folder, and the card
 // its shown tab is for, if it is a card's tab.
 function selected() {
@@ -77,6 +85,8 @@ export default class Steps extends View {
     this.error = null;
     this.busy = false;
     this.readAt = 0;
+    this.drawn = null; // what the last redraw showed, to redraw only on a change
+    this.open = null; // the step whose lines are showing, by its time
     if (checking()) return;
     cx.timer.every(LOOK_MS, (cx) => this.look(cx));
     this.look(cx);
@@ -99,10 +109,13 @@ export default class Steps extends View {
   }
 
   // Read again when another card is selected, or the one on hand is stale.
+  // Nothing is read while nobody can see the panel, and a tab that is not a
+  // card's has nothing to read again.
   look(cx) {
-    if (this.busy || window()?.visible === false) return;
+    if (this.busy || window()?.visible === false || narrow()) return;
     const now = selected();
-    if (now.key === this.key && Date.now() - this.readAt < REREAD_MS) return;
+    const stale = Boolean(now.card) && Date.now() - this.readAt >= REREAD_MS;
+    if (now.key === this.key && !stale) return;
     this.busy = true;
     cx.spawn(async (cx) => {
       let project = null;
@@ -116,7 +129,7 @@ export default class Steps extends View {
             this.projects = list;
             this.projectsAt = Date.now();
           } else {
-            error = r.code === 0 ? OLD_CLI : said(r) || "entourage project ls failed";
+            error = r.code === 0 ? OLD_CLI : failure(r, "entourage project ls");
           }
         }
         project = (this.projects ?? []).find((p) => p.folder === now.folder)?.name ?? null;
@@ -124,7 +137,7 @@ export default class Steps extends View {
           const r = await this.entourage(["task", "log", project, now.card, "--json"]);
           const got = r.code === 0 ? parse(r.stdout) : null;
           if (got && Array.isArray(got.steps)) view = got;
-          else error = r.code === 0 ? OLD_CLI : said(r) || "entourage task log failed";
+          else error = r.code === 0 ? OLD_CLI : failure(r, "entourage task log");
         }
       } catch (e) {
         error = `Could not run entourage: ${e?.message ?? e}`;
@@ -135,31 +148,43 @@ export default class Steps extends View {
       this.error = error;
       this.readAt = Date.now();
       this.busy = false;
-      cx.notify();
+      // A redraw of a mod redraws the whole window, so only when what it
+      // shows has changed.
+      const drawn = JSON.stringify([now.key, project, view, error]);
+      if (drawn !== this.drawn) {
+        this.drawn = drawn;
+        cx.notify();
+      }
     });
   }
 
-  // One hand-off. `s` is a step of the view: its clock, label and took are
-  // text to show as they are, and its kind says whether it is a wait.
-  row(s, i, t) {
+  // One hand-off, on one line: its clock, its label and the time alone. A
+  // click opens the rest of what the view says about it. `s` is a step of the
+  // view, and its kind says whether it is a wait.
+  row(s, i, t, open) {
     const wait = s.kind === "wait";
     const start = s.kind === "start";
-    const took = s.took ?? "";
-    const beside = took.length <= SHORT;
-    const detail = s.question ?? s.answer ?? s.reason ?? s.summary ?? null;
+    // An entourage from before `short` gives the whole of `took` here.
+    const short = s.short ?? s.took ?? "";
+    const full = s.took && s.took !== short ? s.took : null;
+    const lines = [full, s.question, s.answer, s.reason, s.summary, s.flags ? `Flags: ${s.flags}` : null]
+      .filter(Boolean);
     const small = (text, color) =>
       div().pl(46).pr(4).text_size(11.5).text_color(color).whitespace_normal().child(text);
-    return v_flex().id(`step-${i}`).flex_none().px(8).py(5).gap(2).rounded(8)
+    return v_flex().id(`step-${i}`).flex_none().px(8).py(4).gap(2).rounded(8)
+      .hover((el) => el.bg(t.hover))
+      .on_click((_e, cx) => {
+        this.open = this.open === s.at ? null : s.at;
+        cx.notify();
+      })
       .child(h_flex().gap(8).items_center()
         .child(div().w(38).flex_none().text_size(11.5).text_color(t.dim).child(s.clock ?? ""))
         .child(div().flex_1().min_w(0).truncate()
           .text_color(wait ? t.blocked : start ? t.muted : t.foreground).child(s.label ?? ""))
-        .when(beside && took !== "", (el) =>
-          el.child(div().flex_none().text_size(11.5).text_color(wait ? t.blocked : t.dim).child(took))))
-      .when(!beside, (el) => el.child(small(took, t.dim)))
-      .when(Boolean(detail), (el) => el.child(small(detail, t.muted)))
-      .when(Boolean(s.flags), (el) => el.child(small(`Flags: ${s.flags}`, t.dim)))
-      .when(Boolean(s.waiting), (el) => el.child(small(s.waiting, t.blocked)));
+        .child(div().flex_none().text_size(11.5).text_color(wait ? t.blocked : t.dim).child(short)))
+      // A question still waiting shows whether or not the step is open.
+      .when(Boolean(s.waiting), (el) => el.child(small(s.waiting, t.blocked)))
+      .when(open, (el) => el.children(lines.map((text) => small(text, t.muted))));
   }
 
   render() {
@@ -173,13 +198,18 @@ export default class Steps extends View {
     const items = [];
     // The latest run only: a card written up twice keeps both in its log.
     const steps = (view?.steps ?? []).filter((s) => s.run === view.run);
-    if (sample) steps.forEach((s, i) => items.push(this.row(s, i, t)));
+    const rows = () => {
+      // Where the card stands, as the view words it.
+      if (view.state) items.push(note(view.state, view.waiting ? t.blocked : t.dim));
+      steps.forEach((s, i) => items.push(this.row(s, i, t, sample || this.open === s.at)));
+    };
+    if (sample) rows();
     else if (!now.card) items.push(note("Select a card's tab to see its steps.", t.dim));
     else if (now.key !== this.key) items.push(note("Loading…", t.dim));
     else if (this.error) items.push(note(this.error, t.blocked));
     else if (!this.project) items.push(note("This space is not an entourage project.", t.dim));
     else if (steps.length === 0) items.push(note(`No hand-offs recorded for ${now.card} yet.`, t.dim));
-    else steps.forEach((s, i) => items.push(this.row(s, i, t)));
+    else rows();
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).flex_none().pl(16).pr(14).items_center().justify_between()
         .text_size(11.5).text_color(t.dim)

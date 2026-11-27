@@ -241,6 +241,7 @@ log_view() {
           when status = 'answered' then 'answered'
           when status = 'failed' then phase || ' failed'
           else phase || ' ' || status end as label,
+        case when seconds is null then '' else (%s) end as short,
         case when seconds is null then ''
           when status = 'answered' and before = 'needs-human' then 'waited ' || (%s)
           when before = 'needs-human' then (%s) || ', includes waiting on the human'
@@ -249,7 +250,8 @@ log_view() {
           else 'waiting on the human for ' || (%s) end as waiting
       from timed)" \
     "$3" "$(sql_str "$1")" "$(sql_str "$2")" \
-    "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took open_seconds)"
+    "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took seconds)" \
+    "$(sql_took open_seconds)"
 }
 
 LOG_USAGE='usage: entourage task log <project> <card> [--json]'
@@ -284,7 +286,7 @@ task_log() {
 
   if [ "$json" = 1 ]; then
     if [ ! -e "$STORE" ]; then
-      printf '{"project":"%s","card":"%s","state":null,"waiting":null,"steps":[]}\n' \
+      printf '{"project":"%s","card":"%s","state":null,"waiting":null,"run":null,"steps":[]}\n' \
         "$(json_str "$name")" "$(json_str "$card")"
       return
     fi
@@ -300,7 +302,7 @@ task_log() {
         'steps', (select json_group_array(json(step)) from (
           select json_object('run', run, 'at', at, 'clock', strftime('%H:%M', at, 'localtime'),
             'phase', phase, 'status', status, 'next', next, 'kind', kind, 'label', label,
-            'took', took, 'seconds', seconds, 'waiting', nullif(waiting, ''),
+            'took', took, 'short', short, 'seconds', seconds, 'waiting', nullif(waiting, ''),
             'summary', summary, 'flags', flags, 'question', question, 'options', options,
             'answer', answer, 'reason', reason) as step
           from shown order by id)));" ||
