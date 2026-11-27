@@ -11,7 +11,7 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-AREAS="install project task skills runner"
+AREAS="install project task skills handoff runner"
 # shellcheck source=/dev/null
 . "$HERE/helpers.sh"
 
@@ -21,8 +21,9 @@ AREAS="install project task skills runner"
 # leave its number of failures in the count file. A case that dies leaves none.
 if [ "${1:-}" = --case ]; then
   CASES=
+  # A file that does not load leaves no count, which the run reports as a failure.
   # shellcheck source=/dev/null
-  . "$HERE/$2.sh"
+  . "$HERE/$2.sh" || exit 1
   run_case "$3"
   echo "$failures" > "$4"
   exit 0
@@ -76,8 +77,10 @@ trap 'exit 143' TERM
 n=0
 for area in "$@"; do
   CASES=
+  # A file that does not load would otherwise run no cases and count as passing.
   # shellcheck source=/dev/null
-  . "$HERE/$area.sh"
+  . "$HERE/$area.sh" || { echo "could not load test/$area.sh" >&2; exit 1; }
+  [ -n "$CASES" ] || { echo "test/$area.sh lists no cases" >&2; exit 1; }
   for c in $CASES; do n=$((n + 1)); echo "$n $area $c"; done
 done > "$OUT/list"
 

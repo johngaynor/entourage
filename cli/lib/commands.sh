@@ -82,6 +82,9 @@ cmd_status() {
   if ! have_just && [ -n "$(ls -d "$PROJECTS"/*/ 2>/dev/null)" ]; then
     say "  note       just is not installed, so tasks start without setup. Install it: https://just.systems"
   fi
+  if ! have_sqlite && [ -n "$(ls -d "$PROJECTS"/*/ 2>/dev/null)" ]; then
+    say "  note       $SQLITE is not installed, so hand-offs are not recorded."
+  fi
   if [ "$problems" -gt 0 ] || [ "$project_problems" -gt 0 ]; then
     [ "$project_problems" = 0 ] || say "$project_problems project problem(s)."
     return 1

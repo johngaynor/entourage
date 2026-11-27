@@ -4,7 +4,7 @@ A collection of agent skills for the software development lifecycle (SDLC).
 
 ## Status
 
-Early setup. Three skills are in, and none has been run on a real card yet:
+Early setup. Three skills are in, and they have had only a few runs on real cards:
 
 | Skill | What it does |
 |---|---|
@@ -16,10 +16,10 @@ They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
 name, such as `/sdlc-define ABC-122`.
 
-Whenever a skill stops, it ends with a handoff block: which step it was, and
-whether it is `done`, `needs-human` or `failed`. A `done` block also names the
-step that comes next. Whoever is driving, you or `entourage task new`, reads
-that block to know what happens next.
+Whenever a skill ends or pauses, it hands off with a block: which step it was,
+and whether it is `done`, `needs-human` or `failed`. A `done` block also names
+the step that comes next. The agent records each block with
+`entourage task handoff`, and `entourage task log` shows them for a card.
 
 ## Setting up a machine
 
@@ -57,8 +57,8 @@ else. This needs `jq`; without it Claude Code asks once.
 
 ## Tasks
 
-A task is one piece of work in a project, usually a Linear card. It has two
-commands, used in this order.
+A task is one piece of work in a project, usually a Linear card. You run two
+commands, in this order.
 
 `task new` writes the card up. It opens a tab in the project's Herdr space and
 starts an agent there, which runs the three skills on the card and then asks
@@ -66,6 +66,13 @@ you to approve it:
 
 ```sh
 entourage task new my-project ABC-122
+```
+
+As it goes, the agent records how each step ended. `task log` lists that for
+a card, oldest first:
+
+```sh
+entourage task log my-project ABC-122
 ```
 
 `task start` starts the work. It makes a branch and a git worktree of it in

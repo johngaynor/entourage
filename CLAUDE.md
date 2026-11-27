@@ -4,10 +4,11 @@ Published to npm as `@johngaynor/entourage`. Machines get changes only from a
 published release, so merging to `main` does not ship anything.
 
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
-are the files in `test/`: `install`, `project`, `task`, `skills`, `runner`).
-Cases run side by side, each in a process of its own, so a case must not
-depend on another case or on anything outside its own throwaway folder. To
-run one case at a time, set `ENTOURAGE_TEST_JOBS=1`.
+are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
+`runner`). The `handoff` tests use the real `sqlite3`, which has to be in
+`/usr/bin` or `/bin`. Cases run side by side, each in a process of its own, so
+a case must not depend on another case or on anything outside its own
+throwaway folder. To run one case at a time, set `ENTOURAGE_TEST_JOBS=1`.
 
 The CLI is `cli/entourage`, which sets the paths and sources the files in
 `cli/lib/`. A new file in `cli/lib/` must be added to the list in

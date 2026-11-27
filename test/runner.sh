@@ -3,14 +3,16 @@
 # A copy of the runner and its helpers with tiny areas of its own, so that the
 # runner can be run on cases that fail, die or wait on purpose. The copy sits
 # beside links to the real cli/, herdr/, skills/ and prompts/, which its
-# cases' setup copies from. A case in the copy can leave notes in $FAKE.
+# cases' setup copies from. Every area starts with no cases, which the runner
+# refuses, so a case here writes the areas it wants and names them when it
+# runs the copy. A case in the copy can leave notes in $FAKE.
 fake_suite() {
   local area d
   R=$TMP/suite
   mkdir -p "$R/test"
   cp "$ROOT/test/run.sh" "$ROOT/test/helpers.sh" "$R/test/"
   for d in cli herdr skills prompts; do ln -s "$ROOT/$d" "$R/$d"; done
-  for area in install project task skills runner; do echo 'CASES=' > "$R/test/$area.sh"; done
+  for area in $AREAS; do echo 'CASES=' > "$R/test/$area.sh"; done
   export FAKE=$TMP/notes
   mkdir -p "$FAKE"
   # As many at a time as the machine allows, unless a case says otherwise.
@@ -40,18 +42,18 @@ CASES="left right"
 EOF
 }
 
-runner_says_all_passed() {
+# With no area named, every area runs, in the runner's own order.
+runner_runs_every_area_by_default() {
   fake_suite
-  cat > "$R/test/install.sh" <<'EOF'
-one() { :; }
-two() { :; }
-CASES="one two"
-EOF
+  local area want=
+  for area in $AREAS; do
+    echo "in_$area() { :; }; CASES=in_$area" > "$R/test/$area.sh"
+    want="${want}PASS: in_$area
+"
+  done
   run_suite
   [ "$code" = 0 ] || fail "exited $code: $out"
-  [ "$out" = "PASS: one
-PASS: two
-all passed" ] || fail "wrong output: $out"
+  [ "$out" = "${want}all passed" ] || fail "wrong output: $out"
 }
 
 # The slow case is listed first and finishes last.
@@ -67,7 +69,7 @@ last() { :; }
 CASES="last"
 EOF
   export ENTOURAGE_TEST_JOBS=3
-  run_suite
+  run_suite install task
   [ "$out" = "PASS: slow
 PASS: quick
 PASS: last
@@ -83,7 +85,7 @@ bad() { echo "something it printed"; fail "first thing"; fail "second thing"; }
 after() { :; }
 CASES="good bad after"
 EOF
-  run_suite
+  run_suite install
   [ "$code" = 1 ] || fail "exited $code, not 1: $out"
   [ "$out" = "PASS: good
 something it printed
@@ -113,6 +115,26 @@ runner_refuses_an_unknown_area() {
   case $out in *PASS*) fail "ran cases anyway: $out" ;; esac
 }
 
+# An area that lists no cases, or does not load, would otherwise run nothing
+# and count as passing.
+runner_refuses_an_area_with_no_cases() {
+  fake_suite
+  echo 'a() { :; }; CASES=a' > "$R/test/install.sh"
+  run_suite install task
+  [ "$code" = 1 ] || fail "exited $code, not 1: $out"
+  case $out in *"test/task.sh lists no cases"*) ;; *) fail "did not say which area is empty: $out" ;; esac
+  case $out in *"all passed"*) fail "said all passed: $out" ;; esac
+}
+
+runner_refuses_an_area_that_does_not_load() {
+  fake_suite
+  echo 'a() { :; }; CASES=a; return 1' > "$R/test/install.sh"
+  run_suite install
+  [ "$code" = 1 ] || fail "exited $code, not 1: $out"
+  case $out in *"could not load test/install.sh"*) ;; *) fail "did not say which area did not load: $out" ;; esac
+  case $out in *"all passed"*) fail "said all passed: $out" ;; esac
+}
+
 # A case that is killed never reports. That must count as a failure, and the
 # cases after it must still run.
 runner_notices_a_case_that_dies() {
@@ -123,7 +145,7 @@ dies() { kill -9 $$; }
 after() { :; }
 CASES="before dies after"
 EOF
-  run_suite
+  run_suite install
   [ "$code" = 1 ] || fail "exited $code, not 1: $out"
   case $out in
     *"PASS: before"*"FAIL: dies: "*"PASS: after"*"1 failed") ;;
@@ -140,7 +162,7 @@ clean() { [ -z "${LEAKED:-}" ] || fail "saw what the case before exported"; }
 CASES="leaks clean"
 EOF
   export ENTOURAGE_TEST_JOBS=1
-  run_suite
+  run_suite install
   [ "$code" = 0 ] || fail "exited $code: $out"
 }
 
@@ -148,7 +170,7 @@ runner_runs_cases_side_by_side() {
   fake_suite
   meeting_cases
   export ENTOURAGE_TEST_JOBS=2 FAKE_WAITS=50
-  run_suite
+  run_suite install
   [ "$code" = 0 ] || fail "the two cases did not overlap: $out"
 }
 
@@ -157,7 +179,7 @@ runner_runs_one_at_a_time_when_asked() {
   fake_suite
   meeting_cases
   export ENTOURAGE_TEST_JOBS=1 FAKE_WAITS=10
-  run_suite
+  run_suite install
   [ "$code" = 1 ] || fail "exited $code, not 1: $out"
   case $out in
     *"FAIL: left: ran alone"*"PASS: right"*"1 failed") ;;
@@ -171,14 +193,15 @@ runner_refuses_a_bad_job_count() {
   local n
   for n in 0 -1 two 1.5; do
     export ENTOURAGE_TEST_JOBS=$n
-    run_suite
+    run_suite install
     [ "$code" = 2 ] || fail "accepted ENTOURAGE_TEST_JOBS='$n' (exit $code): $out"
     case $out in *ENTOURAGE_TEST_JOBS*) ;; *) fail "did not name the setting for '$n': $out" ;; esac
   done
 }
 
-CASES="runner_says_all_passed runner_reports_cases_in_the_order_listed
+CASES="runner_runs_every_area_by_default runner_reports_cases_in_the_order_listed
   runner_counts_failures_and_exits_non_zero runner_runs_only_the_areas_named
-  runner_refuses_an_unknown_area runner_notices_a_case_that_dies
+  runner_refuses_an_unknown_area runner_refuses_an_area_with_no_cases
+  runner_refuses_an_area_that_does_not_load runner_notices_a_case_that_dies
   runner_keeps_a_case_to_itself runner_runs_cases_side_by_side
   runner_runs_one_at_a_time_when_asked runner_refuses_a_bad_job_count"
