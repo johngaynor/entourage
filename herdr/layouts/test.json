@@ -47,6 +47,17 @@
               "min": 90
             },
             {
+              "id": "cards",
+              "type": "block",
+              "content": {
+                "mod": "cards"
+              },
+              "size": {
+                "weight": 1
+              },
+              "min": 90
+            },
+            {
               "id": "agents",
               "type": "block",
               "content": {
