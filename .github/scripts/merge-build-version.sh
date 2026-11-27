@@ -12,9 +12,16 @@ die() { echo "$*" >&2; exit 1; }
 dir=${1:-.}
 version=$(jq -r '.version // empty' "$dir/package.json")
 [ -n "$version" ] || die "package.json has no version"
-[[ $version =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] ||
+# Each part is 0 or has no leading zero, as semver and npm require; bash would
+# also read a leading zero as octal.
+part='(0|[1-9][0-9]*)'
+[[ $version =~ ^$part\.$part\.$part$ ]] ||
   die "package.json version '$version' is not a release version (X.Y.Z)"
 major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]} patch=${BASH_REMATCH[3]}
+
+# A shallow clone has only part of the history, so the count would be short.
+[ "$(git -C "$dir" rev-parse --is-shallow-repository)" = false ] ||
+  die "this clone is shallow, so the commits since v$version cannot all be counted; fetch the whole history (fetch-depth: 0)"
 
 tag=refs/tags/v$version
 git -C "$dir" rev-parse --quiet --verify "$tag" >/dev/null ||

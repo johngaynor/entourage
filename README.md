@@ -123,8 +123,7 @@ one at a time.
 
 ## Releasing
 
-Machines get changes from the npm registry, so a merged change is live only
-after a release:
+A machine installed through npm gets changes only from a release:
 
 ```sh
 npm version patch        # or minor / major; commits and tags vX.Y.Z
@@ -138,7 +137,7 @@ token to keep.
 
 Every push to `main` is published too, as a merge build under the npm tag
 `next` (`0.4.1-next.3`, for example). `entourage update` does not install
-those. To try one on a machine:
+those. To try one on a machine installed through npm:
 
 ```sh
 ENTOURAGE_NPM_SPEC=@johngaynor/entourage@next entourage update
