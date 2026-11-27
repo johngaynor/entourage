@@ -1,10 +1,12 @@
 # Tasks: a card an agent writes up, then a worktree of each repo on one
 # branch. Sourced by cli/entourage.
 
-# A task is one piece of work in a project, usually a Linear card. It has two
-# commands, in the order they are used:
+# A task is one piece of work in a project, usually a Linear card. A person
+# runs two commands, in this order:
 #   task new    an agent writes the card up, in a tab in the project's space
 #   task start  a worktree of each repo on the card's branch, in a tab of its own
+# The agent runs `task handoff` as each step ends, and `task log` shows what
+# it recorded. Both are in handoff.sh.
 
 # A card ID is a team key and a number, like ABC-122.
 CARD_RE='^[A-Za-z][A-Za-z0-9]*-[0-9]+$'
@@ -50,6 +52,7 @@ task_new() {
   # has just selected or made. argv is the agent and task is its first message.
   herdr_app do tab.new "{\"name\":\"$card\",\"folder\":\"$(json_str "$dir")\",\"argv\":[\"$(json_str "$AGENT")\"],\"task\":\"$(json_str "$prompt")\"}" >/dev/null 2>&1 ||
     die "could not open a tab for $card. Is Herdr open?"
+  record_start "$name" "$card"
   say "Started $card in the space for '$name'"
   say "The agent writes the card up, then asks you to approve it."
 }
@@ -316,6 +319,8 @@ cmd_task() {
   case ${1:-} in
     new) shift; task_new "$@" ;;
     start) shift; task_start "$@" ;;
-    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...] (see: entourage help)" ;;
+    handoff) shift; task_handoff "$@" ;;
+    log) shift; task_log "$@" ;;
+    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...], or: entourage task handoff <project> <card>, or: entourage task log <project> <card> (see: entourage help)" ;;
   esac
 }

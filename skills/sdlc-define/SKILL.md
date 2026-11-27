@@ -102,19 +102,28 @@ After writing, read the card back. Check that the original description is unchan
 
 ## 5. Hand off
 
-When the Specification is on the card and you have read it back, write the handoff block. Define is not finished until it is written:
+When the Specification is on the card and you have read it back, record the hand-off. Define is not finished until it is recorded:
 
-- `phase: define`, `status: done` and `next: plan`.
-- `summary`: the type you set, whether you replaced a label that was already there, and how many Done when items there are.
-- `flags`: anything you weren't sure about, and whether the card looks like more than one thing.
+```
+entourage task handoff <project> <card ID> <<'EOF'
+phase: define
+status: done
+next: plan
+summary: <the type you set, whether you replaced a label that was already there, and how many Done when items there are>
+flags: <anything you weren't sure about, and whether the card looks like more than one thing>
+EOF
+```
+
+Put your own words in place of each hint in angle brackets, and leave the `flags` line out when there is nothing to flag.
 
 ## The handoff block
 
 Every step of the lifecycle ends the same way, so whoever is driving it, a person or a script, can tell how the step ended without reading the whole session.
 
-Write one handoff block every time this step ends or pauses: when the step is finished, when you need an answer, and when something has gone wrong. Write it even when you go straight on to another step, because the block is the record that this one ended. Put it in a code block, one value per line, as the last thing you write for this step:
+Record a hand-off every time this step ends or pauses: when the step is finished, when you need an answer, and when something has gone wrong. Record it even when you go straight on to another step, because the record is what shows this one ended. Run `entourage task handoff` with the block on stdin, one value per line:
 
 ```
+entourage task handoff <project> <card ID> <<'EOF'
 phase: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
@@ -123,9 +132,10 @@ flags: <what the human should know but wasn't asked>
 question: <one question>
 options: <the answers you expect, your recommendation first, separated by " | ">
 reason: <what went wrong, and what you already tried>
+EOF
 ```
 
-Which lines you write depends on the status:
+`<project>` is the entourage project this session is in. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
@@ -133,11 +143,12 @@ Which lines you write depends on the status:
 | `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
 | `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
 
+- **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage project, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a project or install anything to get it to run.
+- **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
 - **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
 - **`needs-human` is a pause, not an ending.** Wait for the answer, then carry on with this step. The step is over only at `done` or `failed`.
 - **Ask one question per block.** If you have two, ask first the one whose answer could change the other. The human can always answer in their own words, so `options` are suggestions.
-- **Keep the block short.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
-- **After `done`, this step is over.** Write the block before anything else. If another step sent you here to revise this section, go back to that step and ignore `next`. Otherwise go on to the step in `next` only if you were asked to run more than this one step, and if you weren't, stop there.
+- **After `done`, this step is over.** Record the hand-off before anything else. If another step sent you here to revise this section, go back to that step and ignore `next`. Otherwise go on to the step in `next` only if you were asked to run more than this one step, and if you weren't, stop there.
 - **After `failed`, change nothing more.** Leave the card as it is for the human.
 
 ## If something goes wrong

@@ -115,8 +115,9 @@ template is in this repo. Your own projects are in
 
 ## Tasks
 
-A task is one piece of work in a project, usually a Linear card. It has two
-commands, used in this order.
+A task is one piece of work in a project, usually a Linear card. You run two
+commands, in this order: `task new`, then `task start`. Two more, `task
+handoff` and `task log`, record and show how each step of the write-up ended.
 
 ### Writing the card up
 
@@ -147,6 +148,42 @@ entourage task new <project> <card>
   Herdr not running, no agent on your `PATH`, or the skills not linked into
   `~/.claude/skills` stops it before anything is opened. Run
   `entourage update` to link the skills.
+
+### Hand-offs
+
+Each step of a write-up ends by handing off: which step it was, how it ended
+(`done`, `needs-human` or `failed`) and what comes next. The agent records
+that itself, with the block on stdin:
+
+```sh
+entourage task handoff <project> <card> <<'EOF'
+phase: define
+status: done
+next: plan
+summary: Set the type to fix. The Specification has six Done when items.
+EOF
+```
+
+```sh
+entourage task log <project> <card>
+```
+
+- **The command holds the rules.** It refuses a block with a missing line, an
+  unknown status or step, a line that doesn't belong to that status, or a
+  value that runs onto a second line, and says what to fix. Run it with no
+  block to see the rules.
+- **It is a command because wording wasn't enough.** An agent going from one
+  skill straight into the next writes nothing in between, but it does run
+  commands.
+- **`task new` records the start,** so the time each step took can be read
+  from the hand-offs alone.
+- **They are kept in `~/.config/entourage/entourage.db`,** a SQLite file
+  beside your projects, on this machine only. It needs `sqlite3`, which macOS
+  ships; `ENTOURAGE_SQLITE` picks another command. Without it `task new`
+  still starts the agent, the hand-offs are not recorded, and
+  `entourage status` says so.
+- **The card stays in Linear.** The store records how a step ended, not what
+  was written.
 
 ### Starting the work
 
