@@ -13,6 +13,10 @@ layouts (whole-window arrangements of mods).
 | `layouts/test.json` | `default` plus the CPU mod in the sidebar. |
 | `projects/template/` | The starting `PROJECT.md` for every new project. |
 
+The skills are in [../skills/](../skills/), outside this folder. They are
+linked into `~/.claude/skills` (`CLAUDE_CONFIG_DIR` picks another `~/.claude`)
+by the same `entourage install` and `entourage update`.
+
 ## How it works
 
 Herdr reads its whole interface from files in `~/.config/herdr-app`. This repo
@@ -108,12 +112,38 @@ template is in this repo. Your own projects are in
 
 ## Tasks
 
-A task is one piece of work in a project: one branch, checked out as a git
-worktree of every repo in the project, and shown as a tab in the project's
-space.
+A task is one piece of work in a project, usually a Linear card. It has two
+commands, used in this order.
+
+### Writing the card up
 
 ```sh
-entourage task new <project> <branch>
+entourage task new <project> <card>
+```
+
+- **The card is its ID**, like `ABC-122`. Upper or lower case both work.
+- **It opens a tab named after the card** in the project's space, in the
+  project folder, and starts an agent in it. The agent is `claude`;
+  `ENTOURAGE_AGENT` picks another command.
+- **The agent's first message** is [prompts/task-new.md](../prompts/task-new.md)
+  with the card and project filled in. It tells the agent to run
+  `sdlc-define`, `sdlc-plan` and `sdlc-breakdown` in order, in that one
+  session, and to wait for your approval at the end. Edit that file to change
+  what the agent is told.
+- **It makes no branch, worktree or task folder.** The card has no type until
+  the agent has defined it, and the type is the start of the branch name.
+- **It checks first.** An unknown project, something that is not a card ID,
+  Herdr not running, no agent on your `PATH`, or the skills not linked into
+  `~/.claude/skills` stops it before anything is opened. Run
+  `entourage update` to link the skills.
+
+### Starting the work
+
+One branch, checked out as a git worktree of every repo in the project, and
+shown as a tab in the project's space.
+
+```sh
+entourage task start <project> <branch>
 ```
 
 - **The branch is `<type>/<description>`**, following

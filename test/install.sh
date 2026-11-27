@@ -92,12 +92,6 @@ npm_install_skips_path_link() {
   [ ! -e "$HOME/.local/bin/entourage" ] || fail "linked itself onto PATH in an npm install"
 }
 
-# A stub command that logs its arguments and exits with the given code.
-stub() {
-  printf '#!/usr/bin/env bash\necho "$*" >> "%s"\nexit %s\n' "$TMP/$1-calls.log" "${2:-0}" > "$TMP/bin/$1"
-  chmod +x "$TMP/bin/$1"
-}
-
 # An npm install updates through npm, then hands over to the new copy.
 npm_install_updates_through_npm() {
   rmdir "$REPO/.git"
@@ -122,8 +116,77 @@ honors_herdr_app_home() {
   [ ! -e "$APP/mods/cpu" ] || fail "linked into the default folder too"
 }
 
+# --- skills -----------------------------------------------------------------
+
+install_links_skills() {
+  "$E" install >/dev/null || fail "install exited non-zero"
+  for s in sdlc-define sdlc-plan sdlc-breakdown; do
+    is_link_to "$SK/$s" "$REPO/skills/$s" || fail "$s not linked"
+    [ -f "$SK/$s/SKILL.md" ] || fail "$s has no SKILL.md through the link"
+  done
+}
+
+status_lists_skills() {
+  out=$("$E" status) && fail "status exited zero with no skills linked"
+  case $out in *"missing    skills/sdlc-define"*) ;; *) fail "status did not report the missing skill: $out" ;; esac
+  "$E" install >/dev/null
+  out=$("$E" status) || fail "status exited non-zero after install"
+  case $out in *"linked     skills/sdlc-define"*) ;; *) fail "status did not list the linked skill: $out" ;; esac
+}
+
+update_links_a_new_skill() {
+  "$E" install >/dev/null
+  mkdir "$REPO/skills/sdlc-build" && echo x > "$REPO/skills/sdlc-build/SKILL.md"
+  "$E" update --no-pull >/dev/null || fail "update exited non-zero"
+  is_link_to "$SK/sdlc-build" "$REPO/skills/sdlc-build" || fail "new skill not linked"
+}
+
+update_removes_a_stale_skill_link() {
+  "$E" install >/dev/null
+  rm -rf "$REPO/skills/sdlc-plan"
+  "$E" update --no-pull >/dev/null || fail "update exited non-zero"
+  [ ! -L "$SK/sdlc-plan" ] || fail "stale skill link left behind"
+  [ -L "$SK/sdlc-define" ] || fail "a live skill link was removed"
+}
+
+someone_elses_skills_are_left_alone() {
+  mkdir -p "$SK/mine" "$TMP/elsewhere/theirs"
+  echo mine > "$SK/mine/SKILL.md"
+  ln -s "$TMP/elsewhere/theirs" "$SK/theirs"
+  ln -s "$TMP/elsewhere/gone" "$SK/dangling"
+  "$E" install >/dev/null
+  "$E" update --no-pull >/dev/null
+  [ "$(cat "$SK/mine/SKILL.md")" = mine ] || fail "someone's own skill was changed"
+  [ -L "$SK/theirs" ] || fail "someone else's skill link was removed"
+  [ -L "$SK/dangling" ] || fail "someone else's dangling skill link was removed"
+}
+
+a_real_skill_folder_is_never_replaced() {
+  mkdir -p "$SK/sdlc-define"; echo mine > "$SK/sdlc-define/SKILL.md"
+  out=$("$E" install) || fail "install exited non-zero"
+  [ "$(cat "$SK/sdlc-define/SKILL.md")" = mine ] || fail "a real skill folder was replaced"
+  case $out in *"skills/sdlc-define (a real file is in the way"*) ;; *) fail "no warning about the real skill folder: $out" ;; esac
+}
+
+a_folder_without_a_skill_file_is_not_linked() {
+  mkdir "$REPO/skills/notes" && echo x > "$REPO/skills/notes/README.md"
+  "$E" install >/dev/null || fail "install exited non-zero"
+  [ ! -e "$SK/notes" ] || fail "linked a folder that has no SKILL.md"
+}
+
+honors_claude_config_dir() {
+  export CLAUDE_CONFIG_DIR=$TMP/claude
+  "$E" install >/dev/null || fail "install exited non-zero"
+  is_link_to "$CLAUDE_CONFIG_DIR/skills/sdlc-define" "$REPO/skills/sdlc-define" || fail "did not link into CLAUDE_CONFIG_DIR"
+  [ ! -e "$SK/sdlc-define" ] || fail "linked into the default folder too"
+}
+
 CASES="install_links_everything install_is_repeatable works_through_the_path_link
   update_links_a_new_mod update_removes_stale_links update_leaves_other_links_alone
   real_file_is_never_replaced update_refreshes_herdr status_reports_missing_links
   fails_without_herdr fails_before_herdr_first_run npm_install_skips_path_link
-  npm_install_updates_through_npm npm_update_failure_changes_nothing honors_herdr_app_home"
+  npm_install_updates_through_npm npm_update_failure_changes_nothing honors_herdr_app_home
+  install_links_skills status_lists_skills update_links_a_new_skill
+  update_removes_a_stale_skill_link someone_elses_skills_are_left_alone
+  a_real_skill_folder_is_never_replaced a_folder_without_a_skill_file_is_not_linked
+  honors_claude_config_dir"
