@@ -126,10 +126,10 @@ entourage task new <project> <card>
   project folder, and starts an agent in it. The agent is `claude`;
   `ENTOURAGE_AGENT` picks another command.
 - **The agent's first message** is [prompts/task-new.md](../prompts/task-new.md)
-  with the card and project filled in. It tells the agent to run
-  `sdlc-define`, `sdlc-plan` and `sdlc-breakdown` in order, in that one
-  session, and to wait for your approval at the end. Edit that file to change
-  what the agent is told.
+  with the card and project filled in. It tells the agent to start with
+  `sdlc-define` and follow each skill's handoff block to the next
+  (`sdlc-plan`, then `sdlc-breakdown`), in that one session, and to wait for
+  your approval at the end. Edit that file to change what the agent is told.
 - **It makes no branch, worktree or task folder.** The card has no type until
   the agent has defined it, and the type is the start of the branch name.
 - **It checks first.** An unknown project, something that is not a card ID,
