@@ -17,6 +17,23 @@ entourage install
 `entourage update` keeps it current. Today that covers the Herdr setup; see
 [herdr/README.md](herdr/README.md) for the full walkthrough.
 
+## Projects
+
+A project groups the repos that belong together, with a `PROJECT.md` saying
+what each repo is for. Each project opens in Herdr as one space. A repo is
+cloned once and can be in several projects.
+
+```sh
+entourage project new my-project
+entourage project add my-project ~/Dev/api
+entourage project add my-project ~/Dev/web
+entourage project open my-project
+```
+
+Your projects live in `~/.config/entourage/projects`, outside this repo, so
+they are never published and survive updates. See
+[herdr/README.md](herdr/README.md#projects) for how a project is laid out.
+
 To work on entourage itself, clone the repo and run `cli/entourage install`
 from the clone instead. Run the CLI's tests with `npm test`.
 
