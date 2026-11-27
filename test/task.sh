@@ -192,7 +192,10 @@ task_new_leaves_trusted_claude_state_alone() {
   out=$("$E" task new demo ABC-122) || fail "task new exited non-zero"
   [ "$(ls -i "$HOME/.claude.json")" = "$before" ] || fail "rewrote a state file that already trusts the folder"
   case $out in
-    *"  trusted   "* | *"  note      "*) fail "spoke of trust when there was nothing to do: $out" ;;
+    # The words of the two trust lines, not any note: another part of the CLI
+    # may have a note of its own to print, as it does without sqlite3.
+    *"Claude Code may ask to trust"* | *"Claude Code will not ask to trust"*)
+      fail "spoke of trust when there was nothing to do: $out" ;;
   esac
 }
 
