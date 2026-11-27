@@ -321,6 +321,6 @@ cmd_task() {
     start) shift; task_start "$@" ;;
     handoff) shift; task_handoff "$@" ;;
     log) shift; task_log "$@" ;;
-    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...], or: entourage task handoff <project> <card>, or: entourage task log <project> <card> [--json] (see: entourage help)" ;;
+    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...], or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
   esac
 }
