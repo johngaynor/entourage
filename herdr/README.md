@@ -10,9 +10,10 @@ layouts (whole-window arrangements of mods).
 | `mods/cpu/` | Live CPU usage with a scrolling history. macOS only (reads `/usr/bin/top`). |
 | `mods/layout-switch/` | A dropdown that shows the current layout and switches to another. |
 | `mods/projects/` | Every project in your config, open or not. Click one to show its space; `+` makes a new one. |
+| `mods/cards/` | The open Linear cards of the project whose space is showing, under their statuses. Start writes a card up with `task new`; Open shows the tab of a card already started. |
 | `mods/steps/` | The steps of the card whose tab is selected: what each did, how long it took, and how long it waited on you. |
 | `layouts/default.json` | Herdr's own layout, plus the layout dropdown. |
-| `layouts/test.json` | `default` with the projects list in place of spaces, plus the Steps panel and the CPU mod in the sidebar. |
+| `layouts/test.json` | `default` with the projects list in place of spaces, plus the Cards and Steps panels and the CPU mod in the sidebar. |
 | `projects/template/` | The starting `PROJECT.md` for every new project. |
 
 The skills are in [../skills/](../skills/), outside this folder. They are
@@ -210,6 +211,36 @@ entourage task new <project> <card>
   Herdr not running, no agent on your `PATH`, or the skills not linked into
   `~/.claude/skills` stops it before anything is opened. Run
   `entourage update` to link the skills.
+
+### The Cards panel
+
+On the `test` layout, the Cards panel under the projects list shows the open
+cards of the project whose space is showing, each with a button that writes
+the card up.
+
+- **It shows what `task ls` lists**: the same statuses in the same order, each
+  with its count, and the cards under them. A click on a status closes its
+  group, and another opens it again. Which groups are closed is kept between
+  starts of Herdr.
+- **Start runs `entourage task new <project> <card>`**, so the card's tab
+  opens in the project's space with the agent running. One card starts at a
+  time. The button reads Starting… until the command is done, and if the
+  command fails, a notification shows what it said.
+- **A card whose tab is open reads Open**, and a click shows that tab rather
+  than starting the card a second time. A tab is the card's when it is named
+  after the card's ID, as `task new` names it.
+- **When the cards cannot be listed, the panel shows why**, in the words of
+  `task ls`: no Linear key saved, a project with no team, Linear out of reach.
+  A space that is not a project says so.
+- **It reads the cards again** when another space is shown, about once a
+  minute while the window is visible, and when the refresh button above the
+  list is clicked.
+- **It works nothing out itself.** The project comes from
+  `entourage project ls --json` and the cards from
+  `entourage task ls <project> --json`, so the panel and the commands always
+  agree. It needs what `task ls` needs: the Linear key and the project's teams.
+- **On the sidebar's narrow rail**, each card shows as its number, and a click
+  does what its button would.
 
 ### Hand-offs
 
