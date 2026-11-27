@@ -160,7 +160,8 @@ entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
   project's `links/`. A group is the repo's own word for a part of itself
   (see [What a repo provides](#what-a-repo-provides)): lowercase letters,
   digits and dashes. entourage passes it on and does not check that the repo
-  knows it.
+  knows it. A repo whose folder name has a colon in it cannot be named as a
+  target.
 
 - **The branch is `<type>/<description>`**, following
   [Conventional Branch](https://conventionalbranch.org): `feat/abc-122-insert-task-here`,
@@ -178,7 +179,8 @@ entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
   the task folder when it has several. That folder has `CLAUDE.md` and
   `AGENTS.md` links to the project's `PROJECT.md`.
 - **Setup runs in the tab.** For each repo that has a `setup` recipe (see
-  [What a repo provides](#what-a-repo-provides)), `just setup` is typed into
+  [What a repo provides](#what-a-repo-provides)), `just setup`, followed by
+  the target's groups if it named any, is typed into
   the new tab's shell, so `task start` returns within a second or two and you
   watch the install where you will work. With several repos they run one after another,
   and one that fails stops the rest. A repo without the recipe is skipped and

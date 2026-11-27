@@ -19,7 +19,7 @@ Usage:
   entourage project open <name>        show the project as a Herdr space
   entourage project ls                 list projects and their repos
   entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
-  entourage task start <project> <branch> [<repo>[:<group>] ...]
+  entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab
   entourage help
 
@@ -37,6 +37,7 @@ and opens a tab for it. A repo with a justfile that has a `setup` recipe
 gets `just setup` run in that tab, so the checkout is ready to work in.
 Targets after the branch narrow the task: `app` takes only that repo, and
 `app:athlete` sets it up for its athlete group (`just setup athlete`).
+Join several groups with a comma: `app:athlete,coach`.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
 Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another

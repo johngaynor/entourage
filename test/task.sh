@@ -645,11 +645,39 @@ task_start_ignores_an_unnamed_broken_repo() {
 task_start_refuses_bad_targets() {
   task_demo api web
   local t
-  for t in nope api:athlete,nope/x "api:" "api:a,,b" "api:Athlete" "api:a b" "api:a;b" 'api:$x' "api:a'b" "api:-a" ":athlete"; do
+  for t in nope api:athlete,nope/x "api:" "api:a,,b" "api:Athlete" "api:a b" "api:a;b" 'api:$x' "api:a'b" "api:-a" ":athlete" \
+           "api:a:b" "api:a
+b" "api:a
+"; do
     "$E" task start demo feat/x "$t" >/dev/null 2>&1 && fail "accepted the target '$t'"
     [ ! -e "$T" ] || { fail "made a tasks folder for the target '$t'"; rm -rf "$T"; }
     has_branch "$API" feat/x && fail "made a branch for the target '$t'"
   done
+}
+
+# What counts as a letter must not depend on the caller's locale: in some, a
+# range like a-z takes in uppercase letters and even shell punctuation.
+task_start_refuses_bad_groups_in_any_locale() {
+  task_demo api
+  local loc t
+  for loc in en_US.ISO8859-1 en_US.US-ASCII kk_KZ.PT154; do
+    for t in "api:Athlete" 'api:a$(id)' "api:a|b" "api:a&&b"; do
+      LC_ALL=$loc "$E" task start demo feat/x "$t" >/dev/null 2>&1 && fail "accepted '$t' under $loc"
+      [ ! -e "$T" ] || { fail "made a tasks folder for '$t' under $loc"; rm -rf "$T"; git -C "$API" worktree prune; git -C "$API" branch -q -D feat/x; }
+    done
+  done
+}
+
+# A repo the task did not name is not fetched either.
+task_start_does_not_fetch_an_unnamed_repo() {
+  task_demo api web
+  git clone -q "$HOME/Dev/web.origin.git" "$TMP/other"
+  git -C "$TMP/other" -c user.name=t -c user.email=t@t commit -q --allow-empty -m newer
+  git -C "$TMP/other" push -q origin main
+  local before
+  before=$(head_of "$HOME/Dev/web" origin/main)
+  "$E" task start demo feat/x api >/dev/null || fail "task start exited non-zero"
+  [ "$(head_of "$HOME/Dev/web" origin/main)" = "$before" ] || fail "fetched a repo that was not named"
 }
 
 task_start_refuses_a_repo_named_twice() {
@@ -665,7 +693,8 @@ task_start_lists_repos_for_an_unknown_target() {
   grep -q api "$TMP/err" && grep -q web "$TMP/err" || fail "did not list the project's repos: $(cat "$TMP/err")"
 }
 
-TARGET_CASES="task_start_one_target_with_a_group task_start_several_groups task_start_several_targets
+TARGET_CASES="task_start_refuses_bad_groups_in_any_locale task_start_does_not_fetch_an_unnamed_repo
+  task_start_one_target_with_a_group task_start_several_groups task_start_several_targets
   task_start_a_target_without_a_group task_start_ignores_an_unnamed_broken_repo
   task_start_refuses_bad_targets task_start_refuses_a_repo_named_twice
   task_start_lists_repos_for_an_unknown_target"

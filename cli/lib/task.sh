@@ -150,8 +150,15 @@ run_setup() {
 }
 
 # A group is a part of a repo, named by the repo itself: a plain word, because
-# it is typed into the tab's shell.
-GROUP_RE='^[a-z0-9][a-z0-9-]*$'
+# it is typed into the tab's shell. Lowercase letters, digits and dashes, not
+# starting with a dash. Every allowed character is spelled out: a range like
+# a-z means different things in different locales, and in some it lets
+# uppercase letters and shell punctuation through.
+valid_group() {
+  case ${1:-} in
+    '' | -* | *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 1 ;;
+  esac
+}
 
 # What `task start` was asked to work on, from its targets:
 #   TARGET_REPOS   the repo each target names
@@ -190,7 +197,7 @@ parse_targets() {
         r=${arg#*:},
         while [ -n "$r" ]; do
           group=${r%%,*}; r=${r#*,}
-          [[ $group =~ $GROUP_RE ]] ||
+          valid_group "$group" ||
             die "'$group' in '$arg' is not a group name. A group is lowercase letters, digits and dashes, like: $repo:athlete"
           groups=${groups:+$groups }$group
         done
@@ -204,7 +211,7 @@ task_start() {
   local name=${1:-} branch=${2:-} dir task
   dir=$(project_dir "$name")
   [ -n "$branch" ] ||
-    die "which branch? Usage: entourage task start $name <type>/<description> [<repo>[:<group>] ...] (see https://conventionalbranch.org)"
+    die "which branch? Usage: entourage task start $name <type>/<description> [<repo>[:<group>[,<group>...]] ...] (see https://conventionalbranch.org)"
   valid_branch "$branch" ||
     die "'$branch' is not a branch name entourage accepts. Use <type>/<description>, like: feat/abc-122-short-title (see https://conventionalbranch.org)"
   task=$(task_name "$branch")
@@ -305,6 +312,6 @@ cmd_task() {
   case ${1:-} in
     new) shift; task_new "$@" ;;
     start) shift; task_start "$@" ;;
-    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>] ...] (see: entourage help)" ;;
+    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...] (see: entourage help)" ;;
   esac
 }
