@@ -16,8 +16,11 @@ jobs:
       contents: read
       id-token: write   # lets the job prove to npm which repo and workflow it is
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      # setup-node stays on v6. From v7 it no longer sets a placeholder
+      # NODE_AUTH_TOKEN, which changes how npm signs in, and this job can only
+      # be tested by publishing a real release.
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
