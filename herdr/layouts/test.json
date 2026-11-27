@@ -56,6 +56,17 @@
                 "weight": 1
               },
               "min": 90
+            },
+            {
+              "id": "steps",
+              "type": "block",
+              "content": {
+                "mod": "steps"
+              },
+              "size": {
+                "weight": 1
+              },
+              "min": 90
             }
           ]
         },

@@ -20,7 +20,8 @@ Whenever a skill ends or pauses, it hands off with a block: which step it was,
 and whether it is `done`, `needs-human` or `failed`. A `done` block also names
 the step that comes next. The agent records each block with
 `entourage task handoff`, and your answer when you reply to a question.
-`entourage task log` shows them for a card, with how long each step took.
+`entourage task log` shows them for a card, with how long each step took, and
+the Steps panel in Herdr shows the same for the card whose tab is selected.
 
 ## Setting up a machine
 

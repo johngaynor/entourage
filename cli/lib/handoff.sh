@@ -191,78 +191,146 @@ task_handoff() {
   done
 }
 
-# Print a length of time: 50s, 1m 44s, 1h 02m.
-took() {
-  local s=$1
-  [ "$s" -ge 0 ] 2>/dev/null || s=0
-  if [ "$s" -lt 60 ]; then printf '%ss' "$s"
-  elif [ "$s" -lt 3600 ]; then printf '%dm %02ds' $((s / 60)) $((s % 60))
-  else printf '%dh %02dm' $((s / 3600)) $((s % 3600 / 60))
-  fi
-}
+# --- the log ----------------------------------------------------------------
 
-# List a card's hand-offs, oldest first, with how long each step took.
+# One query works out a card's view: each hand-off with its label, how long it
+# took and whether it is a wait. The plain log and the JSON both read it, so
+# they cannot disagree, and a Herdr mod that draws the JSON formats nothing.
 #
 # Nothing about time is stored beyond each row's own. A step's time is from
 # the row before it to its own row. The time from a needs-human row to its
 # answered row is waiting on the human and belongs to no step. A needs-human
-# row with nothing after it is still waiting, measured to now.
+# row with nothing after it is still waiting, measured to now. A `new` row
+# starts a run, so it has no time, however long ago the run before it ended.
+
+# SQL for a number of seconds as text: 50s, 1m 44s, 1h 02m.
+sql_took() {
+  local s=$1
+  printf "case when %s < 60 then %s || 's'
+    when %s < 3600 then (%s / 60) || 'm ' || printf('%%02d', %s %% 60) || 's'
+    else (%s / 3600) || 'h ' || printf('%%02d', %s %% 3600 / 60) || 'm' end" \
+    "$s" "$s" "$s" "$s" "$s" "$s" "$s"
+}
+
+# SQL that starts a query on one card's view, as the table `shown`.
+#   log_view <project> <card> <answer column, or null in a store without one>
+log_view() {
+  printf "with base as (
+      select id, at, phase, status, next, summary, flags, question, options,
+        %s as answer, reason,
+        lag(at) over w as prev_at, lag(status) over w as before, lead(id) over w as after,
+        sum(case when phase = 'new' then 1 else 0 end) over w as run
+      from handoffs where project = %s and card = %s
+      window w as (order by id)),
+    timed as (
+      select *,
+        case when phase = 'new' or prev_at is null then null
+          else max(cast(strftime('%%s', at) - strftime('%%s', prev_at) as integer), 0) end as seconds,
+        case when after is null and status = 'needs-human'
+          then max(cast(strftime('%%s', 'now') - strftime('%%s', at) as integer), 0) end as open_seconds
+      from base),
+    shown as (
+      select *,
+        case when phase = 'new' then 'start'
+          when status = 'answered' and before = 'needs-human' then 'wait'
+          else 'step' end as kind,
+        status || case when next is null then '' else ', then ' || next end as what,
+        case when phase = 'new' then 'started'
+          when status = 'done' then phase || ' done'
+          when status = 'needs-human' then phase || ' asked a question'
+          when status = 'answered' then 'answered'
+          when status = 'failed' then phase || ' failed'
+          else phase || ' ' || status end as label,
+        case when seconds is null then ''
+          when status = 'answered' and before = 'needs-human' then 'waited ' || (%s)
+          when before = 'needs-human' then (%s) || ', includes waiting on the human'
+          else (%s) end as took,
+        case when open_seconds is null then ''
+          else 'waiting on the human for ' || (%s) end as waiting
+      from timed)" \
+    "$3" "$(sql_str "$1")" "$(sql_str "$2")" \
+    "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took open_seconds)"
+}
+
+LOG_USAGE='usage: entourage task log <project> <card> [--json]'
+
+# List a card's hand-offs, oldest first, with how long each step took. With
+# --json, the same view as one line of JSON.
 task_log() {
+  local json=0 a
+  local args=()
+  for a in "$@"; do
+    case $a in
+      --json) json=1 ;;
+      -*) die "$LOG_USAGE" ;;
+      *) args+=("$a") ;;
+    esac
+  done
+  set -- ${args[@]+"${args[@]}"}
   local name=${1:-} card=${2:-}
-  [ -n "$name" ] || die "usage: entourage task log <project> <card>"
+  [ -n "$name" ] || die "$LOG_USAGE"
   project_named "$name" || die "there is no entourage project called '$name'. See: entourage project ls"
   card=$(handoff_card "$name" "$card" log) || exit 1
-  [ "$#" -le 2 ] || die "usage: entourage task log <project> <card>"
+  [ "$#" -le 2 ] || die "$LOG_USAGE"
   have_sqlite || die "$SQLITE is not installed, so no hand-offs have been recorded on this machine."
+
+  # Reading never changes the store. An older one has no answer column, so it
+  # is read without one.
+  local answer_column=null view found=''
+  if [ -e "$STORE" ]; then
+    ! has_answer_column || answer_column=answer
+    view=$(log_view "$name" "$card" "$answer_column")
+  fi
+
+  if [ "$json" = 1 ]; then
+    if [ ! -e "$STORE" ]; then
+      printf '{"project":"%s","card":"%s","state":null,"waiting":null,"steps":[]}\n' \
+        "$(json_str "$name")" "$(json_str "$card")"
+      return
+    fi
+    # SQLite builds the JSON, so no value is escaped by hand. A store that
+    # cannot be read is an error, not an empty history.
+    store "$STORE" "$view
+      select json_object('project', $(sql_str "$name"), 'card', $(sql_str "$card"),
+        'state', (select case when status = 'needs-human' then 'waiting on the human'
+            when phase = 'new' then 'started' else label || substr(what, length(status) + 1) end
+          from shown order by id desc limit 1),
+        'waiting', (select nullif(waiting, '') from shown order by id desc limit 1),
+        'run', (select max(run) from shown),
+        'steps', (select json_group_array(json(step)) from (
+          select json_object('run', run, 'at', at, 'clock', strftime('%H:%M', at, 'localtime'),
+            'phase', phase, 'status', status, 'next', next, 'kind', kind, 'label', label,
+            'took', took, 'seconds', seconds, 'waiting', nullif(waiting, ''),
+            'summary', summary, 'flags', flags, 'question', question, 'options', options,
+            'answer', answer, 'reason', reason) as step
+          from shown order by id)));" ||
+      die "could not read the hand-offs in $STORE. It may not be entourage's store."
+    return
+  fi
 
   # The unit separator: no value can hold it, and unlike a tab it does not let
   # `read` run two empty fields together.
-  local sep=$'\x1f' count=0 key found='' what time
-  local at phase status next summary flags question options answer reason since before last
-  local answer_column="''"
+  local sep=$'\x1f' count=0 key
+  local at phase what took summary flags question options answer reason waiting
   if [ -e "$STORE" ]; then
-    # Reading never changes the store. An older one has no answer column, so
-    # it is read without one.
-    ! has_answer_column || answer_column="coalesce(answer, '')"
-    # A store that cannot be read is an error, not an empty history.
-    # since: seconds from the row before. before: that row's status.
-    # last: seconds from this row to now, on the last row only.
-    found=$(store -separator "$sep" "$STORE" "select at, phase, status, coalesce(next, ''),
-      coalesce(summary, ''), coalesce(flags, ''), coalesce(question, ''), coalesce(options, ''),
-      $answer_column, coalesce(reason, ''),
-      coalesce(cast(strftime('%s', at) - strftime('%s', lag(at) over w) as integer), ''),
-      coalesce(lag(status) over w, ''),
-      case when lead(id) over w is null
-        then cast(strftime('%s', 'now') - strftime('%s', at) as integer) else '' end
-      from handoffs
-      where project = $(sql_str "$name") and card = $(sql_str "$card")
-      window w as (order by id) order by id;") ||
+    found=$(store -separator "$sep" "$STORE" "$view
+      select at, phase, what, took, coalesce(summary, ''), coalesce(flags, ''),
+        coalesce(question, ''), coalesce(options, ''), coalesce(answer, ''),
+        coalesce(reason, ''), waiting
+      from shown order by id;") ||
       die "could not read the hand-offs in $STORE. It may not be entourage's store."
   fi
-  while IFS=$sep read -r at phase status next summary flags question options answer reason since before last; do
+  while IFS=$sep read -r at phase what took summary flags question options answer reason waiting; do
     [ -n "$at" ] || continue
     [ "$count" -gt 0 ] || say "$card in '$name'"
     count=$((count + 1))
-    what=$status${next:+, then $next}
-    time=''
-    if [ -n "$since" ]; then
-      time=$(took "$since")
-      if [ "$status" = answered ] && [ "$before" = needs-human ]; then
-        time="waited $time"
-      elif [ "$before" = needs-human ]; then
-        # No answer was recorded, so the wait cannot be told from the work.
-        time="$time, includes waiting on the human"
-      fi
-    fi
-    if [ -n "$time" ]; then printf '%s  %-10s %-22s %s\n' "$at" "$phase" "$what" "$time"
+    if [ -n "$took" ]; then printf '%s  %-10s %-22s %s\n' "$at" "$phase" "$what" "$took"
     else printf '%s  %-10s %s\n' "$at" "$phase" "$what"
     fi
     for key in summary flags question options answer reason; do
       [ -z "${!key}" ] || printf '    %s: %s\n' "$key" "${!key}"
     done
-    if [ "$status" = needs-human ] && [ -n "$last" ]; then
-      printf '    waiting on the human for %s\n' "$(took "$last")"
-    fi
+    [ -z "$waiting" ] || printf '    %s\n' "$waiting"
   done <<< "$found"
   [ "$count" -gt 0 ] || say "No hand-offs recorded for $card in '$name'."
 }

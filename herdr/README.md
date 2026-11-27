@@ -10,8 +10,9 @@ layouts (whole-window arrangements of mods).
 | `mods/cpu/` | Live CPU usage with a scrolling history. macOS only (reads `/usr/bin/top`). |
 | `mods/layout-switch/` | A dropdown that shows the current layout and switches to another. |
 | `mods/projects/` | Every project in your config, open or not. Click one to show its space; `+` makes a new one. |
+| `mods/steps/` | The steps of the card whose tab is selected: what each did, how long it took, and how long it waited on you. |
 | `layouts/default.json` | Herdr's own layout, plus the layout dropdown. |
-| `layouts/test.json` | `default` with the projects list in place of spaces, plus the CPU mod in the sidebar. |
+| `layouts/test.json` | `default` with the projects list in place of spaces, plus the Steps panel and the CPU mod in the sidebar. |
 | `projects/template/` | The starting `PROJECT.md` for every new project. |
 
 The skills are in [../skills/](../skills/), outside this folder. They are
@@ -197,6 +198,13 @@ entourage task log <project> <card>
   `entourage status` says so.
 - **The card stays in Linear.** The store records how a step ended, not what
   was written.
+- **The Steps panel shows it in Herdr.** Select a card's tab, the one `task
+  new` opened, and the panel lists that card's steps: the time of day, what
+  the step did, how long it took, and its summary. A wait on you stands out,
+  and so does a question still waiting. It shows the latest run of a card
+  written up more than once. The panel draws what
+  `entourage task log <project> <card> --json` prints and works nothing out
+  itself, so the two always agree.
 
 ### Starting the work
 

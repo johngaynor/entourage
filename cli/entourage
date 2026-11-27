@@ -22,7 +22,8 @@ Usage:
   entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
-  entourage task log <project> <card>      list a card's hand-offs and how long each step took
+  entourage task log <project> <card> [--json]
+                                           list a card's hand-offs and how long each step took
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
@@ -47,8 +48,9 @@ Join several groups with a comma: `app:athlete,coach`.
 when the human answers a question. It reads a handoff block on stdin (phase,
 status, next and so on, one per line), refuses one that breaks the rules, and
 records it. `task log` lists what was recorded for a card, with how long each
-step took and how long it waited on the human. Run `entourage task handoff
-<project> <card>` with no block to see the rules.
+step took and how long it waited on the human. With --json it prints the
+same view as one line, for programs: the Steps panel in Herdr draws it. Run
+`entourage task handoff <project> <card>` with no block to see the rules.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
 Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another
