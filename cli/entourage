@@ -24,7 +24,10 @@ Usage:
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
-each repo is for. A repo can be in several projects.
+each repo is for. A repo can be in several projects. `project new` also
+marks the project's folder as trusted in Claude Code's own file
+(~/.claude.json), so an agent started there is not stopped by the trust
+question. It needs jq; without it Claude Code asks once.
 
 A task is one piece of work in a project, usually a Linear card.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
@@ -62,6 +65,9 @@ REPO=$(cd -P "$(dirname "$self")/.." && pwd)
 APP_HOME=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
 # Where Claude Code looks for a person's own skills.
 SKILLS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
+# Claude Code's own record for this machine. Among much else it holds the
+# folders Claude Code starts in without asking.
+CLAUDE_STATE=${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json
 BIN_DIR=$HOME/.local/bin
 HERDR_INSTALL='curl -fsSL https://releases.herdr.dev/app/install.sh | sh'
 # What `update` reinstalls when entourage came from npm rather than a git clone.
@@ -79,7 +85,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common links recipes project task commands; do
+for part in common links recipes trust project task commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null

@@ -69,6 +69,8 @@ project_new() {
   sed "s/__NAME__/$name/" "$TEMPLATE/PROJECT.md" > "$dir/PROJECT.md"
   : > "$dir/repos"
   sync_links "$dir"
+  # The real path, which is what Claude Code looks up; $dir may run through a link.
+  trust_folder "$(project_dir "$name")"
   say "Made project '$name' at $dir"
   say "Next:"
   say "  entourage project add $name <path to a repo>"
