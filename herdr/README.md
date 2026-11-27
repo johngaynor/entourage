@@ -163,13 +163,13 @@ entourage task start <project> <branch>
   `AGENTS.md` links to the project's `PROJECT.md`.
 - **Setup runs in the tab.** For each repo that has a `setup` recipe (see
   [What a repo provides](#what-a-repo-provides)), `just setup` is typed into
-  the new tab's shell, so `task start` returns at once and you watch the
-  install where you will work. With several repos they run one after another,
+  the new tab's shell, so `task start` returns within a second or two and you
+  watch the install where you will work. With several repos they run one after another,
   and one that fails stops the rest. A repo without the recipe is skipped and
   named in the output.
-- **Setup never fails the task.** If `just` or `hc` is missing, or the line
-  could not be typed, the task and its tab are still there and the output
-  gives you the line to run yourself.
+- **Setup never fails the task.** The task and its tab are there either way.
+  Without `just`, the output says setup was skipped. If the line could not be
+  typed into the tab, the output gives you the line to run yourself.
 - **Nothing is made unless everything can be.** A task or branch of that name
   that already exists, a missing repo, or Herdr not running stops it first,
   and a worktree that fails partway is undone.

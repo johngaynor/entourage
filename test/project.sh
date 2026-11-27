@@ -264,7 +264,15 @@ status_says_once_when_just_is_missing() {
   case $out in *"has no justfile"*) fail "checked recipes without just: $out" ;; esac
 }
 
-CASES="status_notes_a_repo_without_a_justfile status_notes_a_justfile_without_setup
+# A stray file in the projects folder is not a project.
+status_is_quiet_about_just_without_projects() {
+  "$E" install >/dev/null
+  mkdir -p "$P"; : > "$P/.DS_Store"
+  out=$("$E" status) || fail "status exited non-zero"
+  case $out in *"just is not installed"*) fail "mentioned just on a machine with no projects: $out" ;; esac
+}
+
+CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a_justfile status_notes_a_justfile_without_setup
   status_is_quiet_when_setup_exists status_ignores_a_parent_justfile
   status_notes_an_unreadable_justfile status_says_once_when_just_is_missing
   project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name

@@ -111,7 +111,7 @@ task_undo() {
 # it exists and its tab is open.
 #   $1 the task's folder   $2 what `tab.new` printed   $3... the task's repos
 run_setup() {
-  local tdir=$1 tab=$2 repo name line='' term count
+  local tdir=$1 tab=$2 repo name line='' term count ready=()
   shift 2
   count=$#
   if ! have_just; then
@@ -122,11 +122,13 @@ run_setup() {
     name=${repo##*/}
     case $(recipe_state "$tdir/$name" setup) in
       ok)
-        say "  setup     $name (running in the tab)"
+        ready+=("$name")
         # One repo: the tab is already in its worktree. Several: the tab is in
-        # the task folder above them, and they run one after another.
+        # the task folder above them, and they run one after another. The ./
+        # keeps the shell's CDPATH, and a name starting with a dash, from
+        # sending cd somewhere else.
         if [ "$count" -eq 1 ]; then line='just setup'
-        else line=${line:+$line && }"(cd $(sh_quote "$name") && just setup)"
+        else line=${line:+$line && }"(cd ./$(sh_quote "$name") && just setup)"
         fi
         ;;
       no-justfile) say "  setup     $name skipped: no justfile" ;;
@@ -137,7 +139,9 @@ run_setup() {
   [ -n "$line" ] || return 0
   # tab.new prints the address of the terminal it made, as "terminal": "t8".
   term=$(printf '%s\n' "$tab" | sed -n 's/.*"terminal": *"\([^"]*\)".*/\1/p' | head -n 1) || term=
+  # hc types the line once the new shell has gone quiet: a second or two.
   if [ -n "$term" ] && have_hc && hc_cmd send "$term" "$line" >/dev/null 2>&1; then
+    for name in "${ready[@]}"; do say "  setup     $name (running in the tab)"; done
     return 0
   fi
   say "  setup     could not be started; run it yourself in the tab: $line"

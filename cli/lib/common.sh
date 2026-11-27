@@ -26,7 +26,8 @@ hc_cmd() {
 have_hc() { command -v hc >/dev/null 2>&1 || [ -x "$BIN_DIR/hc" ]; }
 
 # Print a string quoted for a shell to read back as one word: it's -> 'it'\''s'.
-sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+# LC_ALL=C: sed must not give up on a name that is not valid text in this locale.
+sh_quote() { printf "'%s'" "$(printf '%s' "$1" | LC_ALL=C sed "s/'/'\\\\''/g")"; }
 
 # Herdr answers `status` with the layout it shows only while its window is open.
 herdr_running() { herdr_app status 2>/dev/null | grep -q '"layout"'; }

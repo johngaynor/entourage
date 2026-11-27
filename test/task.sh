@@ -518,7 +518,7 @@ EOF
 task_start_runs_setup_several_repos() {
   stub_just; stub_hc; task_demo api web docs; give_setup api; give_setup docs
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 (cd 'api' && just setup) && (cd 'docs' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'docs' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
   case $out in *"setup     web skipped: no justfile"*) ;; *) fail "did not report the skipped repo: $out" ;; esac
   case $out in *"setup     docs (running in the tab)"*) ;; *) fail "did not report docs: $out" ;; esac
 }
@@ -551,7 +551,7 @@ task_start_ignores_a_parent_justfile() {
 task_start_quotes_repo_names() {
   stub_just; stub_hc; task_demo "my api" "it's"; give_setup "my api"; give_setup "it's"
   "$E" task start demo feat/x >/dev/null || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 (cd 'my api' && just setup) && (cd 'it'\\''s' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 (cd ./'my api' && just setup) && (cd ./'it'\\''s' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
 }
 
 task_start_without_just() {
@@ -579,6 +579,7 @@ exit 0
 EOF
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero with no terminal"
   [ -z "$(hc_calls)" ] || fail "typed somewhere without a terminal: $(hc_calls)"
+  [ -d "$T/x/api" ] || fail "no worktree"
   case $out in *"run it yourself in the tab: just setup"*) ;; *) fail "did not say what to run: $out" ;; esac
 }
 
@@ -587,6 +588,7 @@ task_start_when_hc_send_fails() {
   out=$("$E" task start demo feat/x) || fail "task start exited non-zero when hc failed"
   [ -d "$T/x/api" ] || fail "no worktree"
   case $out in *"run it yourself in the tab: just setup"*) ;; *) fail "did not say what to run: $out" ;; esac
+  case $out in *"running in the tab"*) fail "said setup is running when it could not be started: $out" ;; esac
 }
 
 SETUP_CASES="task_start_runs_setup_one_repo task_start_sends_setup_to_the_new_tab
