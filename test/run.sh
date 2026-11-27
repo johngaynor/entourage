@@ -11,7 +11,7 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-AREAS="install project task skills handoff runner"
+AREAS="install project task skills handoff runner release"
 # shellcheck source=/dev/null
 . "$HERE/helpers.sh"
 
