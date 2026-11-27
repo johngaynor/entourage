@@ -483,7 +483,119 @@ CARD_CASES="task_new_starts_an_agent task_new_sends_one_line_of_json task_new_ta
   task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_herdr_running
   task_new_says_when_the_tab_fails task_new_escapes_the_folder"
 
-CASES="$CARD_CASES task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
+# --- tasks: setup -----------------------------------------------------------
+
+# Give a repo made by task_demo a justfile on its default branch, here and on
+# its origin. $2 is the justfile's text; the default has a setup recipe.
+give_setup() {
+  local repo=$HOME/Dev/$1
+  printf '%b' "${2:-setup:\n\techo\n}" > "$repo/justfile"
+  git -C "$repo" add justfile
+  git -C "$repo" -c user.name=t -c user.email=t@t commit -q -m justfile
+  git -C "$repo" push -q origin main
+}
+
+task_start_runs_setup_one_repo() {
+  stub_just; stub_hc; task_demo api; give_setup api
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 just setup" ] || fail "wrong hc calls: $(hc_calls)"
+  case $out in *"setup     api (running in the tab)"*) ;; *) fail "did not report setup: $out" ;; esac
+}
+
+task_start_sends_setup_to_the_new_tab() {
+  stub_just; stub_hc; task_demo api; give_setup api
+  cat > "$TMP/bin/herdr-app" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/herdr-calls.log"
+[ "\$1" = status ] && echo '  "layout": "test",'
+[ "\$2" = tab.new ] && printf '{\n  "space": "sp1",\n  "tab": "tb1",\n  "terminal": "t42"\n}\n'
+exit 0
+EOF
+  "$E" task start demo feat/x >/dev/null || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t42 just setup" ] || fail "did not use the terminal tab.new named: $(hc_calls)"
+}
+
+task_start_runs_setup_several_repos() {
+  stub_just; stub_hc; task_demo api web docs; give_setup api; give_setup docs
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 (cd 'api' && just setup) && (cd 'docs' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
+  case $out in *"setup     web skipped: no justfile"*) ;; *) fail "did not report the skipped repo: $out" ;; esac
+  case $out in *"setup     docs (running in the tab)"*) ;; *) fail "did not report docs: $out" ;; esac
+}
+
+task_start_skips_setup_without_a_recipe() {
+  stub_just; stub_hc; task_demo api; give_setup api 'setup-db:\n\techo\npresetup:\n\techo\n'
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
+  [ -z "$(hc_calls)" ] || fail "typed into the tab: $(hc_calls)"
+  case $out in *"setup     api skipped: its justfile has no setup recipe"*) ;; *) fail "did not say why: $out" ;; esac
+}
+
+task_start_skips_an_unreadable_justfile() {
+  stub_just; stub_hc; task_demo api; give_setup api 'BROKEN\nsetup:\n\techo\n'
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
+  [ -z "$(hc_calls)" ] || fail "typed into the tab: $(hc_calls)"
+  case $out in *"setup     api skipped: its justfile could not be read by just"*) ;; *) fail "did not say why: $out" ;; esac
+}
+
+task_start_ignores_a_parent_justfile() {
+  export ENTOURAGE_HOME=$TMP/outer
+  mkdir -p "$ENTOURAGE_HOME"
+  printf 'setup:\n\techo\n' > "$ENTOURAGE_HOME/justfile"
+  stub_just; stub_hc; task_demo api
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero"
+  [ -d "$ENTOURAGE_HOME/projects/demo/tasks/x/api" ] || fail "no worktree"
+  [ -z "$(hc_calls)" ] || fail "ran a justfile from above the task: $(hc_calls)"
+  case $out in *"setup     api skipped: no justfile"*) ;; *) fail "did not report the skip: $out" ;; esac
+}
+
+task_start_quotes_repo_names() {
+  stub_just; stub_hc; task_demo "my api" "it's"; give_setup "my api"; give_setup "it's"
+  "$E" task start demo feat/x >/dev/null || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 (cd 'my api' && just setup) && (cd 'it'\\''s' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
+}
+
+task_start_without_just() {
+  stub_hc; task_demo api; give_setup api
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero without just"
+  [ -d "$T/x/api" ] || fail "no worktree"
+  [ -z "$(hc_calls)" ] || fail "typed into the tab: $(hc_calls)"
+  case $out in *"just is not installed"*"https://just.systems"*) ;; *) fail "did not say just is missing: $out" ;; esac
+}
+
+task_start_without_hc() {
+  stub_just; task_demo api; give_setup api
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero without hc"
+  [ -d "$T/x/api" ] || fail "no worktree"
+  case $out in *"run it yourself in the tab: just setup"*) ;; *) fail "did not say what to run: $out" ;; esac
+}
+
+task_start_without_a_terminal() {
+  stub_just; stub_hc; task_demo api; give_setup api
+  cat > "$TMP/bin/herdr-app" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/herdr-calls.log"
+[ "\$1" = status ] && echo '  "layout": "test",'
+exit 0
+EOF
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero with no terminal"
+  [ -z "$(hc_calls)" ] || fail "typed somewhere without a terminal: $(hc_calls)"
+  case $out in *"run it yourself in the tab: just setup"*) ;; *) fail "did not say what to run: $out" ;; esac
+}
+
+task_start_when_hc_send_fails() {
+  stub_just; stub_hc 1; task_demo api; give_setup api
+  out=$("$E" task start demo feat/x) || fail "task start exited non-zero when hc failed"
+  [ -d "$T/x/api" ] || fail "no worktree"
+  case $out in *"run it yourself in the tab: just setup"*) ;; *) fail "did not say what to run: $out" ;; esac
+}
+
+SETUP_CASES="task_start_runs_setup_one_repo task_start_sends_setup_to_the_new_tab
+  task_start_runs_setup_several_repos task_start_skips_setup_without_a_recipe
+  task_start_skips_an_unreadable_justfile task_start_ignores_a_parent_justfile
+  task_start_quotes_repo_names task_start_without_just task_start_without_hc
+  task_start_without_a_terminal task_start_when_hc_send_fails"
+
+CASES="$SETUP_CASES $CARD_CASES task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
   task_start_keeps_the_task_when_the_space_fails task_start_branch_has_no_upstream
   task_start_refusal_keeps_the_first_task task_start_refusal_keeps_an_existing_branch
   task_start_over_a_folder_deleted_by_hand task_start_leaves_other_worktrees_alone

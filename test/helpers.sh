@@ -31,12 +31,14 @@ setup() {
   unset ENTOURAGE_HOME
   P=$HOME/.config/entourage/projects
   mkdir -p "$APP/mods" "$APP/layouts" "$TMP/bin"
-  # Stub herdr-app: logs calls, reports the "test" layout as shown.
+  # Stub herdr-app: logs calls, reports the "test" layout as shown, and names
+  # the terminal of a tab it is asked to make.
   cat > "$TMP/bin/herdr-app" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$TMP/herdr-calls.log"
 [ "\$1" = status ] && echo '  "layout": "test",'
 [ "\$1" = ls ] && [ -f "$TMP/herdr-ls.json" ] && cat "$TMP/herdr-ls.json"
+[ "\$2" = tab.new ] && echo '  "terminal": "t9"'
 exit 0
 EOF
   chmod +x "$TMP/bin/herdr-app"
@@ -78,3 +80,11 @@ echo
 EOF
   chmod +x "$TMP/bin/just"
 }
+
+# A stand-in for Herdr's `hc`, for tests that want it installed. It logs each
+# call's arguments on one line and exits with the given code.
+stub_hc() {
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s"\nexit %s\n' "$TMP/hc-calls.log" "${1:-0}" > "$TMP/bin/hc"
+  chmod +x "$TMP/bin/hc"
+}
+hc_calls() { cat "$TMP/hc-calls.log" 2>/dev/null; }

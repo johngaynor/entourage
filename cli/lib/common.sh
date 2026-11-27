@@ -15,6 +15,19 @@ herdr_app() {
 
 have_herdr() { command -v herdr-app >/dev/null 2>&1 || [ -x "$BIN_DIR/herdr-app" ]; }
 
+# hc is the command for Herdr's terminals; it is installed beside herdr-app.
+hc_cmd() {
+  if command -v hc >/dev/null 2>&1; then hc "$@"
+  elif [ -x "$BIN_DIR/hc" ]; then "$BIN_DIR/hc" "$@"
+  else return 127
+  fi
+}
+
+have_hc() { command -v hc >/dev/null 2>&1 || [ -x "$BIN_DIR/hc" ]; }
+
+# Print a string quoted for a shell to read back as one word: it's -> 'it'\''s'.
+sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
 # Herdr answers `status` with the layout it shows only while its window is open.
 herdr_running() { herdr_app status 2>/dev/null | grep -q '"layout"'; }
 

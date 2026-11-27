@@ -104,6 +104,45 @@ task_undo() {
   [ ! -e "$tdir" ] || printf 'entourage: could not remove everything in %s\n' "$tdir" >&2
 }
 
+# Get a new task ready to work in: type `just setup` into its tab's shell for
+# every repo that provides the recipe (see recipes.sh). It runs there, not
+# here, so that `task start` returns at once and the install is on screen
+# where the work will happen. Nothing in this step can fail the task: by now
+# it exists and its tab is open.
+#   $1 the task's folder   $2 what `tab.new` printed   $3... the task's repos
+run_setup() {
+  local tdir=$1 tab=$2 repo name line='' term count
+  shift 2
+  count=$#
+  if ! have_just; then
+    say "  setup     skipped: just is not installed (https://just.systems)"
+    return 0
+  fi
+  for repo in "$@"; do
+    name=${repo##*/}
+    case $(recipe_state "$tdir/$name" setup) in
+      ok)
+        say "  setup     $name (running in the tab)"
+        # One repo: the tab is already in its worktree. Several: the tab is in
+        # the task folder above them, and they run one after another.
+        if [ "$count" -eq 1 ]; then line='just setup'
+        else line=${line:+$line && }"(cd $(sh_quote "$name") && just setup)"
+        fi
+        ;;
+      no-justfile) say "  setup     $name skipped: no justfile" ;;
+      no-recipe) say "  setup     $name skipped: its justfile has no setup recipe" ;;
+      *) say "  setup     $name skipped: its justfile could not be read by just" ;;
+    esac
+  done
+  [ -n "$line" ] || return 0
+  # tab.new prints the address of the terminal it made, as "terminal": "t8".
+  term=$(printf '%s\n' "$tab" | sed -n 's/.*"terminal": *"\([^"]*\)".*/\1/p' | head -n 1) || term=
+  if [ -n "$term" ] && have_hc && hc_cmd send "$term" "$line" >/dev/null 2>&1; then
+    return 0
+  fi
+  say "  setup     could not be started; run it yourself in the tab: $line"
+}
+
 task_start() {
   local name=${1:-} branch=${2:-} dir task
   dir=$(project_dir "$name")
@@ -180,8 +219,10 @@ task_start() {
     die "made the task at $folder but could not show it in Herdr. Open that folder in the project's space yourself."
   # No `space` argument: the tab goes in the selected space, which show_space
   # has just selected or made.
-  herdr_app do tab.new "{\"name\":\"$task\",\"folder\":\"$folder\"}" >/dev/null 2>&1 ||
+  local tab
+  tab=$(herdr_app do tab.new "{\"name\":\"$task\",\"folder\":\"$folder\"}" 2>/dev/null) ||
     die "made the task at $folder but could not open its tab. Is Herdr open?"
+  run_setup "$tdir" "$tab" "${repos[@]}"
   say "Opened task '$task' on branch $branch"
 }
 
