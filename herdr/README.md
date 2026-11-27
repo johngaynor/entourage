@@ -139,12 +139,29 @@ entourage task new <project> <card>
 
 ### Starting the work
 
-One branch, checked out as a git worktree of every repo in the project, and
+One branch, checked out as a git worktree of the repos the task needs, and
 shown as a tab in the project's space.
 
 ```sh
-entourage task start <project> <branch>
+entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
 ```
+
+- **Targets say what the task works on.** Each one names a repo of the
+  project by its folder name, and optionally groups inside it:
+
+  | After the branch | The task gets |
+  |---|---|
+  | nothing | every repo of the project, each with its whole setup |
+  | `app:athlete` | the `app` repo, set up for its `athlete` group |
+  | `app:athlete,coach` | `app`, set up for both groups |
+  | `app:athlete billing` | two repos: `app` for `athlete`, and all of `billing` |
+
+  A repo that is not named gets no worktree and no setup; read it through the
+  project's `links/`. A group is the repo's own word for a part of itself
+  (see [What a repo provides](#what-a-repo-provides)): lowercase letters,
+  digits and dashes. entourage passes it on and does not check that the repo
+  knows it. A repo whose folder name has a colon in it cannot be named as a
+  target.
 
 - **The branch is `<type>/<description>`**, following
   [Conventional Branch](https://conventionalbranch.org): `feat/abc-122-insert-task-here`,
@@ -153,16 +170,17 @@ entourage task start <project> <branch>
   `release` and `chore`, plus `ai`, `claude`, `codex`, `copilot` and `cursor`.
 - **The description names the task.** `feat/abc-122-insert-task-here` makes
   the folder `tasks/abc-122-insert-task-here` and a tab of that name.
-- **Each repo gets a worktree** at `tasks/<task>/<repo>`, on the new branch,
+- **Each of the task's repos gets a worktree** at `tasks/<task>/<repo>`, on the new branch,
   cut from the remote's default branch after a fetch. A repo that cannot be
   fetched starts from what is local, with a warning.
 - **The repos' own checkouts are not touched.** They stay on whatever branch
   they were on.
-- **Where the tab starts:** in the worktree when the project has one repo; in
+- **Where the tab starts:** in the worktree when the task has one repo; in
   the task folder when it has several. That folder has `CLAUDE.md` and
   `AGENTS.md` links to the project's `PROJECT.md`.
 - **Setup runs in the tab.** For each repo that has a `setup` recipe (see
-  [What a repo provides](#what-a-repo-provides)), `just setup` is typed into
+  [What a repo provides](#what-a-repo-provides)), `just setup`, followed by
+  the target's groups if it named any, is typed into
   the new tab's shell, so `task start` returns within a second or two and you
   watch the install where you will work. With several repos they run one after another,
   and one that fails stops the rest. A repo without the recipe is skipped and
@@ -185,7 +203,7 @@ have the same names in every repo. entourage only knows the names.
 
 | Recipe | What it must do | Used by |
 |---|---|---|
-| `setup` | Make a fresh checkout ready to work in: install dependencies and anything else a new worktree lacks. Safe to run twice. | `entourage task start` |
+| `setup` | Make a fresh checkout ready to work in: install dependencies and anything else a new worktree lacks. Safe to run twice. Called with group names (`just setup athlete coach`), make ready only what those groups need, and fail with a clear message for a group the repo does not have. | `entourage task start` |
 
 ```just
 setup:
@@ -194,7 +212,10 @@ setup:
 
 - **Only a justfile at the repo's own root counts**: `justfile`, `Justfile` or
   `.justfile`. One in a folder above is never used.
-- **A repo with several codebases** handles them inside its own recipe.
+- **A repo with several codebases names its own groups**, such as `athlete`
+  for a web app with the API and database it needs. A target like
+  `app:athlete` reaches the recipe as `just setup athlete`. A repo with one
+  codebase needs none: its `setup` takes no arguments.
 - **`entourage status` notes** each repo with no justfile or no `setup`
   recipe. A note is not a problem: tasks in that project still start, without
   setup.

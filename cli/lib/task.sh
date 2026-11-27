@@ -111,7 +111,7 @@ task_undo() {
 # it exists and its tab is open.
 #   $1 the task's folder   $2 what `tab.new` printed   $3... the task's repos
 run_setup() {
-  local tdir=$1 tab=$2 repo name line='' term count ready=()
+  local tdir=$1 tab=$2 repo name line='' term count ready=() groups i=0
   shift 2
   count=$#
   if ! have_just; then
@@ -120,15 +120,17 @@ run_setup() {
   fi
   for repo in "$@"; do
     name=${repo##*/}
+    # This repo's groups, if its target named any: handed to its recipe as is.
+    groups=${TASK_GROUPS[$i]:-}; i=$((i + 1))
     case $(recipe_state "$tdir/$name" setup) in
       ok)
-        ready+=("$name")
+        ready+=("$name${groups:+ $groups}")
         # One repo: the tab is already in its worktree. Several: the tab is in
         # the task folder above them, and they run one after another. The ./
         # keeps the shell's CDPATH, and a name starting with a dash, from
         # sending cd somewhere else.
-        if [ "$count" -eq 1 ]; then line='just setup'
-        else line=${line:+$line && }"(cd ./$(sh_quote "$name") && just setup)"
+        if [ "$count" -eq 1 ]; then line="just setup${groups:+ $groups}"
+        else line=${line:+$line && }"(cd ./$(sh_quote "$name") && just setup${groups:+ $groups})"
         fi
         ;;
       no-justfile) say "  setup     $name skipped: no justfile" ;;
@@ -147,11 +149,69 @@ run_setup() {
   say "  setup     could not be started; run it yourself in the tab: $line"
 }
 
+# A group is a part of a repo, named by the repo itself: a plain word, because
+# it is typed into the tab's shell. Lowercase letters, digits and dashes, not
+# starting with a dash. Every allowed character is spelled out: a range like
+# a-z means different things in different locales, and in some it lets
+# uppercase letters and shell punctuation through.
+valid_group() {
+  case ${1:-} in
+    '' | -* | *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 1 ;;
+  esac
+}
+
+# What `task start` was asked to work on, from its targets:
+#   TARGET_REPOS   the repo each target names
+#   TARGET_GROUPS  that target's groups, separated by spaces ('' for the whole repo)
+# and, once the task's repos are chosen, in the same order as them:
+#   TASK_GROUPS    each repo's groups
+TARGET_REPOS=() TARGET_GROUPS=() TASK_GROUPS=()
+
+# Read targets of the form <repo>[:<group>[,<group>...]] into TARGET_REPOS and
+# TARGET_GROUPS, or stop. entourage checks a group's shape only: what a group
+# means, and whether it exists, is the repo's business.
+#   $1 the project   $2... the project's repos, then --, then the targets
+parse_targets() {
+  local name=$1 known=() arg repo groups group found r i
+  shift
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do known+=("${1##*/}"); shift; done
+  shift
+  TARGET_REPOS=() TARGET_GROUPS=()
+  for arg in "$@"; do
+    repo=${arg%%:*}
+    found=0
+    for r in "${known[@]}"; do [ "$r" != "$repo" ] || found=1; done
+    [ "$found" = 1 ] ||
+      die "'$repo' is not a repo in project '$name'. Its repos are: ${known[*]}"
+    i=0
+    while [ "$i" -lt "${#TARGET_REPOS[@]}" ]; do
+      [ "${TARGET_REPOS[$i]}" != "$repo" ] ||
+        die "'$repo' is named twice. Give its groups together, separated by a comma, like: $repo:athlete,coach"
+      i=$((i + 1))
+    done
+    groups=''
+    case $arg in
+      *:*)
+        # Split on commas by hand: an empty group (a trailing or doubled
+        # comma) has to be caught, not skipped.
+        r=${arg#*:},
+        while [ -n "$r" ]; do
+          group=${r%%,*}; r=${r#*,}
+          valid_group "$group" ||
+            die "'$group' in '$arg' is not a group name. A group is lowercase letters, digits and dashes, like: $repo:athlete"
+          groups=${groups:+$groups }$group
+        done
+        ;;
+    esac
+    TARGET_REPOS+=("$repo"); TARGET_GROUPS+=("$groups")
+  done
+}
+
 task_start() {
   local name=${1:-} branch=${2:-} dir task
   dir=$(project_dir "$name")
   [ -n "$branch" ] ||
-    die "which branch? Usage: entourage task start $name <type>/<description> (see https://conventionalbranch.org)"
+    die "which branch? Usage: entourage task start $name <type>/<description> [<repo>[:<group>[,<group>...]] ...] (see https://conventionalbranch.org)"
   valid_branch "$branch" ||
     die "'$branch' is not a branch name entourage accepts. Use <type>/<description>, like: feat/abc-122-short-title (see https://conventionalbranch.org)"
   task=$(task_name "$branch")
@@ -160,10 +220,28 @@ task_start() {
   herdr_running || die "Herdr is not running. Open it, then run this again."
 
   # Check everything before making anything.
-  local repos=() bases=() repo base i tdir=$dir/tasks/$task
-  while IFS= read -r repo; do repos+=("$repo"); done < <(project_repos "$dir")
-  [ "${#repos[@]}" -gt 0 ] ||
+  local all=() repos=() bases=() repo base i tdir=$dir/tasks/$task
+  while IFS= read -r repo; do all+=("$repo"); done < <(project_repos "$dir")
+  [ "${#all[@]}" -gt 0 ] ||
     die "project '$name' has no repos. Add one with: entourage project add $name <path>"
+  # The task's repos are the ones its targets name, or every repo when there
+  # are no targets, always in the order of the project's repos file.
+  shift 2
+  parse_targets "$name" "${all[@]}" -- "$@"
+  TASK_GROUPS=()
+  for repo in "${all[@]}"; do
+    if [ "${#TARGET_REPOS[@]}" -eq 0 ]; then
+      repos+=("$repo"); TASK_GROUPS+=('')
+      continue
+    fi
+    i=0
+    while [ "$i" -lt "${#TARGET_REPOS[@]}" ]; do
+      if [ "${TARGET_REPOS[$i]}" = "${repo##*/}" ]; then
+        repos+=("$repo"); TASK_GROUPS+=("${TARGET_GROUPS[$i]}")
+      fi
+      i=$((i + 1))
+    done
+  done
   for repo in "${repos[@]}"; do
     is_repo "$repo" || die "$repo is missing or is not a git repo (see: entourage status)"
   done
@@ -234,6 +312,6 @@ cmd_task() {
   case ${1:-} in
     new) shift; task_new "$@" ;;
     start) shift; task_start "$@" ;;
-    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> (see: entourage help)" ;;
+    *) die "usage: entourage task new <project> <card>, or: entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...] (see: entourage help)" ;;
   esac
 }

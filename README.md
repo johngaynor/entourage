@@ -69,6 +69,13 @@ every repo of the project, and opens a tab for it:
 entourage task start my-project feat/abc-122-insert-task-here
 ```
 
+Name targets after the branch to take only what the task needs: a repo, or
+groups inside a repo (`app:athlete`, or `app:athlete,coach` for several).
+
+```sh
+entourage task start my-project feat/abc-122-insert-task-here app:athlete billing
+```
+
 The branch is `<type>/<description>`, following
 [Conventional Branch](https://conventionalbranch.org), with the card's ID in
 the description. The description names the task:
