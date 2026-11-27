@@ -31,12 +31,14 @@ setup() {
   unset ENTOURAGE_HOME
   P=$HOME/.config/entourage/projects
   mkdir -p "$APP/mods" "$APP/layouts" "$TMP/bin"
-  # Stub herdr-app: logs calls, reports the "test" layout as shown.
+  # Stub herdr-app: logs calls, reports the "test" layout as shown, and names
+  # the terminal of a tab it is asked to make.
   cat > "$TMP/bin/herdr-app" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$TMP/herdr-calls.log"
 [ "\$1" = status ] && echo '  "layout": "test",'
 [ "\$1" = ls ] && [ -f "$TMP/herdr-ls.json" ] && cat "$TMP/herdr-ls.json"
+[ "\$2" = tab.new ] && echo '  "terminal": "t9"'
 exit 0
 EOF
   chmod +x "$TMP/bin/herdr-app"
@@ -62,3 +64,27 @@ stub() {
 
 # The last thing asked of Herdr.
 last_call() { tail -n 1 "$TMP/herdr-calls.log"; }
+
+# A stand-in for `just`, for tests that want it installed. It answers
+# `just --justfile <file> --summary` with the file's recipe names on one line,
+# and fails for a file that contains the line BROKEN, as just does for a
+# justfile it cannot parse. Every call is logged.
+stub_just() {
+  cat > "$TMP/bin/just" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/just-calls.log"
+[ "\$1" = --justfile ] && [ "\$3" = --summary ] || exit 2
+grep -qx BROKEN "\$2" && { echo "error: could not parse" >&2; exit 1; }
+sed -n 's/^\([a-zA-Z0-9_-][a-zA-Z0-9_-]*\):.*/\1/p' "\$2" | tr '\n' ' ' | sed 's/ \$//'
+echo
+EOF
+  chmod +x "$TMP/bin/just"
+}
+
+# A stand-in for Herdr's `hc`, for tests that want it installed. It logs each
+# call's arguments on one line and exits with the given code.
+stub_hc() {
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s"\nexit %s\n' "$TMP/hc-calls.log" "${1:-0}" > "$TMP/bin/hc"
+  chmod +x "$TMP/bin/hc"
+}
+hc_calls() { cat "$TMP/hc-calls.log" 2>/dev/null; }

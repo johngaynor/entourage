@@ -32,7 +32,8 @@ sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
 `task start` takes a branch, <type>/<description>, like
 feat/abc-122-short-title (https://conventionalbranch.org). It makes a folder
 in the project's tasks/ folder with a worktree of each repo on that branch,
-and opens a tab for it.
+and opens a tab for it. A repo with a justfile that has a `setup` recipe
+gets `just setup` run in that tab, so the checkout is ready to work in.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
 Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another
@@ -74,7 +75,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common links project task commands; do
+for part in common links recipes project task commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null

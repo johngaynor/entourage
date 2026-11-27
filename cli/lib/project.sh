@@ -156,6 +156,18 @@ check_projects() {
       is_repo "$repo" || { say "  problem    ${d##*/}: $repo is missing or is not a git repo"; bad=$((bad + 1)); }
     done < <(project_repos "$d")
     [ "$bad" -gt 0 ] || say "  ok         ${d##*/}"
+    # Notes say what a repo does not provide. They are not problems: a task
+    # in the project still starts, only without that step.
+    if have_just; then
+      while IFS= read -r repo; do
+        is_repo "$repo" || continue
+        case $(recipe_state "$repo" setup) in
+          no-justfile) say "  note       ${d##*/}: ${repo##*/} has no justfile, so tasks start without setup" ;;
+          no-recipe) say "  note       ${d##*/}: ${repo##*/}'s justfile has no setup recipe" ;;
+          unreadable) say "  note       ${d##*/}: ${repo##*/}'s justfile could not be read by just" ;;
+        esac
+      done < <(project_repos "$d")
+    fi
     problems=$((problems + bad))
   done
   return "$problems"

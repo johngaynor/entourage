@@ -161,12 +161,45 @@ entourage task start <project> <branch>
 - **Where the tab starts:** in the worktree when the project has one repo; in
   the task folder when it has several. That folder has `CLAUDE.md` and
   `AGENTS.md` links to the project's `PROJECT.md`.
+- **Setup runs in the tab.** For each repo that has a `setup` recipe (see
+  [What a repo provides](#what-a-repo-provides)), `just setup` is typed into
+  the new tab's shell, so `task start` returns within a second or two and you
+  watch the install where you will work. With several repos they run one after another,
+  and one that fails stops the rest. A repo without the recipe is skipped and
+  named in the output.
+- **Setup never fails the task.** The task and its tab are there either way.
+  Without `just`, the output says setup was skipped. If the line could not be
+  typed into the tab, the output gives you the line to run yourself.
 - **Nothing is made unless everything can be.** A task or branch of that name
   that already exists, a missing repo, or Herdr not running stops it first,
   and a worktree that fails partway is undone.
 - **Remove a task by hand for now:** in each repo run
   `git worktree remove <project folder>/tasks/<task>/<repo>` and
   `git branch -D <branch>`, then delete the task's folder and close its tab.
+
+## What a repo provides
+
+entourage knows nothing about how a repo is built or run. A repo says so
+itself, in a [justfile](https://just.systems) at its root, with recipes that
+have the same names in every repo. entourage only knows the names.
+
+| Recipe | What it must do | Used by |
+|---|---|---|
+| `setup` | Make a fresh checkout ready to work in: install dependencies and anything else a new worktree lacks. Safe to run twice. | `entourage task start` |
+
+```just
+setup:
+    npm install
+```
+
+- **Only a justfile at the repo's own root counts**: `justfile`, `Justfile` or
+  `.justfile`. One in a folder above is never used.
+- **A repo with several codebases** handles them inside its own recipe.
+- **`entourage status` notes** each repo with no justfile or no `setup`
+  recipe. A note is not a problem: tasks in that project still start, without
+  setup.
+- **`just` has to be installed** on the machine. Without it, tasks start
+  without setup and `entourage status` says so.
 
 ## Changing things
 

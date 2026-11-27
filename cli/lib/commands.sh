@@ -78,6 +78,10 @@ cmd_status() {
   say "Projects: $PROJECTS"
   local project_problems=0
   check_projects || project_problems=$?
+  # Only worth saying on a machine that has projects to start tasks in.
+  if ! have_just && [ -n "$(ls -d "$PROJECTS"/*/ 2>/dev/null)" ]; then
+    say "  note       just is not installed, so tasks start without setup. Install it: https://just.systems"
+  fi
   if [ "$problems" -gt 0 ] || [ "$project_problems" -gt 0 ]; then
     [ "$project_problems" = 0 ] || say "$project_problems project problem(s)."
     return 1
