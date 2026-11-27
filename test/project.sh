@@ -58,8 +58,55 @@ project_new_without_jq_leaves_claude_state() {
   out=$("$E" project new demo) || fail "new exited non-zero"
   [ -f "$P/demo/PROJECT.md" ] || fail "the project was not made"
   cmp -s "$HOME/.claude.json" "$TMP/before" || fail "the state file changed"
-  case $out in *"jq is not installed"*) ;; *) fail "did not say jq is missing: $out" ;; esac
+  # "may ask": without jq there is no telling whether the folder is trusted already.
+  case $out in
+    *"Claude Code may ask to trust $P/demo: jq is not installed"*) ;;
+    *) fail "did not say jq is missing: $out" ;;
+  esac
   no_trust_litter
+}
+
+# An rm that cannot remove the temp file, as when the state file is immutable
+# and so is every copy of it.
+project_new_survives_a_temp_file_it_cannot_remove() {
+  claude_state
+  cat > "$TMP/bin/rm" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do
+  case $a in *.claude.json.entourage.*) echo "rm: $a: Operation not permitted" >&2; exit 1 ;; esac
+done
+exec /bin/rm "$@"
+EOF
+  chmod +x "$TMP/bin/rm"
+  local out
+  out=$("$E" project new demo 2>&1) || fail "new exited non-zero: $out"
+  case $out in *"Made project 'demo'"*) ;; *) fail "the project was not reported made: $out" ;; esac
+  case $out in *"Operation not permitted"*) fail "showed a raw error: $out" ;; esac
+  is_trusted "$P/demo" || fail "the folder is not trusted"
+  [ ! -e "$HOME/.claude.json.lock" ] || fail "left the lock behind"
+}
+
+# A sleep that fails, as one that does not take a fraction of a second would.
+project_new_survives_a_sleep_that_fails() {
+  claude_state
+  mkdir "$HOME/.claude.json.lock"
+  stub sleep 1
+  local out
+  out=$("$E" project new demo 2>&1) || fail "new exited non-zero: $out"
+  case $out in *"is in use"*"Made project 'demo'"*) ;; *) fail "did not carry on past the wait: $out" ;; esac
+}
+
+# Reading through a link is harmless, so a linked file that already trusts the
+# folder is nothing to speak of.
+project_new_is_quiet_when_a_linked_claude_state_trusts_it() {
+  printf '{"projects":{"%s":{"hasTrustDialogAccepted":true}}}\n' "$P/demo" > "$TMP/real.json"
+  ln -s "$TMP/real.json" "$HOME/.claude.json"
+  local out
+  out=$("$E" project new demo) || fail "new exited non-zero"
+  case $out in
+    *"  note      "* | *"  trusted   "*) fail "spoke of trust for a folder that is trusted already: $out" ;;
+  esac
+  [ -L "$HOME/.claude.json" ] || fail "the link was replaced"
 }
 
 # Not JSON, empty (jq prints nothing for it and exits zero), and JSON that is
@@ -387,6 +434,8 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name
   project_new_trusts_its_folder project_new_without_claude_state_writes_none
   project_new_without_jq_leaves_claude_state project_new_leaves_broken_claude_state
+  project_new_survives_a_temp_file_it_cannot_remove project_new_survives_a_sleep_that_fails
+  project_new_is_quiet_when_a_linked_claude_state_trusts_it
   project_new_leaves_linked_claude_state project_new_leaves_claude_state_in_use
   project_new_trust_honors_claude_config_dir project_new_trusts_a_path_with_quotes
   project_new_trusts_the_real_path

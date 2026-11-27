@@ -196,6 +196,20 @@ task_new_leaves_trusted_claude_state_alone() {
   esac
 }
 
+# A project name that is a link leads to a folder entourage did not make,
+# perhaps a repo. entourage answers only for folders it made.
+task_new_does_not_trust_a_linked_project() {
+  card_demo
+  mv "$P/demo" "$TMP/elsewhere"
+  ln -s "$TMP/elsewhere" "$P/demo"
+  claude_state
+  cp "$HOME/.claude.json" "$TMP/before"
+  "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+  [ "$(tab_calls)" = 1 ] || fail "no tab was opened"
+  cmp -s "$HOME/.claude.json" "$TMP/before" ||
+    fail "trusted a folder entourage did not make: $(cat "$HOME/.claude.json")"
+}
+
 task_new_starts_when_trust_cannot_be_written() {
   card_demo
   printf '{broken' > "$HOME/.claude.json"
@@ -538,7 +552,8 @@ CARD_CASES="task_new_starts_an_agent task_new_sends_one_line_of_json task_new_ta
   task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_herdr_running
   task_new_says_when_the_tab_fails task_new_escapes_the_folder
   task_new_trusts_a_project_made_before task_new_trusts_before_the_tab_opens
-  task_new_leaves_trusted_claude_state_alone task_new_starts_when_trust_cannot_be_written"
+  task_new_leaves_trusted_claude_state_alone task_new_starts_when_trust_cannot_be_written
+  task_new_does_not_trust_a_linked_project"
 
 # --- tasks: setup -----------------------------------------------------------
 

@@ -129,9 +129,10 @@ entourage task new <project> <card>
   folder?" the first time it starts somewhere, which would leave the agent
   waiting. So `project new`, and `task new` before it opens the tab, mark the
   project's folder as trusted in Claude Code's own file (`~/.claude.json`).
-  Only that folder is marked, never a repo. Where it cannot be done (no `jq`,
-  or Claude Code has never run on the machine), entourage says so and Claude
-  Code asks once.
+  Only a project folder entourage made is marked: never a repo, and not a
+  project folder you linked in from somewhere else. Where it cannot be done
+  (no `jq`, or Claude Code has never run on the machine), entourage says so
+  and Claude Code asks once.
 - **The agent's first message** is [prompts/task-new.md](../prompts/task-new.md)
   with the card and project filled in. It tells the agent to start with
   `sdlc-define` and follow each skill's handoff block to the next

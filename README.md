@@ -51,8 +51,9 @@ they are never published and survive updates. See
 
 `project new` also marks the project's folder as trusted in Claude Code's own
 file, `~/.claude.json`, so an agent started there is not stopped by the "do
-you trust this folder?" question. Only the project's own folder is marked,
-never a repo. This needs `jq`; without it Claude Code asks once.
+you trust this folder?" question. Only a project folder that entourage made
+is marked: never a repo, and not a project folder you linked in from somewhere
+else. This needs `jq`; without it Claude Code asks once.
 
 ## Tasks
 

@@ -17,6 +17,18 @@ project_dir() {
   (cd -P "$PROJECTS/$name" && pwd)
 }
 
+# Mark a project's folder as trusted by Claude Code (see trust.sh), when
+# entourage made it: a folder of its own in $PROJECTS. A project name that is
+# a link leads to a folder someone else made, perhaps a repo, and entourage
+# does not answer for that. Claude Code asks about it itself, once.
+trust_project() {
+  local name=$1
+  [ ! -L "$PROJECTS/$name" ] || return 0
+  # The real path, which is what Claude Code looks up: $PROJECTS may run
+  # through a link.
+  trust_folder "$(project_dir "$name")"
+}
+
 # Print a project's repo paths, absolute, one per line.
 project_repos() {
   local dir=$1 line
@@ -69,8 +81,7 @@ project_new() {
   sed "s/__NAME__/$name/" "$TEMPLATE/PROJECT.md" > "$dir/PROJECT.md"
   : > "$dir/repos"
   sync_links "$dir"
-  # The real path, which is what Claude Code looks up; $dir may run through a link.
-  trust_folder "$(project_dir "$name")"
+  trust_project "$name"
   say "Made project '$name' at $dir"
   say "Next:"
   say "  entourage project add $name <path to a repo>"

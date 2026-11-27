@@ -43,7 +43,7 @@ task_new() {
   # `project new` does this too. Here it covers a project made before it did,
   # or on a day Claude Code's file could not be written. It comes before the
   # tab, because the agent meets the trust question the moment it starts.
-  trust_folder "$dir"
+  trust_project "$name"
   (show_space "$name" "$dir") ||
     die "could not show the space for '$name', so no agent was started."
   # No `space` argument: the tab goes in the selected space, which show_space
