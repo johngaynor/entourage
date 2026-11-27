@@ -94,6 +94,7 @@ template is in this repo. Your own projects are in
 |---|---|
 | `PROJECT.md` | What the project is and what belongs in each repo. You write this. |
 | `repos` | One repo path per line. `entourage project add` writes it; you can edit it. |
+| `teams` | The keys of the project's Linear teams, one per line. `entourage project team` writes it; you can edit it. See [Seeing a project's cards](#seeing-a-projects-cards). |
 | `links/` | Generated: a link to each repo, named after its folder. |
 | `tasks/` | One folder per task, holding a worktree of each repo. See [Tasks](#tasks). |
 | `CLAUDE.md`, `AGENTS.md` | Generated: links to `PROJECT.md`, so an agent started in the space reads it. |
@@ -126,6 +127,44 @@ template is in this repo. Your own projects are in
 A task is one piece of work in a project, usually a Linear card. You run two
 commands, in this order: `task new`, then `task start`. Two more, `task
 handoff` and `task log`, record and show how each step of the write-up ended.
+`task ls` lists the cards there are to start.
+
+### Seeing a project's cards
+
+```sh
+entourage task ls <project> [--json]
+```
+
+- **It lists the open cards of the project's Linear teams**, under their
+  statuses, in the order Linear shows the statuses. Open means not done, not
+  cancelled and not a duplicate, so a card in progress or in review is listed.
+  Each card is its ID and its title. A status with no cards is listed with a
+  count of 0.
+- **It asks Linear itself, with no agent running.** That needs two things, each
+  set once:
+
+  | Set once | With | What it is |
+  |---|---|---|
+  | Your Linear API key | `entourage linear key` | Make the key in Linear, under Settings, Account, Security & access, Personal API keys. Read permission is enough to list cards. The command asks for it without showing it, checks it with Linear, and saves it. |
+  | The project's teams | `entourage project team <project> <team>...` | A team's key is what its cards' IDs start with: `ABC` for `ABC-122`. A project can name several teams, and several projects can name the same team. With no team given, the command prints the ones that are set. |
+
+- **The key is one of entourage's variables, `LINEAR_API_KEY`.** `linear key`
+  writes it as a line of entourage's env file, `~/.config/entourage/.env`,
+  which only you can read. A key you export in your shell works too, and wins
+  over the file. See [entourage's variables](#entourages-variables).
+- **The key is never shown.** It is handed to `curl` on its stdin, never as an
+  argument, and no message prints it. To take it off the machine, delete its
+  line from the env file.
+- **When it cannot list, it says which thing is wrong:** no key saved, a key
+  Linear rejects, Linear out of reach, a project with no team, or a team key
+  Linear does not have.
+- **`--json` prints the list as one line for programs**: the project, its
+  teams, and each status with its `name`, its `type` (`triage`, `backlog`,
+  `unstarted` or `started`) and its `cards`, each with an `id`, a `title` and a
+  `url`. When it fails it prints nothing on stdout.
+- **Two teams' cards share a group when the status has the same name**, such as
+  Backlog. A status only one team has is a group of its own.
+- **It needs `curl` and `jq`**, and says which is missing.
 
 ### Writing the card up
 
@@ -290,6 +329,35 @@ setup:
   setup.
 - **`just` has to be installed** on the machine. Without it, tasks start
   without setup and `entourage status` says so.
+
+## entourage's variables
+
+entourage reads a few environment variables. Each can be exported in your
+shell, or written as a `NAME=value` line in entourage's env file,
+`~/.config/entourage/.env`.
+
+| Variable | What it sets |
+|---|---|
+| `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
+| `ENTOURAGE_AGENT` | The agent `task new` starts. `claude` when it is not set. |
+| `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
+| `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |
+| `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills are linked. `~/.claude` when it is not set. |
+| `ENTOURAGE_HOME` | entourage's own folder. `~/.config/entourage` when it is not set. Export only: it says where the env file is, so the file cannot set it. |
+
+- **Use the file for anything a Herdr mod's run of entourage needs.** Herdr
+  starts a command without your shell's exports, so a variable set only in your
+  shell profile is missing there. The file is read every time, wherever
+  entourage is started from.
+- **A variable you export wins** over its line in the file.
+- **The file is read, never run.** A line that is not `NAME=value` is skipped,
+  and nothing in a value is expanded. `export` before the name and one pair of
+  quotes around the value are allowed. Only entourage's own variables are
+  taken from it: the ones in the table, and any other whose name starts with
+  `ENTOURAGE_`. A line for anything else, such as `PATH`, is ignored.
+- **Keep the file to yourself.** It holds your Linear key. `linear key` makes
+  it readable only by you; if you make it by hand, run
+  `chmod 600 ~/.config/entourage/.env`.
 
 ## Changing things
 

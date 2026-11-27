@@ -8,11 +8,13 @@ machine running from a clone gets whatever `git pull` brings.
 
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
 are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
-`runner`, `release`). The `handoff` tests use the real `sqlite3`, and the
-`release` tests the real `git` and `jq`; they have to be in `/usr/bin` or
-`/bin`. Cases run side by side, each in a process of its own, so a case must
-not depend on another case or on anything outside its own throwaway folder. To
-run one case at a time, set `ENTOURAGE_TEST_JOBS=1`.
+`linear`, `runner`, `release`). The `handoff` tests use the real `sqlite3`,
+the `linear` tests the real `jq`, and the `release` tests the real `git` and
+`jq`; they have to be in `/usr/bin` or `/bin`. No test reaches Linear: a
+stand-in `curl` answers from canned files. Cases run side by side, each in a
+process of its own, so a case must not depend on another case or on anything
+outside its own throwaway folder. To run one case at a time, set
+`ENTOURAGE_TEST_JOBS=1`.
 
 The CLI is `cli/entourage`, which sets the paths and sources the files in
 `cli/lib/`. A new file in `cli/lib/` must be added to the list in
