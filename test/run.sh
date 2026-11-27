@@ -7,7 +7,7 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-AREAS="install project task"
+AREAS="install project task skills"
 # shellcheck source=/dev/null
 . "$HERE/helpers.sh"
 

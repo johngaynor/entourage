@@ -68,9 +68,9 @@ One line for each Done when item, in the same order, saying how it will be shown
 
 Plan never edits the Specification or the original description. They are what John asked for, and the plan answers to them.
 
-- **A Done when item can't be met as written.** The code may show that an item is impossible, contradicts how the product works, or costs far more than the card suggests. Stop and ask John. He may change the Specification. You may not.
-- **A technical question.** Settle it from the code where you can. Ask John only what the code can't answer, such as an upcoming change that affects the approach, or a choice between two workable options with different costs. Ask one question at a time and give your recommendation.
-- **Something outside the Specification.** While reading you may find a nearby bug, a missing test or a refactor that would help. Leave it out of the plan and tell John when you finish. Folding it in makes the card bigger than what he approved.
+- **A Done when item can't be met as written.** The code may show that an item is impossible, contradicts how the product works, or costs far more than the card suggests. Ask John before going any further, in a handoff block with `status: needs-human`. He may change the Specification. You may not.
+- **A technical question.** Settle it from the code where you can. Ask John only what the code can't answer, such as an upcoming change that affects the approach, or a choice between two workable options with different costs. Ask one question at a time, in a handoff block with `status: needs-human` and your recommendation first in `options`.
+- **Something outside the Specification.** While reading you may find a nearby bug, a missing test or a refactor that would help. Leave it out of the plan and put it in `flags` when you hand off. Folding it in makes the card bigger than what he approved.
 
 ## 4. Write it to the card
 
@@ -96,16 +96,45 @@ Use this form:
 
 After writing, read the card back. Check that the description and Specification are unchanged and that the Plan shows as a collapsed section.
 
-## 5. Finish
+## 5. Hand off
 
-Tell John in a few lines:
+When the Plan is on the card and you have read it back, end with a handoff block:
 
-- The approach in one sentence.
-- Roughly how much it touches: how many files, in which apps or repos.
-- Whether it looks like one pull request's worth or more. Breakdown decides, but your read is useful.
-- Anything you found that sits outside the Specification.
+- `phase: plan`, `status: done` and `next: breakdown`.
+- `summary`: the approach in one sentence, roughly how much it touches (how many files, in which apps or repos), and whether it looks like one pull request's worth or more. Breakdown decides, but your read is useful.
+- `flags`: anything you found that sits outside the Specification.
 
-Then stop. Breakdown is the next step.
+## The handoff block
+
+Every step of the lifecycle ends the same way, so whoever is driving it, a person or a script, can tell how the step ended without reading the whole session.
+
+End your message with one handoff block every time you stop: when the step is finished, when you need an answer, and when something has gone wrong. Put it last, in a code block, one value per line:
+
+```
+phase: <this step>
+status: <done, needs-human or failed>
+next: <the step that follows>
+summary: <one to three sentences on what you did>
+flags: <what the human should know but wasn't asked>
+question: <one question>
+options: <the answers you expect, your recommendation first, separated by " | ">
+reason: <what went wrong, and what you already tried>
+```
+
+Which lines you write depends on the status:
+
+| Status | Use it when | Lines |
+|---|---|---|
+| `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
+| `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
+
+- **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
+- **`needs-human` is a pause, not an ending.** Wait for the answer, then carry on with this step. The step is over only at `done` or `failed`.
+- **Ask one question per block.** If you have two, ask first the one whose answer could change the other. The human can always answer in their own words, so `options` are suggestions.
+- **Keep the block short.** Anything long, such as a section you could not write to the card, goes above the block.
+- **After `done`, this step is over.** Go on to the step in `next` only if you were asked to run more than this one step. Otherwise stop there.
+- **After `failed`, change nothing more.** Leave the card as it is for the human.
 
 ## If something goes wrong
 

@@ -62,7 +62,7 @@ A checklist of three to seven items. A small chore can have fewer. Each item is 
 - **A change that shouldn't alter behaviour, such as a refactor, always includes** "Existing tests pass without being changed." That is what shows behaviour didn't move.
 - **Don't split by layer.** An API change and the screen that depends on it belong on the same card. A card that stops at the API can't be checked by anyone using the product.
 
-If you end up with more than seven items, the card is probably more than one thing. Write the items anyway and say so when you finish. Breakdown deals with it after plan.
+If you end up with more than seven items, the card is probably more than one thing. Write the items anyway and say so in `flags` when you hand off. Breakdown deals with it after plan.
 
 ### Out of scope
 
@@ -76,7 +76,7 @@ Ask in the session and wait for the answer when:
 - An item depends on a product decision or a fact only he has, such as a limit, a wording, or which users.
 - There are two readings that would give different Done when lists.
 
-Ask one question at a time, and offer your best guess so he can answer with a yes. Don't fill a gap with a guess or a placeholder. A made-up criterion reads exactly like a real one, and it will be built.
+Ask one question at a time, in a handoff block with `status: needs-human`. Put your best guess first in `options`, so he can answer with a yes. Don't fill a gap with a guess or a placeholder. A made-up criterion reads exactly like a real one, and it will be built.
 
 ## 4. Write it to the card
 
@@ -100,15 +100,45 @@ Use this form:
 
 After writing, read the card back. Check that the original description is unchanged and that the Specification shows as a collapsed section.
 
-## 5. Finish
+## 5. Hand off
 
-Tell John in two or three lines:
+When the Specification is on the card and you have read it back, end with a handoff block:
 
-- The type you set, and whether you replaced a label that was already there.
-- How many Done when items there are.
-- Anything you weren't sure about, and whether the card looks like more than one thing.
+- `phase: define`, `status: done` and `next: plan`.
+- `summary`: the type you set, whether you replaced a label that was already there, and how many Done when items there are.
+- `flags`: anything you weren't sure about, and whether the card looks like more than one thing.
 
-Then stop. Plan is the next step, and John may want to read the Specification first.
+## The handoff block
+
+Every step of the lifecycle ends the same way, so whoever is driving it, a person or a script, can tell how the step ended without reading the whole session.
+
+End your message with one handoff block every time you stop: when the step is finished, when you need an answer, and when something has gone wrong. Put it last, in a code block, one value per line:
+
+```
+phase: <this step>
+status: <done, needs-human or failed>
+next: <the step that follows>
+summary: <one to three sentences on what you did>
+flags: <what the human should know but wasn't asked>
+question: <one question>
+options: <the answers you expect, your recommendation first, separated by " | ">
+reason: <what went wrong, and what you already tried>
+```
+
+Which lines you write depends on the status:
+
+| Status | Use it when | Lines |
+|---|---|---|
+| `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
+| `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
+
+- **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
+- **`needs-human` is a pause, not an ending.** Wait for the answer, then carry on with this step. The step is over only at `done` or `failed`.
+- **Ask one question per block.** If you have two, ask first the one whose answer could change the other. The human can always answer in their own words, so `options` are suggestions.
+- **Keep the block short.** Anything long, such as a section you could not write to the card, goes above the block.
+- **After `done`, this step is over.** Go on to the step in `next` only if you were asked to run more than this one step. Otherwise stop there.
+- **After `failed`, change nothing more.** Leave the card as it is for the human.
 
 ## If something goes wrong
 

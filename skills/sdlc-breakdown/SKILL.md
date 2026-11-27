@@ -55,13 +55,13 @@ Then check the set:
 - **Each slice has its own Done when**, one to four outcomes written by the same rules as the card's.
 - **The slices run in order.** Each builds on the last.
 
-Two to five slices is usual. If you need more than six, the card is probably several cards. Propose what you have and say so when you finish.
+Two to five slices is usual. If you need more than six, the card is probably several cards. Propose what you have and say so when you ask John to approve.
 
 ### If it can't be cut
 
 Some work has no cut that passes the checks. A refactor may have nothing to click halfway through. A migration may have to land together. A first slice may not be acceptable for users to see without the rest.
 
-Then the card stands as one piece, however large it is. Don't force a cut that fails a check. A horizontal slice is worse than a large card, because it merges something nobody can test. Say in one line why it can't be cut, and if it is large, tell John when you finish.
+Then the card stands as one piece, however large it is. Don't force a cut that fails a check. A horizontal slice is worse than a large card, because it merges something nobody can test. Say in one line why it can't be cut, and if it is large, say so when you ask John to approve.
 
 ### Write it to the card
 
@@ -98,14 +98,23 @@ Give him a summary he can answer from without opening Linear:
 - The approach, in a sentence or two.
 - Whether it is one piece or several, and why. If several, the slice names in order.
 
-Then ask him to approve or say what to change, and wait.
+Then ask him to approve or say what to change. The summary goes above the handoff block, and the block is the ask:
+
+```
+phase: breakdown
+status: needs-human
+question: Approve <card ID> as specified, planned and broken down?
+options: approve | change breakdown | change plan | change specification
+```
+
+Wait for his answer.
 
 | John says | Then |
 |---|---|
 | Change the breakdown | Revise the Breakdown section and ask again |
-| Change the Specification or the Plan | Make the change by that section's own skill, `sdlc-define` or `sdlc-plan`. Then re-check every section below the one that changed, because a new Done when item can make the Plan and the Breakdown wrong. Ask again |
-| Yes, and the card is one piece | Tell him the card is approved and ready to build. Setup and build aren't built yet, so stop there |
-| Yes, and the card is sliced | Go on to part 2 |
+| Change the Specification or the Plan | Make the change by that section's own skill, `sdlc-define` or `sdlc-plan`. When that skill hands off, come back here and re-check every section below the one that changed, because a new Done when item can make the Plan and the Breakdown wrong. Ask again |
+| Approve, and the card is one piece | The card is ready to build. Hand off, as described below |
+| Approve, and the card is sliced | Go on to part 2 |
 
 ## Part 2: Create the sub-issues
 
@@ -125,7 +134,49 @@ A sub-issue has to stand alone. The build step will open it in a fresh session a
 
 Then update the parent's Breakdown list so each slice name carries its sub-issue's ID. The parent is not built. It stays as the record of the whole.
 
-Read the parent and each sub-issue back. Tell John what was created, in order, and which slice is first. Setup and build aren't built yet, so stop there.
+Read the parent and each sub-issue back, then hand off.
+
+## Hand off
+
+Breakdown is finished when John has approved the card and, if it was sliced, its sub-issues exist. End with a handoff block:
+
+- `phase: breakdown`, `status: done` and `next: setup`.
+- `summary`: that the card is approved, and whether it is one piece or sliced. If it was sliced, the sub-issues in order with their IDs, and which one is first.
+- `flags`: anything that didn't go to plan, such as a blocking relation that couldn't be set.
+
+Setup is not a skill. It is the `entourage task start` command, which the human runs, so there is no step for you to go on to.
+
+## The handoff block
+
+Every step of the lifecycle ends the same way, so whoever is driving it, a person or a script, can tell how the step ended without reading the whole session.
+
+End your message with one handoff block every time you stop: when the step is finished, when you need an answer, and when something has gone wrong. Put it last, in a code block, one value per line:
+
+```
+phase: <this step>
+status: <done, needs-human or failed>
+next: <the step that follows>
+summary: <one to three sentences on what you did>
+flags: <what the human should know but wasn't asked>
+question: <one question>
+options: <the answers you expect, your recommendation first, separated by " | ">
+reason: <what went wrong, and what you already tried>
+```
+
+Which lines you write depends on the status:
+
+| Status | Use it when | Lines |
+|---|---|---|
+| `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
+| `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
+
+- **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
+- **`needs-human` is a pause, not an ending.** Wait for the answer, then carry on with this step. The step is over only at `done` or `failed`.
+- **Ask one question per block.** If you have two, ask first the one whose answer could change the other. The human can always answer in their own words, so `options` are suggestions.
+- **Keep the block short.** Anything long, such as a section you could not write to the card, goes above the block.
+- **After `done`, this step is over.** Go on to the step in `next` only if you were asked to run more than this one step. Otherwise stop there.
+- **After `failed`, change nothing more.** Leave the card as it is for the human.
 
 ## If something goes wrong
 

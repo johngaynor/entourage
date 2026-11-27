@@ -16,6 +16,11 @@ They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
 name, such as `/sdlc-define ABC-122`.
 
+Every skill ends each message with a handoff block: which step it was, whether
+it is `done`, `needs-human` or `failed`, and which step comes next. Whoever is
+driving, you or `entourage task new`, reads that block to know what happens
+next.
+
 ## Setting up a machine
 
 ```sh
