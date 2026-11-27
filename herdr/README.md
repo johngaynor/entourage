@@ -11,7 +11,7 @@ layouts (whole-window arrangements of mods).
 | `mods/layout-switch/` | A dropdown that shows the current layout and switches to another. |
 | `mods/projects/` | Every project in your config, open or not. Click one to show its space; `+` makes a new one. |
 | `mods/cards/` | The open Linear cards of the project whose space is showing, under their statuses. Start writes a card up with `task new`; Open shows the tab of a card already started. |
-| `mods/steps/` | The steps of the card whose tab is selected: what each did, how long it took, and how long it waited on you. |
+| `mods/steps/` | The steps of the card whose tab is selected: what each did, how long it took, and how long it waited on you. With no card's tab selected, the project's cards and where each stands. |
 | `layouts/default.json` | Herdr's own layout, plus the layout dropdown. |
 | `layouts/test.json` | `default` with the projects list in place of spaces, plus the Cards and Steps panels and the CPU mod in the sidebar. |
 | `projects/template/` | The starting `PROJECT.md` for every new project. |
@@ -258,7 +258,7 @@ EOF
 ```
 
 ```sh
-entourage task log <project> <card>
+entourage task log <project> [<card>]
 ```
 
 - **The command holds the rules.** It refuses a block with a missing line, an
@@ -276,6 +276,11 @@ entourage task log <project> <card>
   waited on you as a line of its own, counted in no step. A question with no
   answer yet shows how long it has been waiting. A step that followed a
   question with no recorded answer is marked as including the wait.
+- **With no card, it lists the project's cards.** `task log <project>` shows
+  every card in the project that has hand-offs, newest first by its latest
+  one, with where it stands (waiting on you, failed, or the step it finished
+  and the one that comes next) and for how long. A card with no hand-offs is
+  not listed: `task ls` lists the cards in Linear.
 - **They are kept in `~/.config/entourage/entourage.db`,** a SQLite file
   beside your projects, on this machine only. It needs `sqlite3`, which macOS
   ships; `ENTOURAGE_SQLITE` picks another command. Without it `task new`
@@ -287,8 +292,11 @@ entourage task log <project> <card>
   new` opened, and the panel lists that card's steps: the time of day, what
   the step did, how long it took, and its summary. A wait on you stands out,
   and so does a question still waiting. It shows the latest run of a card
-  written up more than once. The panel draws what
-  `entourage task log <project> <card> --json` prints and works nothing out
+  written up more than once. With no card's tab selected, it lists the
+  project's cards instead, and a card waiting on you stands out. Click a card
+  to see its steps, even when its tab is closed, and "All cards" to go back;
+  selecting another tab goes back too. The panel draws what
+  `entourage task log <project> [<card>] --json` prints and works nothing out
   itself, so the two always agree.
 
 ### Starting the work
