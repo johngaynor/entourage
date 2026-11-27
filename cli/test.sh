@@ -404,7 +404,136 @@ task_usage_on_unknown_subcommand() {
   "$E" task frob >/dev/null 2>&1 && fail "'task frob' exited zero"
 }
 
-TASK_CASES="task_new_refuses_bad_branch task_new_refuses_unknown_project task_usage_on_unknown_subcommand"
+# A real repo at $1 with one commit on main, cloned from a bare origin at $1.origin.git.
+make_git_repo() {
+  mkdir -p "$(dirname "$1")"
+  git init -q -b main "$1.seed"
+  git -C "$1.seed" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+  git clone -q --bare "$1.seed" "$1.origin.git"
+  git clone -q "$1.origin.git" "$1"
+  rm -rf "$1.seed"
+}
+branch_of() { git -C "$1" rev-parse --abbrev-ref HEAD; }
+head_of() { git -C "$1" rev-parse "${2:-HEAD}"; }
+has_branch() { git -C "$1" show-ref --verify --quiet "refs/heads/$2"; }
+
+# The project "demo" with a real repo for each name given.
+task_demo() {
+  local r
+  "$E" project new demo >/dev/null
+  for r in "$@"; do
+    make_git_repo "$HOME/Dev/$r"
+    "$E" project add demo "$HOME/Dev/$r" >/dev/null
+  done
+  API=$HOME/Dev/api T=$P/demo/tasks
+}
+
+task_new_makes_a_worktree() {
+  task_demo api
+  "$E" task new demo feat/abc-122-insert-task-here >/dev/null || fail "task new exited non-zero"
+  local wt=$T/abc-122-insert-task-here/api
+  [ -d "$wt" ] || fail "no worktree at tasks/<task>/<repo>"
+  [ "$(branch_of "$wt")" = feat/abc-122-insert-task-here ] || fail "worktree is on $(branch_of "$wt")"
+  [ "$(head_of "$wt")" = "$(head_of "$API" origin/main)" ] || fail "not cut from origin/main"
+}
+
+task_new_accepts_every_spec_name() {
+  task_demo api
+  local b
+  for b in feature/add-login-page feat/add-login-page2 bugfix/fix-header-bug fix/header-bug \
+           hotfix/security-patch release/v1.2.0 chore/upgrade-node-v20.11 \
+           feature/issue-123-new-login ai/refactor-auth-flow claude/security-patch2 \
+           codex/optimize-query copilot/add-login-page3 cursor/fix-header-bug4; do
+    "$E" task new demo "$b" >/dev/null 2>&1 || fail "refused the valid branch '$b'"
+    [ -d "$T/${b#*/}/api" ] || fail "no worktree for '$b'"
+  done
+}
+
+task_new_starts_from_the_latest_default_branch() {
+  task_demo api
+  git clone -q "$API.origin.git" "$TMP/other"
+  git -C "$TMP/other" -c user.name=t -c user.email=t@t commit -q --allow-empty -m newer
+  git -C "$TMP/other" push -q origin main
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  [ "$(head_of "$T/x/api")" = "$(head_of "$TMP/other")" ] || fail "did not start from the fetched commit"
+}
+
+task_new_works_offline() {
+  task_demo api
+  git -C "$API" remote set-url origin "$TMP/gone.git"
+  local out
+  out=$("$E" task new demo feat/x 2>/dev/null) || fail "task new exited non-zero offline"
+  case $out in *warning*) ;; *) fail "no warning about the failed fetch: $out" ;; esac
+  [ -d "$T/x/api" ] || fail "no worktree made offline"
+}
+
+task_new_without_origin_uses_local_default() {
+  task_demo api
+  git -C "$API" remote remove origin
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero with no origin"
+  [ "$(head_of "$T/x/api")" = "$(head_of "$API" main)" ] || fail "not cut from local main"
+}
+
+task_new_refuses_no_repos() {
+  task_demo
+  "$E" task new demo feat/x >/dev/null 2>&1 && fail "accepted a project with no repos"
+  [ ! -e "$T" ] || fail "made a tasks folder"
+}
+
+task_new_refuses_missing_repo() {
+  task_demo api
+  echo "$HOME/Dev/gone" >> "$P/demo/repos"
+  "$E" task new demo feat/x >/dev/null 2>&1 && fail "accepted a missing repo"
+  [ ! -e "$T" ] || fail "made a tasks folder"
+  has_branch "$API" feat/x && fail "made a branch in the repo that exists"
+}
+
+task_new_refuses_existing_task() {
+  task_demo api
+  "$E" task new demo feat/x >/dev/null || fail "first task new exited non-zero"
+  "$E" task new demo fix/x >/dev/null 2>&1 && fail "made a second task with the same name"
+  has_branch "$API" fix/x && fail "made the second task's branch"
+}
+
+task_new_refuses_existing_branch() {
+  task_demo api
+  git -C "$API" branch feat/x
+  "$E" task new demo feat/x >/dev/null 2>&1 && fail "reused an existing branch"
+  [ ! -e "$T/x" ] || fail "made a task folder"
+}
+
+task_new_refuses_branch_on_origin() {
+  task_demo api
+  git -C "$API.origin.git" branch feat/x
+  "$E" task new demo feat/x >/dev/null 2>&1 && fail "reused a branch that is on origin"
+  [ ! -e "$T/x" ] || fail "made a task folder"
+  has_branch "$API" feat/x && fail "made a local branch"
+}
+
+task_new_leaves_the_main_checkout_alone() {
+  task_demo api
+  git -C "$API" checkout -q -b wip
+  echo mine > "$API/untracked.txt"
+  local before
+  before=$(branch_of "$API"):$(git -C "$API" status --porcelain)
+  "$E" task new demo feat/x >/dev/null || fail "task new exited non-zero"
+  [ "$(branch_of "$API"):$(git -C "$API" status --porcelain)" = "$before" ] || fail "the main checkout changed"
+}
+
+task_new_after_hand_deletion() {
+  task_demo api
+  "$E" task new demo feat/x >/dev/null || fail "first task new exited non-zero"
+  rm -rf "$T/x"
+  git -C "$API" branch -q -D feat/x 2>/dev/null || { git -C "$API" worktree prune; git -C "$API" branch -q -D feat/x; }
+  "$E" task new demo feat/x >/dev/null 2>&1 || fail "could not remake a task deleted by hand"
+  [ -d "$T/x/api" ] || fail "no worktree after remaking"
+}
+
+TASK_CASES="task_new_refuses_bad_branch task_new_refuses_unknown_project task_usage_on_unknown_subcommand
+  task_new_makes_a_worktree task_new_accepts_every_spec_name task_new_starts_from_the_latest_default_branch
+  task_new_works_offline task_new_without_origin_uses_local_default task_new_refuses_no_repos
+  task_new_refuses_missing_repo task_new_refuses_existing_task task_new_refuses_existing_branch
+  task_new_refuses_branch_on_origin task_new_leaves_the_main_checkout_alone task_new_after_hand_deletion"
 
 for c in install_links_everything install_is_repeatable works_through_the_path_link \
   update_links_a_new_mod update_removes_stale_links update_leaves_other_links_alone \

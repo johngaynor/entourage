@@ -337,6 +337,28 @@ valid_branch() { [[ ${1:-} =~ $BRANCH_RE ]]; }
 # A task's name is its branch without the type.
 task_name() { printf '%s\n' "${1#*/}"; }
 
+has_origin() { git -C "$1" remote get-url origin >/dev/null 2>&1; }
+resolves() { git -C "$1" rev-parse -q --verify "$2^{commit}" >/dev/null 2>&1; }
+
+# Print the ref a repo's new task branch is cut from: the remote's default
+# branch, or the local one in a repo with no origin.
+base_ref() {
+  local repo=$1 ref
+  if has_origin "$repo"; then
+    ref=$(git -C "$repo" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) || ref=
+    for ref in ${ref:+"$ref"} origin/main origin/master; do
+      if resolves "$repo" "$ref"; then printf '%s\n' "$ref"; return; fi
+    done
+  fi
+  for ref in main master; do
+    if resolves "$repo" "refs/heads/$ref"; then printf '%s\n' "$ref"; return; fi
+  done
+  git -C "$repo" rev-parse --abbrev-ref HEAD
+}
+
+# The repos whose worktree the current `task new` has made.
+MADE=()
+
 task_new() {
   local name=${1:-} branch=${2:-} dir task
   dir=$(project_dir "$name")
@@ -345,6 +367,40 @@ task_new() {
   valid_branch "$branch" ||
     die "'$branch' is not a branch name entourage accepts. Use <type>/<description>, like: feat/abc-122-short-title (see https://conventionalbranch.org)"
   task=$(task_name "$branch")
+
+  # Check everything before making anything.
+  local repos=() repo base tdir=$dir/tasks/$task
+  while IFS= read -r repo; do repos+=("$repo"); done < <(project_repos "$dir")
+  [ "${#repos[@]}" -gt 0 ] ||
+    die "project '$name' has no repos. Add one with: entourage project add $name <path>"
+  for repo in "${repos[@]}"; do
+    is_repo "$repo" || die "$repo is missing or is not a git repo (see: entourage status)"
+  done
+  [ ! -e "$tdir" ] || die "task '$task' already exists at $tdir"
+  # Fetch first, so that the branch check below sees what is on the remote
+  # and the task starts from the latest default branch.
+  for repo in "${repos[@]}"; do
+    has_origin "$repo" || continue
+    git -C "$repo" fetch -q origin 2>/dev/null ||
+      say "  warning: could not fetch ${repo##*/}; starting from what is local"
+  done
+  for repo in "${repos[@]}"; do
+    # Forget worktrees whose folders were deleted by hand.
+    git -C "$repo" worktree prune
+    if resolves "$repo" "refs/heads/$branch" || resolves "$repo" "refs/remotes/origin/$branch"; then
+      die "branch '$branch' already exists in ${repo##*/}"
+    fi
+  done
+
+  say "Making task '$task' in $tdir"
+  mkdir -p "$tdir"
+  MADE=()
+  for repo in "${repos[@]}"; do
+    base=$(base_ref "$repo")
+    git -C "$repo" worktree add -q -b "$branch" "$tdir/${repo##*/}" "$base"
+    MADE+=("$repo")
+    say "  worktree  ${repo##*/} (from $base)"
+  done
 }
 
 cmd_task() {
