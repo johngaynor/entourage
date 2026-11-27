@@ -28,7 +28,8 @@ setup() {
   cp "$ROOT/herdr/projects/template/PROJECT.md" "$REPO/herdr/projects/template/PROJECT.md"
   cp -R "$ROOT/skills" "$REPO/skills"
   cp -R "$ROOT/prompts" "$REPO/prompts"
-  unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT ENTOURAGE_SQLITE
+  # A key exported in the shell that runs the tests must not reach a case.
+  unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT ENTOURAGE_SQLITE LINEAR_API_KEY
   SK=$HOME/.claude/skills
   unset ENTOURAGE_HOME
   P=$HOME/.config/entourage/projects
@@ -126,4 +127,73 @@ no_trust_litter() {
     [ -e "$f" ] || [ -L "$f" ] || continue
     fail "left behind: $f"
   done
+}
+
+# --- Linear -----------------------------------------------------------------
+
+# A Linear API key for tests. No test reaches Linear, so it opens nothing.
+KEY=lin_api_Test0123456789
+
+# entourage's own environment file in the throwaway HOME.
+env_file() { printf '%s' "$HOME/.config/entourage/.env"; }
+
+# A machine where the key is already saved, as `linear key` leaves it.
+saved_key() {
+  mkdir -p "$HOME/.config/entourage"
+  printf 'LINEAR_API_KEY=%s\n' "${1:-$KEY}" > "$(env_file)"
+  chmod 600 "$(env_file)"
+}
+
+# The key the environment file holds, or nothing.
+key_in_file() { sed -n 's/^LINEAR_API_KEY=//p' "$(env_file)" 2>/dev/null; }
+
+# The key curl was last handed on stdin, or nothing.
+key_given_to_curl() { sed -n 's/^header = "Authorization: \(.*\)"$/\1/p' "$TMP/curl-stdin.log" 2>/dev/null | tail -n 1; }
+
+# A stand-in for `curl`, for tests that ask Linear something. Each call's
+# arguments go on one line of curl-calls.log, and what it was given on stdin
+# goes in curl-stdin.log. It answers its Nth call with $TMP/linear/N.json, or
+# with the last answer there is, and then a line holding the HTTP status
+# ($TMP/linear/status, or 200), as the real one does for
+# --write-out '\n%{http_code}'. With $TMP/linear/exit it answers nothing and
+# exits with that code, as curl does when it cannot reach the server.
+stub_linear() {
+  mkdir -p "$TMP/linear"
+  cat > "$TMP/bin/curl" <<EOF
+#!/usr/bin/env bash
+d="$TMP/linear"
+printf '%s\n' "\$*" >> "$TMP/curl-calls.log"
+cat >> "$TMP/curl-stdin.log"
+if [ -f "\$d/exit" ]; then
+  echo "curl: (6) Could not resolve host: api.linear.app" >&2
+  exit "\$(cat "\$d/exit")"
+fi
+n=\$(( \$(cat "\$d/count" 2>/dev/null || echo 0) + 1 ))
+echo "\$n" > "\$d/count"
+while [ ! -f "\$d/\$n.json" ] && [ "\$n" -gt 1 ]; do n=\$((n - 1)); done
+[ ! -f "\$d/\$n.json" ] || cat "\$d/\$n.json"
+printf '\n%s' "\$(cat "\$d/status" 2>/dev/null || echo 200)"
+EOF
+  chmod +x "$TMP/bin/curl"
+}
+
+# What Linear answers next: one argument for each call, in order.
+linear_answers() {
+  local n=0 answer
+  for answer in "$@"; do n=$((n + 1)); printf '%s\n' "$answer" > "$TMP/linear/$n.json"; done
+}
+
+# The HTTP status of every answer from now on.
+linear_status() { echo "$1" > "$TMP/linear/status"; }
+
+# Every call made to curl, one line each, and how many there were.
+curl_calls() { cat "$TMP/curl-calls.log" 2>/dev/null; }
+curl_count() { curl_calls | grep -c '' || true; }
+
+# A PATH with every command but curl, for a machine that does not have it.
+hide_curl() {
+  mkdir "$TMP/nocurl"
+  ln -s /usr/bin/* /bin/* "$TMP/nocurl/" 2>/dev/null
+  rm -f "$TMP/nocurl/curl" "$TMP/bin/curl"
+  export PATH=$TMP/bin:$TMP/nocurl
 }

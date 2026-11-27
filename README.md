@@ -69,6 +69,18 @@ else. This needs `jq`; without it Claude Code asks once.
 A task is one piece of work in a project, usually a Linear card. You run two
 commands, in this order.
 
+To see which cards there are first, `task ls` lists the open cards of the
+project's Linear teams, under their statuses:
+
+```sh
+entourage linear key                  # once: save your Linear API key
+entourage project team my-project ABC # once: the team whose cards are ABC-122
+entourage task ls my-project
+```
+
+It asks Linear itself, with no agent running. See
+[herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
+
 `task new` writes the card up. It opens a tab in the project's Herdr space and
 starts an agent there, which runs the three skills on the card and then asks
 you to approve it:

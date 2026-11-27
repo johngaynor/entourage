@@ -18,13 +18,16 @@ Usage:
   entourage project add <name> <path>       add a repo that is already on this machine
   entourage project open <name>             show the project as a Herdr space
   entourage project ls [--json]             list projects and their repos (--json for programs)
+  entourage project team <name> [<team>...] set the Linear teams whose cards are the project's, or print them
+  entourage task ls <project> [--json]     list the open cards of the project's Linear teams, by status
   entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
   entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
   entourage task log <project> [<card>] [--json]
                                            list a card's hand-offs and how long each step took,
-                                           or with no card the project's cards and where each stands
+                                           or with no card the cards that have hand-offs and where each stands
+  entourage linear key                     save your Linear API key, so entourage can read Linear
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
@@ -34,6 +37,14 @@ marks the project's folder as trusted in Claude Code's own file
 question. It needs jq; without it Claude Code asks once.
 
 A task is one piece of work in a project, usually a Linear card.
+`task ls` lists the cards `task new` can be given: every card of the
+project's Linear teams that is not done, cancelled or a duplicate, under its
+status. It needs two things set once. `linear key` asks for a Linear API key
+and saves it (make one in Linear, under Settings, Account, Security & access,
+Personal API keys; Read permission is enough to list cards). `project team`
+names the project's teams by their keys: ABC for the team whose cards are
+ABC-122. A project can name several teams, and several projects can name the
+same one. Linear is asked with curl and its answer read with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
@@ -61,6 +72,14 @@ Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another
 Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage). Hand-offs are recorded beside them, in
 entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
+
+These variables, and your Linear key as LINEAR_API_KEY, can be exported in
+your shell or written as NAME=value lines in ~/.config/entourage/.env, which
+`linear key` writes for you and only you can read. A variable you export wins
+over its line in the file, unless it is empty; of two lines for a name, the
+last is used. Herdr starts commands without your shell's exports, so what a
+mod's run of entourage needs has to be in the file. ENTOURAGE_HOME is the one
+variable the file cannot set.
 EOF
 }
 
@@ -76,6 +95,85 @@ while [ -L "$self" ]; do
 done
 REPO=$(cd -P "$(dirname "$self")/.." && pwd)
 
+# The user's own things: their projects, and what entourage keeps for them.
+# They live outside the repo so that they are never published and an npm
+# reinstall does not delete them.
+ENT_HOME=${ENTOURAGE_HOME:-$HOME/.config/entourage}
+
+# entourage's own environment: NAME=value lines in this file, for the
+# variables that would otherwise be exported in a shell. Herdr starts a
+# command without a shell's exports, so a variable set only in a shell profile
+# is missing when a mod runs entourage, and the file is where it is found.
+ENV_FILE=$ENT_HOME/.env
+# Whether the Linear key came with the environment, before the file is read.
+KEY_EXPORTED=${LINEAR_API_KEY:+1}
+
+# Take entourage's variables from the file. The file is read, never run: a
+# line that is not NAME=value is skipped, and nothing in a value is expanded.
+# What a line may hold:
+#   - export before the name, spaces around the =, one pair of quotes around
+#     the value, and a # comment after a value with no quotes;
+#   - of two lines for a name, the last one;
+#   - a variable already in the environment wins over the file, unless it is
+#     empty, which counts as not set.
+# Only the variables entourage reads are taken: a line for PATH or anything
+# else is skipped, and so is ENTOURAGE_HOME, which says where this file is.
+# HERDR_APP_HOME and CLAUDE_CONFIG_DIR are exported, so a program entourage
+# starts finds the same folders it does. The Linear key is not: only
+# entourage reads it, and it hands it to curl on stdin.
+load_env() {
+  local line name value from_file=' '
+  local re='^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$'
+  [ -f "$ENV_FILE" ] || return 0
+  # Stop rather than go on without the file: its settings would be missing,
+  # and `linear key` would write it anew with only the key in it.
+  [ -r "$ENV_FILE" ] || {
+    printf 'entourage: cannot read %s. It should be yours, and readable by you only: check its owner, then run: chmod 600 %s\n' \
+      "$ENV_FILE" "$ENV_FILE" >&2
+    exit 1
+  }
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    # The mark some editors put at the start of a file.
+    line=${line#$'\357\273\277'}
+    [[ $line =~ $re ]] || continue
+    name=${BASH_REMATCH[2]} value=${BASH_REMATCH[3]}
+    case $name in
+      ENTOURAGE_HOME) continue ;;
+      ENTOURAGE_* | LINEAR_API_KEY | HERDR_APP_HOME | CLAUDE_CONFIG_DIR) ;;
+      *) continue ;;
+    esac
+    # A name the file has set already is set again; one that came with the
+    # environment is left as it is.
+    case $from_file in
+      *" $name "*) ;;
+      *) [ -z "${!name:-}" ] || continue ;;
+    esac
+    from_file="$from_file$name "
+    # A # after a space starts a comment, in a value with no quotes.
+    case $value in
+      \"* | \'*) ;;
+      \#*) value= ;;
+      *) value=${value%%[[:space:]]#*} ;;
+    esac
+    # Spaces after the value, then one pair of quotes around it.
+    value=${value%"${value##*[![:space:]]}"}
+    case $value in
+      \"*\") value=${value#\"}; value=${value%\"} ;;
+      \'*\') value=${value#\'}; value=${value%\'} ;;
+    esac
+    if [ "$name" = LINEAR_API_KEY ]; then
+      # Set for entourage alone. -n also covers a key that came exported but
+      # empty, so that no program entourage starts finds it either way.
+      LINEAR_API_KEY=$value
+      export -n LINEAR_API_KEY
+    else
+      export "$name=$value"
+    fi
+  done < "$ENV_FILE"
+}
+load_env
+
 APP_HOME=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
 # Where Claude Code looks for a person's own skills.
 SKILLS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
@@ -87,9 +185,6 @@ HERDR_INSTALL='curl -fsSL https://releases.herdr.dev/app/install.sh | sh'
 # What `update` reinstalls when entourage came from npm rather than a git clone.
 NPM_SPEC=${ENTOURAGE_NPM_SPEC:-@johngaynor/entourage}
 
-# The user's own projects. They live outside the repo so that they are never
-# published and an npm reinstall does not delete them.
-ENT_HOME=${ENTOURAGE_HOME:-$HOME/.config/entourage}
 PROJECTS=$ENT_HOME/projects
 TEMPLATE=$REPO/herdr/projects/template
 # A PROJECT.md that still has this line has not been filled in.
@@ -99,7 +194,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common links recipes trust project task handoff commands; do
+for part in common links recipes trust project linear task handoff commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null
@@ -112,6 +207,7 @@ case ${1:-help} in
   status) shift; cmd_status "$@" ;;
   project) shift; cmd_project "$@" ;;
   task) shift; cmd_task "$@" ;;
+  linear) shift; cmd_linear "$@" ;;
   help | -h | --help) usage ;;
   *) usage >&2; exit 2 ;;
 esac
