@@ -133,7 +133,10 @@ project_new_is_quiet_when_a_linked_claude_state_trusts_it() {
   local out
   out=$("$E" project new demo) || fail "new exited non-zero"
   case $out in
-    *"  note      "* | *"  trusted   "*) fail "spoke of trust for a folder that is trusted already: $out" ;;
+    # The words of the two trust lines, not any note: another part of the CLI
+    # may have a note of its own to print.
+    *"Claude Code may ask to trust"* | *"Claude Code will not ask to trust"*)
+      fail "spoke of trust for a folder that is trusted already: $out" ;;
   esac
   [ -L "$HOME/.claude.json" ] || fail "the link was replaced"
 }
