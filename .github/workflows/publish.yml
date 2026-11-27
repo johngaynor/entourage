@@ -15,12 +15,14 @@ on:
   push:
     branches: [main]
 
-# One run at a time for each way in, so `next` ends on the newest push. A run
-# that is waiting is dropped when a newer one arrives; the newer build
-# contains its changes.
+# One run at a time for each way in. `queue: max` keeps every waiting run (up
+# to 100) instead of dropping all but the newest, so each push gets a build of
+# its own and no release is lost. GitHub does not promise the order waiting
+# runs start in, which is one reason a merge build is checked against `next`
+# before it is published (next-moves-forward.sh).
 concurrency:
   group: publish-${{ github.event_name }}
-  cancel-in-progress: false
+  queue: max
 
 jobs:
   publish:
@@ -69,4 +71,5 @@ jobs:
             *-next.*) ;;
             *) echo "Refusing to publish $version as a merge build" >&2; exit 1 ;;
           esac
+          .github/scripts/next-moves-forward.sh
           npm publish --access public --tag next

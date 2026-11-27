@@ -85,7 +85,11 @@ a build was made from.
 In `publish.yml`, the merge build's `npm publish` must keep `--tag next`.
 Without it the build becomes `latest` and reaches every machine.
 
-Runs go one at a time. When pushes land close together, a waiting run can be
-dropped for a newer one, whose build contains its changes. A push whose
-`package.json` version has no tag fails without publishing; that is what
-happens when a release commit is pushed without `--follow-tags`.
+Runs wait their turn, so every push gets a build of its own. A merge build is
+never published over a newer one: when `next` is already on a build that
+contains the run's commit, the run fails without publishing
+(`.github/scripts/next-moves-forward.sh`). That is what re-running an old run
+does, so re-run a failed merge build only when it is for the newest commit on
+`main`; otherwise the next push publishes. A push whose `package.json` version
+has no tag also fails without publishing; that is what happens when a release
+commit is pushed without `--follow-tags`.
