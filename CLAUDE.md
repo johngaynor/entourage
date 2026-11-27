@@ -3,7 +3,12 @@
 Published to npm as `@johngaynor/entourage`. Machines get changes only from a
 published release, so merging to `main` does not ship anything.
 
-Run the tests with `npm test`.
+Run the tests with `npm test`, or one area with `npm test -- task` (the areas
+are the files in `test/`: `install`, `project`, `task`).
+
+The CLI is `cli/entourage`, which sets the paths and sources the files in
+`cli/lib/`. A new file in `cli/lib/` must be added to the list in
+`cli/entourage`; a new test case must be added to `CASES` in its test file.
 
 ## Versions and releases
 
