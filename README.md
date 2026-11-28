@@ -24,7 +24,7 @@ They live in [skills/](skills/). `entourage install` links them into
 name, such as `/sdlc-define ABC-122`.
 
 Whenever a skill ends or pauses, it hands off with a block: which step it was,
-on the block's `phase:` line, and whether it is `done`, `needs-human` or
+on the block's `step:` line, and whether it is `done`, `needs-human` or
 `failed`. A `done` block also names
 the step that comes next. The agent records each block with
 `entourage task handoff`, and your answer when you reply to a question.

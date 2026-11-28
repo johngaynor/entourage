@@ -28,8 +28,7 @@ is the skill of its name, such as `sdlc-define`. Start is the
 `entourage task start` command, which the human runs. Merged is where a card
 ends: it is only ever named as the next step.
 
-A hand-off names its step on its `phase:` line, as in `phase: define`. The
-line's name is older than these words, and what it holds is a step.
+A hand-off names its step on its `step:` line, as in `step: define`.
 
 ## Phase
 
