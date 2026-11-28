@@ -103,8 +103,16 @@ your shell or written as NAME=value lines in ~/.config/entourage/.env, which
 `linear key` writes for you and only you can read. A variable you export wins
 over its line in the file, unless it is empty; of two lines for a name, the
 last is used. Herdr starts commands without your shell's exports, so what a
-mod's run of entourage needs has to be in the file. ENTOURAGE_HOME is the one
-variable the file cannot set.
+mod's run of entourage needs has to be in the file. ENTOURAGE_HOME and
+ENTOURAGE_LIVE are the variables the file cannot set.
+
+The copy of entourage in a git worktree of the entourage repo, run as
+./cli/entourage, is a change being built. It runs only the commands that
+read: help, status, project ls, project team <name> with no teams, task ls
+and task log. Every other command stops before it does anything, says why,
+and leaves this machine as it was. ENTOURAGE_LIVE=1, set for that one run,
+runs it for real. The installed entourage is never stopped, whatever folder
+it is run from.
 EOF
 }
 
@@ -143,6 +151,8 @@ KEY_EXPORTED=${LINEAR_API_KEY:+1}
 #     empty, which counts as not set.
 # Only the variables entourage reads are taken: a line for PATH or anything
 # else is skipped, and so is ENTOURAGE_HOME, which says where this file is.
+# ENTOURAGE_LIVE is skipped too: it lets a worktree's copy change the
+# machine, so it is set for one run, never left on in the file (guard.sh).
 # HERDR_APP_HOME and CLAUDE_CONFIG_DIR are exported, so a program entourage
 # starts finds the same folders it does. The Linear key is not: only
 # entourage reads it, and it hands it to curl on stdin.
@@ -170,7 +180,7 @@ load_env() {
     [[ $line =~ $re ]] || continue
     name=${BASH_REMATCH[2]} value=${BASH_REMATCH[3]}
     case $name in
-      ENTOURAGE_HOME) continue ;;
+      ENTOURAGE_HOME | ENTOURAGE_LIVE) continue ;;
       ENTOURAGE_* | LINEAR_API_KEY | HERDR_APP_HOME | CLAUDE_CONFIG_DIR) ;;
       *) continue ;;
     esac
@@ -225,12 +235,15 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common links recipes trust project linear task handoff commands; do
+for part in common guard links recipes trust project linear task handoff commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null
   . "$LIB/$part.sh"
 done
+
+# A worktree's copy runs only the commands that read, unless asked (guard.sh).
+guard_worktree "$@"
 
 case ${1:-help} in
   install) shift; cmd_install "$@" ;;

@@ -30,6 +30,8 @@ setup() {
   cp -R "$ROOT/prompts" "$REPO/prompts"
   # A key exported in the shell that runs the tests must not reach a case.
   unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT ENTOURAGE_SETUP ENTOURAGE_SQLITE LINEAR_API_KEY
+  # Nor may a run asking a worktree's copy to act on the real machine.
+  unset ENTOURAGE_LIVE
   SK=$HOME/.claude/skills
   unset ENTOURAGE_HOME
   P=$HOME/.config/entourage/projects
@@ -93,6 +95,33 @@ stub_hc() {
   chmod +x "$TMP/bin/hc"
 }
 hc_calls() { cat "$TMP/hc-calls.log" 2>/dev/null; }
+
+# --- a worktree's copy ------------------------------------------------------
+
+# Make the case's copy of entourage a worktree's: its .git folder becomes a
+# file naming a folder in another repo's worktrees/ folder, as `git worktree
+# add` leaves it. The usual copy, with a .git folder, is a main checkout's.
+as_worktree() {
+  rm -rf "$REPO/.git"
+  mkdir -p "$TMP/main/.git/worktrees/repo"
+  printf 'gitdir: %s\n' "$TMP/main/.git/worktrees/repo" > "$REPO/.git"
+}
+
+# Every folder, file and link under the throwaway HOME, one per line: a file
+# with its checksum, a link with where it points. When two snapshots match,
+# nothing on the machine changed in between: the projects and their tasks,
+# the hand-off store, the env file, Herdr's links, the skills, and Claude
+# Code's own file all live under HOME.
+machine_snapshot() {
+  local f
+  (cd "$HOME" && find . -print | LC_ALL=C sort | while IFS= read -r f; do
+    if [ -L "$f" ]; then printf 'link %s -> %s\n' "$f" "$(readlink "$f")"
+    elif [ -f "$f" ]; then printf 'file %s %s\n' "$f" "$(cksum < "$f")"
+    elif [ -d "$f" ]; then printf 'dir  %s\n' "$f"
+    else printf 'else %s\n' "$f"
+    fi
+  done)
+}
 
 # --- Claude Code's own file -------------------------------------------------
 
