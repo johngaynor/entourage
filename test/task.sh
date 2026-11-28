@@ -867,6 +867,19 @@ task_start_runs_setup_several_repos() {
   case $out in *"setup     docs (running in the tab)"*) ;; *) fail "did not report docs: $out" ;; esac
 }
 
+# entourage's own repo provides what it asks of others: with its justfile, a
+# task on it types `just setup` into the tab and skips nothing. Without the
+# file, give_setup would fall back to its own recipe, so the case checks first.
+task_start_runs_entourages_own_setup() {
+  setup_on
+  [ -f "$ROOT/justfile" ] || { fail "entourage has no justfile at its root"; return; }
+  stub_just; stub_hc; task_demo entourage; give_setup entourage "$(cat "$ROOT/justfile")"
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 just setup && entourage task build demo ABC-1" ] || fail "did not type just setup into the tab: $(hc_calls)"
+  case $out in *"setup     entourage (running in the tab)"*) ;; *) fail "did not report setup: $out" ;; esac
+  case $out in *skipped*) fail "said setup was skipped: $out" ;; esac
+}
+
 task_start_skips_setup_without_a_recipe() {
   setup_on
   stub_just; stub_hc; task_demo api; give_setup api 'setup-db:\n\techo\npresetup:\n\techo\n'
@@ -945,7 +958,8 @@ task_start_when_hc_send_fails() {
 
 SETUP_CASES="task_start_leaves_setup_off task_start_turns_setup_on_from_the_env_file
   task_start_runs_setup_one_repo task_start_sends_setup_to_the_new_tab
-  task_start_runs_setup_several_repos task_start_skips_setup_without_a_recipe
+  task_start_runs_setup_several_repos task_start_runs_entourages_own_setup
+  task_start_skips_setup_without_a_recipe
   task_start_skips_an_unreadable_justfile task_start_ignores_a_parent_justfile
   task_start_quotes_repo_names task_start_without_just task_start_without_hc
   task_start_without_a_terminal task_start_when_hc_send_fails"
