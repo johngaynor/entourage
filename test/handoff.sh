@@ -705,6 +705,30 @@ a_start_row_shows_no_time() {
   j_is .run 2
 }
 
+# `task start` records a start row. It shows as started, with no time, as a
+# write-up's start does, but it begins no new run: the write-up's steps stay
+# in the run beside the build's, and the build is timed from it.
+a_task_start_row_keeps_the_run() {
+  demo; make_store
+  put 2026-01-01T10:00:00Z new done define
+  put 2026-01-01T10:00:50Z define done plan
+  put 2026-01-01T10:02:34Z plan done breakdown
+  put 2026-01-01T10:05:00Z breakdown done setup
+  put 2026-01-01T11:00:00Z start done build
+  out=$("$E" task log demo ABC-122 --json)
+  j_is '.steps[4].kind' start; j_is '.steps[4].label' started; j_is '.steps[4].seconds' null
+  j_is '.steps[4].run' 1; j_is .run 1; j_is .state started
+  out=$("$E" task log demo) || fail "task log exited non-zero"
+  log_has '^ABC-122 +started +for '
+  put 2026-01-01T11:20:00Z build done review
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  log_has 'start +done, then build$'
+  log_has 'build +done, then review +20m 00s$'
+  log_has 'define +done, then plan +50s$'
+  out=$("$E" task log demo ABC-122 --json)
+  j_is '.steps[5].run' 1; j_is .run 1
+}
+
 log_json_fails_as_the_plain_log_does() {
   demo
   mkdir -p "$HOME/.config/entourage"
@@ -834,6 +858,6 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   log_shows_a_question_still_waiting
   log_json_is_the_same_view_on_one_line log_json_with_nothing_recorded
   log_json_says_when_a_question_is_still_waiting log_json_keeps_awkward_text
-  a_start_row_shows_no_time log_json_fails_as_the_plain_log_does
+  a_start_row_shows_no_time a_task_start_row_keeps_the_run log_json_fails_as_the_plain_log_does
   log_lists_the_projects_cards_newest_first log_list_with_nothing_recorded
   log_list_fails_when_the_store_cannot_be_read"

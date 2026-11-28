@@ -4,7 +4,9 @@
 # A task is one piece of work in a project, usually a Linear card. A person
 # runs two commands, in this order:
 #   task new    an agent writes the card up, in a tab in the project's space
-#   task start  a worktree of each repo on the card's branch, in a tab of its own
+#   task start  a worktree of each repo on the card's branch, in a tab of its
+#               own, where it types `task build` to start the agent that
+#               builds the card
 # The agent runs `task handoff` as each step ends, and `task log` shows what
 # it recorded. Both are in handoff.sh.
 
@@ -14,6 +16,11 @@ CARD_RE='^[A-Za-z][A-Za-z0-9]*-[0-9]+$'
 CARD_SKILLS='sdlc-define sdlc-plan sdlc-breakdown'
 # The agent's first message. {card} and {project} are filled in.
 CARD_PROMPT=$REPO/prompts/task-new.md
+# The skills the agent builds a card with, in the order it uses them: the
+# build, then the review, which sends what it finds not met back to the build.
+BUILD_SKILLS='sdlc-build sdlc-review'
+# The build agent's first message. {card} and {project} are filled in.
+BUILD_PROMPT=$REPO/prompts/task-build.md
 # The agent a new task's tab runs: one word, a command on PATH.
 AGENT=${ENTOURAGE_AGENT:-claude}
 
@@ -167,20 +174,22 @@ task_undo() {
   [ ! -e "$tdir" ] || printf 'entourage: could not remove everything in %s\n' "$tdir" >&2
 }
 
-# Get a new task ready to work in: type `just setup` into its tab's shell for
-# every repo that provides the recipe (see recipes.sh). It runs there, not
-# here, so that `task start` returns at once and the install is on screen
-# where the work will happen. Nothing in this step can fail the task: by now
-# it exists and its tab is open.
+# The commands that get a new task ready to work in, for the line typed into
+# its tab: `just setup` for every repo that provides the recipe (see
+# recipes.sh). They go in SETUP_LINE, empty when there is nothing to run, and
+# the repos they run for in SETUP_READY. Nothing in this step can fail the
+# task: by now it exists and its tab is open.
 #
 # Setup is off unless ENTOURAGE_SETUP is 1, while the local environment each
 # task gets is still being worked out: a recipe that starts a whole stack
 # should not run for every task in the meantime.
-#   $1 the task's folder   $2 what `tab.new` printed   $3... the task's repos
-run_setup() {
-  local tdir=$1 tab=$2 repo name line='' term count ready=() groups i=0
-  shift 2
+#   $1 the task's folder   $2... the task's repos
+SETUP_LINE='' SETUP_READY=()
+setup_line() {
+  local tdir=$1 repo name count groups i=0
+  shift
   count=$#
+  SETUP_LINE='' SETUP_READY=()
   if [ "${ENTOURAGE_SETUP:-}" != 1 ]; then
     say "  setup     not run: it is off for now (ENTOURAGE_SETUP=1 turns it on)"
     return 0
@@ -195,13 +204,14 @@ run_setup() {
     groups=${TASK_GROUPS[$i]:-}; i=$((i + 1))
     case $(recipe_state "$tdir/$name" setup) in
       ok)
-        ready+=("$name${groups:+ $groups}")
+        SETUP_READY+=("$name${groups:+ $groups}")
         # One repo: the tab is already in its worktree. Several: the tab is in
         # the task folder above them, and they run one after another. The ./
         # keeps the shell's CDPATH, and a name starting with a dash, from
-        # sending cd somewhere else.
-        if [ "$count" -eq 1 ]; then line="just setup${groups:+ $groups}"
-        else line=${line:+$line && }"(cd ./$(sh_quote "$name") && just setup${groups:+ $groups})"
+        # sending cd somewhere else. The subshells leave the tab in the task
+        # folder for what comes after them.
+        if [ "$count" -eq 1 ]; then SETUP_LINE="just setup${groups:+ $groups}"
+        else SETUP_LINE=${SETUP_LINE:+$SETUP_LINE && }"(cd ./$(sh_quote "$name") && just setup${groups:+ $groups})"
         fi
         ;;
       no-justfile) say "  setup     $name skipped: no justfile" ;;
@@ -209,15 +219,41 @@ run_setup() {
       *) say "  setup     $name skipped: its justfile could not be read by just" ;;
     esac
   done
-  [ -n "$line" ] || return 0
+}
+
+# Type a new task's line into its tab's shell: the setup commands, if there
+# are any, then `entourage task build`, which starts the agent on the card. It
+# runs there, not here, so that `task start` returns at once, setup is on
+# screen where the work will happen, and the agent cannot start before setup
+# has finished. Nothing in this step can fail the task.
+#   $1 what `tab.new` printed   $2 the project   $3 the card
+start_in_tab() {
+  local tab=$1 build="entourage task build $2 $3" line term name
+  line=${SETUP_LINE:+$SETUP_LINE && }$build
   # tab.new prints the address of the terminal it made, as "terminal": "t8".
   term=$(printf '%s\n' "$tab" | sed -n 's/.*"terminal": *"\([^"]*\)".*/\1/p' | head -n 1) || term=
   # hc types the line once the new shell has gone quiet: a second or two.
   if [ -n "$term" ] && have_hc && hc_cmd send "$term" "$line" >/dev/null 2>&1; then
-    for name in "${ready[@]}"; do say "  setup     $name (running in the tab)"; done
+    for name in ${SETUP_READY[@]+"${SETUP_READY[@]}"}; do say "  setup     $name (running in the tab)"; done
+    say "  agent     starting in the tab: $build"
     return 0
   fi
-  say "  setup     could not be started; run it yourself in the tab: $line"
+  say "  agent     could not be started; run it yourself in the tab: $line"
+}
+
+# Say when Claude Code will ask whether to trust a task's tab. A worktree takes
+# the trust of its repo's own checkout, never of a folder above it, and
+# entourage never answers for a repo (see trust.sh), so this only reads.
+#   $1 the repo whose worktree the tab is in
+repo_trust_note() {
+  local repo name=${1##*/}
+  repo=$(cd -P "$1" 2>/dev/null && pwd) || return 0
+  if [ -e "$CLAUDE_STATE" ] && command -v jq >/dev/null 2>&1; then
+    ! trust_recorded "$repo" "$CLAUDE_STATE" || return 0
+    say "  note      Claude Code will ask once in the tab whether to trust $name. It asks once for each repo."
+  else
+    say "  note      Claude Code may ask once in the tab whether to trust $name."
+  fi
 }
 
 # A group is a part of a repo, named by the repo itself: a plain word, because
@@ -382,8 +418,43 @@ task_start() {
   local tab
   tab=$(herdr_app do tab.new "{\"name\":\"$task\",\"folder\":\"$folder\"}" 2>/dev/null) ||
     die "made the task at $folder but could not open its tab. Is Herdr open?"
-  run_setup "$tdir" "$tab" "${repos[@]}"
+  setup_line "$tdir" "${repos[@]}"
+  start_in_tab "$tab" "$name" "$card"
+  [ "${#repos[@]}" -gt 1 ] || repo_trust_note "${repos[0]}"
+  record_start "$name" "$card" start
   say "Opened task '$task' on branch $branch"
+}
+
+# Start the build agent on a card, in its task: `task start` types this into
+# the task's tab, after setup when setup runs. The first message has the agent
+# build the card and review the build. Run it again in the tab to start a new
+# agent when the first one has stopped.
+task_build() {
+  local name=${1:-} card=${2:-} dir here low skill prompt
+  dir=$(project_dir "$name")
+  [ -n "$card" ] ||
+    die "which card? Usage: entourage task build $name <card>, like: entourage task build $name ABC-122"
+  [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
+  [ "$#" -le 2 ] || die "usage: entourage task build <project> <card>"
+  card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
+  low=$(printf '%s' "$card" | tr '[:upper:]' '[:lower:]')
+  # The agent works in the folder it starts in, so that has to be this card's
+  # task: tasks/<card>-<short name>, or tasks/<card> for a title with no plain
+  # words, or a worktree inside it. tasks/abc-12-… is not ABC-1's.
+  here=$(pwd -P)
+  case $here/ in
+    "$dir/tasks/$low/"* | "$dir/tasks/$low-"*/*) ;;
+    *) die "run this in $card's task, the folder task start made for it in $dir/tasks. To make it: entourage task start $name $card" ;;
+  esac
+  command -v "$AGENT" >/dev/null 2>&1 ||
+    die "'$AGENT' is not on your PATH, so there is no agent to start. Install it, or set ENTOURAGE_AGENT to the one you use."
+  for skill in $BUILD_SKILLS; do
+    [ -f "$SKILLS_HOME/$skill/SKILL.md" ] ||
+      die "the $skill skill is not in $SKILLS_HOME, so the agent could not use it. Run: entourage update"
+  done
+  [ -f "$BUILD_PROMPT" ] || die "the agent's first message is missing from $BUILD_PROMPT"
+  prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$BUILD_PROMPT")
+  exec "$AGENT" "$prompt"
 }
 
 # List the open cards of a project's Linear teams, grouped by status: the
@@ -424,8 +495,9 @@ cmd_task() {
     new) shift; task_new "$@" ;;
     ls | list) shift; task_ls "$@" ;;
     start) shift; task_start "$@" ;;
+    build) shift; task_build "$@" ;;
     handoff) shift; task_handoff "$@" ;;
     log) shift; task_log "$@" ;;
-    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
+    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task build <project> <card>, or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
   esac
 }
