@@ -1113,7 +1113,7 @@ task_start_records_the_start() {
 task_start_follows_breakdown_by_one_name() {
   task_demo api
   printf 'phase: breakdown\nstatus: done\nnext: start\nsummary: Approved as one piece.\n' |
-    "$E" task handoff demo ABC-1 >/dev/null || fail "task handoff refused breakdown with next: start"
+    "$E" task handoff demo ABC-1 >/dev/null 2>&1 || fail "task handoff refused breakdown with next: start"
   out=$("$E" task log demo) || fail "task log with no card exited non-zero"
   printf '%s\n' "$out" | grep -Eq '^ABC-1 +breakdown done, then start +for ' ||
     fail "the card list does not show breakdown done, then start: $out"

@@ -102,6 +102,11 @@ three skills on the card and then asks you to approve it:
 entourage task new my-project ABC-122
 ```
 
+Recording your approval moves the card in Linear to its team's first
+not-started status (Todo in Lab), and each of its sub-issues with it. When a
+card cannot be moved, the approval is still recorded, and the agent tells you
+which card, and why.
+
 As it goes, the agent records how each step ended. `task log` lists that for
 a card, oldest first, with how long each step took and how long a question
 waited for your answer:
@@ -215,8 +220,9 @@ Then it asks you to merge them, as `needs-human` with their links. Merge each
 one on GitHub yourself, then tell the agent in the tab that they have merged.
 It checks each with `gh pr view`, and once every one has merged it hands off
 `done` with `merged` next, which ends the card: `task log` shows the card as
-merged, and recording it moves the card to Done in Linear, as `task start`
-moved it to In Progress and opening the pull requests moved it to In Review.
+merged, and recording it moves the card to Done in Linear, as your approval
+moved it to Todo, `task start` moved it to In Progress and opening the pull
+requests moved it to In Review.
 Each move picks the team's own status of that kind,
 goes only forward, never touches a card that is done or canceled, and needs
 your Linear key to have Write permission. A move that cannot be made is a
