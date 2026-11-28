@@ -158,7 +158,7 @@ entourage task ls <project> [--json]
 
   | Set once | With | What it is |
   |---|---|---|
-  | Your Linear API key | `entourage linear key` | Make the key in Linear, under Settings, Account, Security & access, Personal API keys. Read permission is enough to list cards; the card skills' writes need Write too (see [Writing the card up](#writing-the-card-up)), and so do the card's moves (see [Starting the work](#starting-the-work)). The command asks for it without showing it, checks it with Linear, and saves it. |
+  | Your Linear API key | `entourage linear key` | Make the key in Linear, under Settings, Account, Security & access, Personal API keys. Read permission is enough to list cards and to read one with `entourage linear read`; the card skills' writes need Write too (see [Writing the card up](#writing-the-card-up)), and so do the card's moves (see [Starting the work](#starting-the-work)). The command asks for it without showing it, checks it with Linear, and saves it. |
   | The project's teams | `entourage project team <project> <team>...` | A team's key is what its cards' IDs start with: `ABC` for `ABC-122`. A project can name several teams, and several projects can name the same team. With no team given, the command prints the ones that are set. |
 
 - **The key is one of entourage's variables, `LINEAR_API_KEY`.** `linear key`
@@ -252,24 +252,27 @@ entourage task new <project> <card>
   project's teams. Only a definite no stops it: with no key saved, Linear is
   not asked, and when Linear cannot be asked (the network, a rejected key, no
   `curl` or `jq`), the card starts as before, with a note saying why.
-- **The skills write to the card through entourage.** The agent reads the card
-  with its own Linear tools, but sets the type and writes each section with two
-  entourage commands, so those steps go the same way on every run. A third,
-  which `sdlc-pr` runs once its pull requests are open, moves the card (see
-  [Hand-offs](#hand-offs)):
+- **The skills read and write the card through entourage.** The agent reads
+  the card with one entourage command, and sets the type and writes each
+  section with two more, so those steps go the same way on every run. A
+  fourth, which `sdlc-pr` runs once its pull requests are open, moves the card
+  (see [Hand-offs](#hand-offs)). The agent's own Linear tools are for when
+  entourage cannot read the card, and for other reads, such as a related card:
 
   | Command | What it does |
   |---|---|
+  | `entourage linear read <card> [--json]` | Prints the card whole: its ID and title, then its status, labels, parent (when it has one) and URL, the description with its sections as written, each comment with who wrote it and when, oldest first, and each sub-issue with its ID, status and title. A comment an app made is the app's. Control characters become spaces, as in `task ls`, but the description and the comments keep their line breaks. `--json` prints the same as one line for programs such as a mod, with the text as Linear gave it: `{"id", "title", "url", "status": {"name", "type"}, "type", "labels", "parent": {"id", "title"}, "description", "comments": [{"author", "createdAt", "body"}], "subIssues": [{"id", "title", "status": {"name", "type"}}]}`. `type` is the card's label in the `Type` group, `labels` the names of all its labels, and `type` and `parent` are `null` when the card has none. A card with more than 100 comments, 50 sub-issues or 100 labels is not printed, since what was read would pass for the whole: the command says so and exits non-zero. When it fails it prints nothing on stdout. It needs only Read permission. |
   | `entourage linear type <card> <feat\|fix\|chore>` | Sets the card's type: its one label in the `Type` label group, the team's or else the workspace's. Any other type comes off; the card's other labels are never touched. A missing label is refused, never made. |
   | `entourage linear section <card> <Specification\|Plan\|Breakdown> [--replace]` | Adds the section, its body on stdin, below the description. Specification and Plan are folded away, in the form Linear keeps them in, `+++ ## <name>` … `+++` (one written as `>>>` is read the same); the Breakdown is left open, because you read it to approve the card. A section of that name already there is refused, unless `--replace` puts the new one in its place; `--replace` with none there is refused too. A body is refused when a line in it would end the section early or start a second one: a fold line, and in the Breakdown a `#` or `##` heading. A line inside a fenced code block is never taken for a section. |
   | `entourage linear move <card> <approved\|started\|review\|done>` | Moves the card forward to its team's first not-started status (Todo in Lab, Ready for Dev in PHY), its first started status (In Progress), its last started one (In Review), or its first completed one (Done), picked by its kind and its place in the team's order, not by its name. `approved` moves each of the card's sub-issues after it the same way, by its own team's statuses, and is the move your approval makes. In a team with one started status, `review` is that status. A card already there, further on, done or canceled stays where it is, and the command says so and exits zero. A move that cannot be made, such as with Linear out of reach or a key without Write permission, exits non-zero, saying which card was not moved and why; the other cards still move. |
 
-  All three read the card back before they say they are done: one type, the
-  one asked for; the section there once, and the text above it as it was; the
-  card in the status it was moved to. All three need your key to have Write
-  permission. With no key saved, the skills write the type and the sections
-  with the agent's Linear tools instead, and say so; the card is not moved then,
-  and `sdlc-pr` says so.
+  The three that write read the card back before they say they are done: one
+  type, the one asked for; the section there once, and the text above it as it
+  was; the card in the status it was moved to. All three need your key to have
+  Write permission. With no key saved, or a key Linear rejects, the skills read
+  the card, and write the type and the sections, with the agent's Linear tools
+  instead, and say so in the hand-off's flags; the card is not moved then, and
+  `sdlc-pr` says so.
 
 ### The Cards panel
 

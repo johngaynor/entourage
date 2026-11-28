@@ -13,7 +13,7 @@ Plan only reads. It writes no code and makes no branch or worktree. Whether the 
 
 ## Before you write anything
 
-1. Read the card with the Linear tools: the original description and the Specification.
+1. Read the card with `entourage linear read <card ID>`: the original description and the Specification.
 2. If there is no Specification, define hasn't run. Say so and stop.
 3. If the card already has a Plan section, don't write a second one. If the human has asked for it to be revised, revise it in place. Otherwise tell the human and ask whether they want it revised, and if they don't, hand off as `done` without changing it.
 
@@ -155,7 +155,7 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
-| `entourage linear` says no Linear key is saved, or the command isn't there | Write the section with the Linear tools instead, in the same form, with the heading `>>> ## Plan` and a closing `>>>`. Say so in `flags` |
+| `entourage linear` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card and write the section with the Linear tools instead, in the same form, with the heading `>>> ## Plan` and a closing `>>>`. Say so in `flags` |
 | `entourage linear` says it could not reach Linear | Run it once more. It checks the card before it writes, so it can't add the section twice. If it then says the card already has a Plan, the first try got through |
 | `entourage linear section` says the text above the section changed | Put it back from what you read at the start of this run, with the Linear tools, and tell the human |
 | The collapsed section shows as plain `>>>` text | Leave the content as it is and tell the human. Don't keep reformatting it |

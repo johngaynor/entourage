@@ -287,12 +287,44 @@ each_skill_revises_its_section_with_replace() {
     fail "sdlc-breakdown does not replace the parent's Breakdown to add the sub-issue IDs"
 }
 
-# With no key saved, each skill still writes, through the agent's Linear tools.
+# With no key saved, or a key Linear rejects, each skill still reads the card,
+# and the write-up's skills still write, through the agent's Linear tools, and
+# say so. The row names the words `linear read` says then (test/linear.sh).
 each_skill_falls_back_without_a_key() {
-  local s
+  local s row
+  for s in $CARD_SKILL_NAMES; do
+    row=$(grep -E '^\| `entourage linear( read)?` says no Linear key is saved' "$REPO/skills/$s/SKILL.md")
+    [ -n "$row" ] || { fail "$s does not say what to do when no Linear key is saved"; continue; }
+    case $row in *'Linear rejected the key'*) ;; *) fail "$s does not say what to do when Linear rejects the key: $row" ;; esac
+    case $row in *'Read the card'*'Linear tools'*) ;; *) fail "$s does not read the card with the Linear tools then: $row" ;; esac
+    case $row in *'`flags`'*) ;; *) fail "$s does not say so in flags: $row" ;; esac
+  done
+  # The steps that write the card up write with the Linear tools then too.
   for s in sdlc-define sdlc-plan sdlc-breakdown; do
     grep -qF '`entourage linear` says no Linear key is saved' "$REPO/skills/$s/SKILL.md" ||
-      fail "$s does not say what to do when no Linear key is saved"
+      fail "$s does not write with the Linear tools when no Linear key is saved"
+  done
+}
+
+# Every card skill and both of the factory's profiles read the card through
+# entourage, and none says to read it with the Linear tools, which are for
+# when entourage cannot. Lines are joined, so a sentence a line break splits
+# is still found.
+each_skill_reads_the_card_through_entourage() {
+  local s f text
+  for s in $CARD_SKILL_NAMES; do
+    f=$REPO/skills/$s/SKILL.md
+    grep -qF 'Read the card with `entourage linear read <card ID>`' "$f" ||
+      fail "$s does not read the card with entourage linear read"
+  done
+  for f in $(factory_profiles); do
+    grep -qF 'entourage linear read' "$f" || fail "${f##*/} does not read the card with entourage linear read"
+  done
+  for f in $(factory_profiles) $(for s in $CARD_SKILL_NAMES; do printf '%s\n' "$REPO/skills/$s/SKILL.md"; done); do
+    text=$(tr '\n' ' ' < "$f")
+    case $text in
+      *'Read the card with the Linear tools'[:.,]*) fail "${f#"$REPO"/} still says to read the card with the Linear tools" ;;
+    esac
   done
 }
 
@@ -891,6 +923,7 @@ no_profile_names_a_person() {
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_writes_its_section_with_the_command no_skill_writes_a_section_itself
   each_skill_revises_its_section_with_replace each_skill_falls_back_without_a_key
+  each_skill_reads_the_card_through_entourage
   build_pushes_nothing build_is_done_only_when_the_tests_pass
   build_stops_on_a_card_with_no_plan build_installs_what_the_tests_need_first
   build_takes_a_later_round_from_the_review

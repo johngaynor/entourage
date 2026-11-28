@@ -14,7 +14,7 @@ Define says what and why. How it will be built belongs to plan, and whether it i
 ## Before you write anything
 
 1. Get the card. If you weren't given a card ID, ask for one.
-2. Read the card with the Linear tools: title, description, labels and comments.
+2. Read the card with `entourage linear read <card ID>`: title, description, labels and comments.
 3. If the card already has a Specification section, don't write a second one. If the human has asked for it to be revised, revise it in place, with `--replace` (see step 4). Otherwise tell the human and ask whether they want it revised, and if they don't, hand off as `done` without changing it.
 4. Read the project's `PROJECT.md`, and look at only enough of the product, docs and code to use the right names and to know what exists today. Stop there. Working out the approach is plan's job, and doing it now tends to leak files and design into the Specification.
 
@@ -165,7 +165,7 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
-| `entourage linear` says no Linear key is saved, or the command isn't there | Set the type and write the section with the Linear tools instead, in the same form, with the heading `>>> ## Specification` and a closing `>>>`. Say so in `flags` |
+| `entourage linear` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card, set the type and write the section with the Linear tools instead, in the same form, with the heading `>>> ## Specification` and a closing `>>>`. Say so in `flags` |
 | `entourage linear` says it could not reach Linear | Run it once more. It checks the card before it writes, so it can't add the section twice. If it then says the card already has a Specification, the first try got through |
 | `entourage linear section` says the text above the section changed | Put it back from what you read at the start of this run, with the Linear tools, and tell the human |
 | The collapsed section shows as plain `>>>` text | Leave the content as it is and tell the human. Don't keep reformatting it |

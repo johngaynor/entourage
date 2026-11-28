@@ -14,7 +14,7 @@ The human merges. Never run `gh pr merge`, not even with `--auto`, and never tur
 ## Before you push anything
 
 1. Get the card. If you weren't given a card ID, ask for one.
-2. Read the card with the Linear tools: the original description, the Specification, the Plan, the Breakdown, the Review and the comments.
+2. Read the card with `entourage linear read <card ID>`: the original description, the Specification, the Plan, the Breakdown, the Review and the comments.
 3. If the card has no Plan, it was not approved to build. Push nothing, and hand off as `failed`, saying so.
 4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a build, a review and a pull request of its own. Push nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Open nothing unless the Review passed the work. The `sdlc-review` skill writes the Review on the card, as a collapsed section after the Breakdown, and marks each Done when item **Met.**, **Not met.** or **For the human.** If the card has no Review, an item in it is **Not met.**, or it says the tests fail, the work has not passed: push nothing, and hand off as `failed`, saying which. An item **For the human.** does not hold the pull request back. It goes in the description, as what is left to the human.
@@ -265,6 +265,7 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Hand off as `failed`. Don't open a pull request from memory of the card or from its title |
+| `entourage linear read` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card with the Linear tools instead, and say so in `flags` when you hand off |
 | `gh` is missing or not signed in | Hand off as `failed`, saying to run `gh auth login`. Push nothing |
 | A repo with commits has no `origin`, or `gh repo view` doesn't know it | Hand off as `failed`, naming the repo and what to run. Push nothing, in any repo |
 | The push is refused | Hand off as `failed`, with what git said. Never force it, and don't pull or rebase to get it through |

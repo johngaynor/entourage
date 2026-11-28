@@ -14,7 +14,7 @@ Build ends with commits on the task's branch. Push nothing and open no pull requ
 ## Before you change anything
 
 1. Get the card. If you weren't given a card ID, ask for one.
-2. Read the card with the Linear tools: the original description, the Specification, the Plan, the Breakdown, the Review if there is one, and the comments.
+2. Read the card with `entourage linear read <card ID>`: the original description, the Specification, the Plan, the Breakdown, the Review if there is one, and the comments.
 3. If the card has no Plan, plan hasn't run, and the card was not approved to build. Change nothing, and hand off as `failed`, saying so.
 4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a Plan of its own. Build the sub-issue, not this card. Change nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Check where you are. The work goes in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, change nothing and hand off as `failed`, saying where you are.
@@ -132,6 +132,7 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Hand off as `failed`. Don't build from memory of the card or from its title |
+| `entourage linear read` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card with the Linear tools instead, and say so in `flags` when you hand off |
 | A repo the Plan changes has no worktree in the task | Ask the human. The task may have been started with targets that left it out |
 | A path in the Plan doesn't exist | Find the real one. If there isn't one, and the file isn't marked as new, ask the human |
 | The worktree lacks what the tests need, and the repo's docs don't say how to install it | Ask the human what to install. Don't guess |

@@ -529,10 +529,11 @@ task_ls() {
   fi
   # Titles and status names are anyone's text. In the list, a newline would
   # start what looks like another card, and an escape sequence would reach the
-  # terminal, so every control character becomes a space. No regex, so any jq
-  # does it. --json above keeps the text as it is.
+  # terminal, so every control character becomes a space (PLAIN_DEF, in
+  # linear.sh, which `linear read` uses too). --json above keeps the text as
+  # it is.
   printf '%s' "$list" |
-    jq -r 'def plain: explode | map(if . < 32 or (. > 126 and . < 160) then 32 else . end) | implode;
+    jq -r "$PLAIN_DEF"'
       .statuses[] | "\(.name | plain) (\(.cards | length))", (.cards[] | "  \(.id | plain)  \(.title | plain)")'
 }
 

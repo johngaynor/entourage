@@ -15,7 +15,7 @@ This skill has two parts. Proposing, and asking the human to approve, happens on
 
 ## Before you write anything
 
-1. Read the card with the Linear tools: the Specification and the Plan.
+1. Read the card with `entourage linear read <card ID>`: the Specification and the Plan.
 2. If either is missing, the earlier step hasn't run. Say so and stop.
 3. If the card is itself a sub-issue, don't slice it again. Slices go one level deep. If it looks too big, say so when you ask the human to approve.
 4. If the card already has a Breakdown section, don't write a second one. If the human has asked for it to be revised, revise it in place. Otherwise tell the human and ask whether they want it revised, and if they don't, go on to ask them to approve the card.
@@ -210,7 +210,7 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
-| `entourage linear` says no Linear key is saved, or the command isn't there | Write the Breakdown, set the sub-issues' types and write their sections with the Linear tools instead, in the same form: the Breakdown under the heading `## Breakdown`, and a sub-issue's Specification and Plan each between `>>> ## <name>` and a closing `>>>`. Say so in `flags` |
+| `entourage linear` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card, write the Breakdown, set the sub-issues' types and write their sections with the Linear tools instead, in the same form: the Breakdown under the heading `## Breakdown`, and a sub-issue's Specification and Plan each between `>>> ## <name>` and a closing `>>>`. Say so in `flags` |
 | `entourage linear` says it could not reach Linear | Run it once more. It checks the card before it writes, so it can't add the section twice. If it then says the card already has a Breakdown, the first try got through |
 | `entourage linear section` says the text above the section changed | Put it back from what you read at the start of this run, with the Linear tools, and tell the human |
 | `entourage linear type` says the label it needs doesn't exist | Don't create it. Finish the sub-issues, and tell the human which label is missing |
