@@ -71,23 +71,29 @@ Targets after the card narrow the task: `app` takes only that repo, and
 Join several groups with a comma: `app:athlete,coach`.
 `task build` starts the agent in the folder it is run in, which has to be the
 card's task, with the first message in prompts/task-build.md: build the card
-with the sdlc-build skill, then review the build with the sdlc-review skill.
+with the sdlc-build skill, review the build with the sdlc-review skill, then
+put it up as a pull request with the sdlc-pr skill.
 Run it again in the tab if the agent stops. The build makes the change the
 card's Plan describes, runs the tests and commits on the task's branch. It
 first installs what the tests need, the way the repo's docs say, and starts
 no app, server or database. The review runs the tests, checks each Done when
 item against the card's Plan and writes what it found on the card as a
-Review. What is not met goes back to sdlc-build; when all is met, the commits
-wait on the task's branch. Neither pushes anything or opens a pull request.
+Review. Neither pushes anything. What is not met goes back to sdlc-build.
+When all is met, sdlc-pr pushes the task's branch and opens a pull request
+into the default branch of each repo the work changed, saying how the review
+showed each Done when item. You merge it, then tell the agent in the tab that
+it has merged: it checks GitHub, and records the merge once every pull
+request for the card has merged. No agent merges a pull request.
 Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
-`/sdlc-review ABC-122`.
+`/sdlc-review ABC-122`, `/sdlc-pr ABC-122`.
 `task handoff` is run by the agent each time a step ends or pauses, and
 when the human answers a question. It reads a handoff block on stdin (phase,
 status, next and so on, one per line), refuses one that breaks the rules, and
 records it. `task log` lists what was recorded for a card, with how long each
 step took and how long it waited on the human. With no card it lists the
 project's cards that have hand-offs, newest first, each with where it stands
-and for how long. With --json it prints the same view as one line, for
+and for how long: a card whose pull requests have merged stands at merged.
+With --json it prints the same view as one line, for
 programs: the Steps panel in Herdr draws it. Run
 `entourage task handoff <project> <card>` with no block to see the rules.
 

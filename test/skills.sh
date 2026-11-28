@@ -2,9 +2,9 @@
 # No agent runs here: these only read the text. Sourced by test/run.sh.
 
 # The skills for the steps of a card's lifecycle, each named sdlc-<step>: the
-# three that write it up, then the one that builds it and the one that reviews
-# the build.
-CARD_SKILL_NAMES='sdlc-define sdlc-plan sdlc-breakdown sdlc-build sdlc-review'
+# three that write it up, then the one that builds it, the one that reviews
+# the build and the one that opens its pull request and waits for the merge.
+CARD_SKILL_NAMES='sdlc-define sdlc-plan sdlc-breakdown sdlc-build sdlc-review sdlc-pr'
 
 # Print a skill's "The handoff block" section: its heading and everything up
 # to the next second-level heading.
@@ -70,16 +70,22 @@ task_new_prompt_follows_the_block() {
   done
 }
 
-# The build's agent starts from prompts/task-build.md, which drives build and
-# review as task-new.md drives the write-up, and ends the run where the pull
-# request would begin.
+# The build's agent starts from prompts/task-build.md, which drives build,
+# review and the pull request as task-new.md drives the write-up, and ends the
+# run when the pull request has merged.
 task_build_prompt_drives_build_and_review() {
   local prompt=$REPO/prompts/task-build.md want
   for want in 'Start with the sdlc-build skill' '`review` is the sdlc-review skill' \
-      '`build` is the sdlc-build skill' 'next: pr' '`done`' '`needs-human`' '`failed`' \
+      '`build` is the sdlc-build skill' '`pr` is the sdlc-pr skill' 'next: merged' \
+      '`done`' '`needs-human`' '`failed`' \
       '{card}' '{project}' 'entourage task handoff {project} {card}' 'record my answer'; do
     grep -qF -- "$want" "$prompt" || fail "the task-build prompt does not mention $want"
   done
+  # The run used to end at the review, before the pull request was a skill.
+  ! grep -qF 'not a skill yet' "$prompt" ||
+    fail "the task-build prompt still says the pull request is not a skill"
+  ! grep -qF 'not a skill yet' "$REPO/skills/sdlc-review/SKILL.md" ||
+    fail "sdlc-review still says the pull request is not a skill"
 }
 
 # The skills ship to everyone who installs entourage, so they name no one.
@@ -253,12 +259,109 @@ review_writes_what_it_found_on_the_card() {
   grep -qF 'revise it in place' "$skill" || fail "sdlc-review does not revise its Review on a later round"
 }
 
+# The pull request goes up only for work the review passed, from the Review
+# the review wrote on the card. The skill says so in its first section,
+# before any step that pushes.
+pr_opens_nothing_unless_the_review_met_every_item() {
+  local first
+  first=$(awk '/^## / { if (on) exit; on = 1 } on' "$REPO/skills/sdlc-pr/SKILL.md")
+  case $first in
+    '## Before you push anything'*) ;;
+    *) fail "sdlc-pr's first section is not 'Before you push anything'" ;;
+  esac
+  case $first in
+    *'Open nothing unless the Review'*) ;;
+    *) fail "sdlc-pr's first section does not say to open nothing unless the Review passed the work" ;;
+  esac
+  case $first in
+    *'**Not met.**'*'`failed`'*) ;;
+    *) fail "sdlc-pr's first section does not hand a Review with an item not met off as failed" ;;
+  esac
+}
+
+# Only the repos the work changed get a pull request: the worktrees whose
+# branch has commits the default branch does not.
+pr_pushes_only_the_worktrees_with_commits() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md
+  grep -qF 'commits ahead of the default branch' "$skill" ||
+    fail "sdlc-pr does not find the worktrees with commits ahead of the default branch"
+  grep -qF 'and no other' "$skill" || fail "sdlc-pr does not say to push those worktrees and no other"
+  grep -qF 'git log --oneline origin/' "$skill" || fail "sdlc-pr does not say how to find the commits"
+}
+
+# A pull request follows the repo's own rules, and says, for each Done when
+# item, how the review showed it.
+pr_follows_the_repos_rules_for_pull_requests() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md want
+  for want in 'CLAUDE.md' 'CONTRIBUTING' '.github/pull_request_template.md' \
+      'links the card' 'each Done when item' 'how the review showed it' 'left to the human'; do
+    grep -qF -- "$want" "$skill" || fail "sdlc-pr does not mention $want"
+  done
+  # A description written on the command line would have its backticks run
+  # by the shell, so it goes in a file.
+  grep -qF -- '--body-file' "$skill" || fail "sdlc-pr does not give the description as a file"
+}
+
+# With the pull request open, the agent waits for the human to merge it, and
+# hands on to merged only once GitHub says every one has.
+pr_waits_for_the_human_to_merge() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md
+  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'status: needs-human' ||
+    fail "sdlc-pr does not show its needs-human hand-off with the links"
+  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'next: merged' ||
+    fail "sdlc-pr does not show its done hand-off with next: merged"
+  grep -qF 'gh pr view' "$skill" && grep -qF -- '--json state' "$skill" ||
+    fail "sdlc-pr does not check each pull request with gh pr view --json state"
+  grep -qF 'every pull request for the card has merged' "$skill" ||
+    fail "sdlc-pr does not wait for every pull request to merge"
+}
+
+# The human merges. No agent does, by hand or by auto-merge.
+no_agent_merges_a_pull_request() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md line
+  grep -qF 'Never run `gh pr merge`' "$skill" || fail "sdlc-pr does not say never to run gh pr merge"
+  grep -qF 'auto-merge' "$skill" || fail "sdlc-pr does not say never to turn on auto-merge"
+  # Any other line that names the command says never to run it.
+  while IFS= read -r line; do
+    case $line in *[Nn]ever*) ;; *) fail "sdlc-pr names gh pr merge without saying never: $line" ;; esac
+  done < <(grep -F 'gh pr merge' "$skill")
+}
+
+# What can stop the push is checked before anything is pushed, and a check
+# that fails is a failed hand-off with the reason, not a push that half works.
+pr_checks_it_can_push_before_pushing() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md auth remote push
+  auth=$(grep -nF 'gh auth status' "$skill" | head -n1 | cut -d: -f1)
+  remote=$(grep -nF 'gh repo view' "$skill" | head -n1 | cut -d: -f1)
+  push=$(grep -nF 'git push' "$skill" | head -n1 | cut -d: -f1)
+  if [ -z "$auth" ] || [ -z "$remote" ]; then
+    fail "sdlc-pr does not check gh auth status and the remote with gh repo view"
+  elif [ -z "$push" ]; then
+    fail "sdlc-pr does not say how to push the branch"
+  elif [ "$auth" -ge "$push" ] || [ "$remote" -ge "$push" ]; then
+    fail "sdlc-pr pushes before it checks that it can"
+  fi
+  # The section that checks says to hand off as failed, and pushes nothing.
+  local checks
+  checks=$(awk '/^## / { if (s ~ /gh auth status/) exit; s = "" } { s = s $0 "\n" } END { printf "%s", s }' "$skill")
+  case $checks in
+    *'gh auth status'*'`failed`'* | *'`failed`'*'gh auth status'*) ;;
+    *) fail "sdlc-pr's checks before the push do not hand off as failed when one fails" ;;
+  esac
+  case $checks in *'git push'*) fail "sdlc-pr pushes in the section that checks it can" ;; esac
+  grep -qF 'never forced' "$skill" || fail "sdlc-pr does not say the push is never forced"
+  ! grep -qE -- 'git push[^`]*--force' "$skill" || fail "sdlc-pr shows a forced push"
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   build_pushes_nothing build_is_done_only_when_the_tests_pass
   build_stops_on_a_card_with_no_plan build_installs_what_the_tests_need_first
   build_takes_a_later_round_from_the_review
   review_pushes_nothing review_sends_what_is_not_met_back_to_build
   review_asks_the_human_after_one_send_back review_writes_what_it_found_on_the_card
+  pr_opens_nothing_unless_the_review_met_every_item pr_pushes_only_the_worktrees_with_commits
+  pr_follows_the_repos_rules_for_pull_requests pr_waits_for_the_human_to_merge
+  no_agent_merges_a_pull_request pr_checks_it_can_push_before_pushing
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop

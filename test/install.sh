@@ -120,7 +120,7 @@ honors_herdr_app_home() {
 
 install_links_skills() {
   "$E" install >/dev/null || fail "install exited non-zero"
-  for s in sdlc-define sdlc-plan sdlc-breakdown sdlc-build sdlc-review; do
+  for s in sdlc-define sdlc-plan sdlc-breakdown sdlc-build sdlc-review sdlc-pr; do
     is_link_to "$SK/$s" "$REPO/skills/$s" || fail "$s not linked"
     [ -f "$SK/$s/SKILL.md" ] || fail "$s has no SKILL.md through the link"
   done

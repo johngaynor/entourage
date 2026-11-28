@@ -1036,7 +1036,7 @@ task_build_starts_the_agent() {
   [ "$(cat "$TMP/agent-folder")" = "$WT" ] || fail "the agent started in $(cat "$TMP/agent-folder")"
   local msg want d
   msg=$(cat "$TMP/agent-message")
-  for want in "Linear card ABC-1" "entourage project \`demo\`" sdlc-build sdlc-review "entourage task handoff demo ABC-1"; do
+  for want in "Linear card ABC-1" "entourage project \`demo\`" sdlc-build sdlc-review sdlc-pr "entourage task handoff demo ABC-1"; do
     case $msg in *"$want"*) ;; *) fail "the first message does not mention '$want': $msg" ;; esac
   done
   case $msg in *"{card}"* | *"{project}"*) fail "a placeholder was left in the first message: $msg" ;; esac
@@ -1077,6 +1077,10 @@ task_build_needs_the_skills_linked() {
   rm "$SK/sdlc-build"
   (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "started the agent without sdlc-build"
   grep -q sdlc-build "$TMP/err" && grep -q 'entourage update' "$TMP/err" || fail "did not say sdlc-build is missing: $(cat "$TMP/err")"
+  ln -s "$REPO/skills/sdlc-build" "$SK/sdlc-build"
+  rm "$SK/sdlc-pr"
+  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "started the agent without sdlc-pr"
+  grep -q sdlc-pr "$TMP/err" && grep -q 'entourage update' "$TMP/err" || fail "did not say sdlc-pr is missing: $(cat "$TMP/err")"
   agent_ran && fail "the agent started"
 }
 

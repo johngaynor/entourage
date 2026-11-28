@@ -259,10 +259,15 @@ which the `sdlc-build` skill runs in a started task: it hands off as `build`,
 it, which the `sdlc-review` skill runs: it hands off as `review`, `done` with
 `pr` next when every Done when item is met, or with `build` next, naming each
 item that is not. Once it has sent the work back, it asks you instead,
-as `needs-human`, whether to build again. Nothing pushes or opens a pull
-request yet, so the reviewed commits wait on the task's branch for you. The
-agent records
-each hand-off itself, with the block on stdin:
+as `needs-human`, whether to build again. So does the pull request after
+that, which the `sdlc-pr` skill runs: it hands off as `pr`. With the pull
+requests open it waits as `needs-human`, with their links, while you merge
+them, and once GitHub says every pull request for the card has merged it
+hands off `done` with `merged` next. When it cannot push or open a pull
+request, such as when `gh` is not signed in or a repo has no remote, it hands
+off `failed` with the reason. `merged` is where a card ends: it is only ever
+next, and `task handoff` refuses it as a phase. The agent records each
+hand-off itself, with the block on stdin:
 
 ```sh
 entourage task handoff <project> <card> <<'EOF'
@@ -299,8 +304,9 @@ entourage task log <project> [<card>]
   question with no recorded answer is marked as including the wait.
 - **With no card, it lists the project's cards.** `task log <project>` shows
   every card in the project that has hand-offs, newest first by its latest
-  one, with where it stands (waiting on you, failed, or the step it finished
-  and the one that comes next) and for how long. A card with no hand-offs is
+  one, with where it stands (waiting on you, failed, the step it finished
+  and the one that comes next, or merged once its pull requests have) and
+  for how long. A card with no hand-offs is
   not listed: `task ls` lists the cards in Linear.
 - **They are kept in `~/.config/entourage/entourage.db`,** a SQLite file
   beside your projects, on this machine only. It needs `sqlite3`, which macOS
@@ -314,7 +320,8 @@ entourage task log <project> [<card>]
   the step did, how long it took, and its summary. A wait on you stands out,
   and so does a question still waiting. It shows the latest run of a card
   written up more than once. With no card's tab selected, it lists the
-  project's cards instead, and a card waiting on you stands out. Click a card
+  project's cards instead, and a card waiting on you stands out. A card
+  whose pull requests have merged shows as merged. Click a card
   to see its steps, even when its tab is closed, and "All cards" to go back;
   selecting another tab goes back too. The panel draws what
   `entourage task log <project> [<card>] --json` prints and works nothing out
@@ -382,10 +389,13 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   (`ENTOURAGE_AGENT`, or `claude`) in the folder it is run in, with the first
   message in [prompts/task-build.md](../prompts/task-build.md): build the card
   with `sdlc-build`, then review the build with `sdlc-review`, and back to the
-  build when the review sends it back. The run ends when the review hands off
-  with `pr` next. `task build` refuses to run outside the card's own task
-  folder, with no agent on your `PATH`, or with the skills not linked. If the
-  agent stops, run the same command again in the tab.
+  build when the review sends it back. When the review finds every item met,
+  `sdlc-pr` pushes the branch and opens the pull requests, and waits for you
+  to merge them and tell the agent so. The run ends when it hands off with
+  `merged` next. No agent merges a pull request. `task build` refuses to run
+  outside the card's own task folder, with no agent on your `PATH`, or with
+  the skills not linked. If the agent stops, run the same command again in
+  the tab.
 - **Claude Code asks once to trust a repo it does not know.** With one repo,
   the tab starts in its worktree, and a worktree takes the trust of its repo's
   own checkout, not of the project folder above it. When Claude Code's file
