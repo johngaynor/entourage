@@ -21,6 +21,15 @@ The CLI is `cli/entourage`, which sets the paths and sources the files in
 `cli/entourage`; a new test case must be added to `CASES` in its test file; a
 new test area must be added to `AREAS` in `test/run.sh`.
 
+## Herdr's docs
+
+Herdr's docs for mods are `AGENTS.md`, `herdr.d.ts` and `gpui-kit.d.ts` in
+`~/.config/herdr-app`. They are large, so never read one whole. Find the part
+you need: list the headings with `grep -n '^#' ~/.config/herdr-app/AGENTS.md`,
+where a section ends at the next heading of its level, or grep a `.d.ts` file
+for the declaration, such as `export function exec`. Then read only that
+range, with `sed -n '<from>,<to>p'` or `Read` with an offset and a limit.
+
 ## Versions and releases
 
 **Never change `"version"` in `package.json` as part of a feature or fix PR.**
