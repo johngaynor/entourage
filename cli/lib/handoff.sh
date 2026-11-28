@@ -45,7 +45,13 @@ have_sqlite() { command -v "$SQLITE" >/dev/null 2>&1; }
 # Run one statement against the store.
 # -init /dev/null: a person's own ~/.sqliterc must not change how answers are
 # printed. .timeout: wait for another task's write to finish, not fail at once.
-store() { "$SQLITE" -init /dev/null -batch -cmd '.timeout 5000' "$@" 2>/dev/null; }
+# -readonly in a worktree's copy that was not asked to act on the machine
+# (guard.sh), so that nothing it runs can change the store, by mistake or not.
+store() {
+  local ro=()
+  [ "$GUARDED" != 1 ] || ro=(-readonly)
+  "$SQLITE" -init /dev/null -batch -cmd '.timeout 5000' ${ro[@]+"${ro[@]}"} "$@" 2>/dev/null
+}
 
 # Print a value as an SQL string literal, or NULL when it is empty. Doubling
 # the quote is SQLite's only escape, and no value holds a newline, so nothing

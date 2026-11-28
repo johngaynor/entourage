@@ -486,6 +486,7 @@ shell, or written as a `NAME=value` line in entourage's env file,
 | `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |
 | `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills are linked. `~/.claude` when it is not set. |
 | `ENTOURAGE_HOME` | entourage's own folder. `~/.config/entourage` when it is not set. Export only: it says where the env file is, so the file cannot set it. |
+| `ENTOURAGE_LIVE` | `1` lets the copy of entourage in a git worktree of its repo change the machine, for that run (see [Changing things](#changing-things)). Export only, best on the command line: the file cannot set it, so it is never left on. |
 
 - **Use the file for anything a Herdr mod's run of entourage needs.** Herdr
   starts a command without your shell's exports, so a variable set only in your
@@ -527,6 +528,13 @@ shell, or written as a `NAME=value` line in entourage's env file,
 - Herdr does not notice edits made through a link straight away. Run
   `entourage update --no-pull` to refresh it without pulling.
 - Run `herdr-app check herdr/mods/<name>` after editing a mod.
+- A worktree's copy of the CLI, `./cli/entourage` in a git worktree of this
+  repo, runs only the commands that read: `help`, `status`, `project ls`,
+  `project team <name>`, `task ls` and `task log`. Any other command stops
+  before it changes anything, and says to run plain `entourage` for a card's
+  own steps, to write a test case to try the command, or to run it for real
+  with `ENTOURAGE_LIVE=1 ./cli/entourage …`. Plain `entourage` is never
+  stopped.
 - Herdr's shipped layouts and mods are read-only. To build on one, clone it
   (`herdr-app do layout.clone '{"name":"main","as":"<name>"}'`) and move the
   clone here.
