@@ -36,7 +36,7 @@ Every card gets exactly one type. The types come from Conventional Branch, becau
   entourage linear type <card ID> <type>
   ```
 
-  It takes any other type off the card and keeps the card's other labels. The name is lowercase and exact, because setup uses it as the branch prefix: `<type>/<card-id>-<short-name>`, for example `feat/abc-122-export-orders`.
+  It takes any other type off the card and keeps the card's other labels. The name is lowercase and exact, because `entourage task start` uses it as the branch prefix: `<type>/<card-id>-<short-name>`, for example `feat/abc-122-export-orders`.
 - If the work is really two types, such as a fix plus an unrelated clean-up, this card keeps its main change. Tell the human about the other part and ask whether they want a second card for it. Don't create that card yourself.
 
 The type is a label only. Don't write it into the card's text.
