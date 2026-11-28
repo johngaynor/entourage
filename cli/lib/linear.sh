@@ -666,9 +666,11 @@ linear_type() {
 }
 
 # The sections the card skills write, in the order they come on a card.
-# Specification and Plan are folded away; the human reads the Breakdown to
-# approve the card, so it is left open.
-CARD_SECTIONS='Specification Plan Breakdown'
+# Specification, Plan and Review are folded away; the human reads the
+# Breakdown to approve the card, so it is left open. The Review, which
+# sdlc-review writes, comes last: an open Breakdown ends at the next fold,
+# which is the Review's heading.
+CARD_SECTIONS='Specification Plan Breakdown Review'
 
 # The question for linear section: the card and its description.
 SECTION_QUERY='query($team: String!, $number: Float!) {
@@ -757,7 +759,7 @@ SECTION_BODY_CHECK=$SECTION_FORMS'
 # the heading and the folding are added here. The whole description is sent
 # back, then what Linear saved is read: the text above the section must be as
 # it was, and the section there once.
-#   entourage linear section <card> <Specification|Plan|Breakdown> [--replace]
+#   entourage linear section <card> <Specification|Plan|Breakdown|Review> [--replace]
 linear_section() {
   local card=${1:-} name=${2:-} replace=false open=false body key vars data id placed new before check
   [ "$#" -ge 2 ] && [ "$#" -le 3 ] ||
@@ -1067,6 +1069,6 @@ cmd_linear() {
     section) shift; linear_section "$@" ;;
     move) shift; linear_move_cmd "$@" ;;
     read) shift; linear_read "$@" ;;
-    *) die "usage: entourage linear key, or: entourage linear read <card> [--json], or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <approved|started|review|done> (see: entourage help)" ;;
+    *) die "usage: entourage linear key, or: entourage linear read <card> [--json], or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown|Review> [--replace], or: entourage linear move <card> <approved|started|review|done> (see: entourage help)" ;;
   esac
 }
