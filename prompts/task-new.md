@@ -12,6 +12,6 @@ Do every step yourself, in this session. Don't hand a step to a subagent.
 
 sdlc-breakdown asks me to approve the card. When it hands off with `next: setup`, the card is approved. Give me the command that starts the work, and don't run it yourself:
 
-    entourage task start {project} <type>/<card-id>-<short-name>
+    entourage task start {project} {card}
 
-Use the type you set on the card, the card's ID in lowercase, and two to four words from its title, in lowercase with hyphens. If the card was sliced, give the command for the first sub-issue.
+It names the branch from the type you set on the card and from its title. If the card was sliced, give the command with the first sub-issue's ID in place of {card}.

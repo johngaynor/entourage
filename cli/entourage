@@ -21,7 +21,7 @@ Usage:
   entourage project team <name> [<team>...] set the Linear teams whose cards are the project's, or print them
   entourage task ls <project> [--json]     list the open cards of the project's Linear teams, by status
   entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
-  entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
+  entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
   entourage task log <project> [<card>] [--json]
@@ -48,13 +48,18 @@ same one. Linear is asked with curl and its answer read with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
-`task start` takes a branch, <type>/<description>, like
-feat/abc-122-short-title (https://conventionalbranch.org). It makes a folder
-in the project's tasks/ folder with a worktree of each repo on that branch,
-and opens a tab for it. Setup is off for now: with ENTOURAGE_SETUP=1, a
+`task start` takes the card's ID too, once the card is written up. It asks
+Linear for the card and names the branch from it, <type>/<card-id>-<short-name>
+(https://conventionalbranch.org): the type is the card's label in the Type
+group, and the short name is the first four words of its title, leaving out
+a, an and the, like feat/abc-122-export-orders-as-csv. It needs your Linear
+key, and stops before it makes anything when Linear has no such card, the
+card has no type, or Linear cannot be asked. It makes a folder in the
+project's tasks/ folder with a worktree of each repo on that branch, and
+opens a tab for it. Setup is off for now: with ENTOURAGE_SETUP=1, a
 repo with a justfile that has a `setup` recipe gets `just setup` run in that
 tab, so the checkout is ready to work in.
-Targets after the branch narrow the task: `app` takes only that repo, and
+Targets after the card narrow the task: `app` takes only that repo, and
 `app:athlete` sets it up for its athlete group (`just setup athlete`).
 Join several groups with a comma: `app:athlete,coach`.
 To build the card once its task is started, start an agent in the task's tab
