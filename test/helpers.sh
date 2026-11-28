@@ -75,15 +75,27 @@ last_call() { tail -n 1 "$TMP/herdr-calls.log"; }
 # A stand-in for `just`, for tests that want it installed. It answers
 # `just --justfile <file> --summary` with the file's recipe names on one line,
 # and fails for a file that contains the line BROKEN, as just does for a
-# justfile it cannot parse. Every call is logged.
+# justfile it cannot parse. `just --justfile <file> <recipe>` runs a recipe
+# whose body is @echo lines, by printing what they echo, and fails for a
+# recipe the file does not have. Every call is logged.
 stub_just() {
   cat > "$TMP/bin/just" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$TMP/just-calls.log"
-[ "\$1" = --justfile ] && [ "\$3" = --summary ] || exit 2
+[ "\$1" = --justfile ] && [ -n "\${3:-}" ] || exit 2
 grep -qx BROKEN "\$2" && { echo "error: could not parse" >&2; exit 1; }
-sed -n 's/^\([a-zA-Z0-9_-][a-zA-Z0-9_-]*\):.*/\1/p' "\$2" | tr '\n' ' ' | sed 's/ \$//'
-echo
+if [ "\$3" = --summary ]; then
+  sed -n 's/^\([a-zA-Z0-9_-][a-zA-Z0-9_-]*\):.*/\1/p' "\$2" | tr '\n' ' ' | sed 's/ \$//'
+  echo
+  exit 0
+fi
+awk -v r="\$3" '
+  index(\$0, r ":") == 1 { on = 1; found = 1; next }
+  on && /^[ \t]/ { l = \$0; sub(/^[ \t]+/, "", l)
+                   if (sub(/^@echo /, "", l)) { if (l ~ /^".*"\$/) l = substr(l, 2, length(l) - 2); print l }
+                   next }
+  { on = 0 }
+  END { exit !found }' "\$2" || { echo "error: justfile does not contain recipe \$3" >&2; exit 1; }
 EOF
   chmod +x "$TMP/bin/just"
 }

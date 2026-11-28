@@ -442,8 +442,59 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
 - **Nothing is made unless everything can be.** A task or branch of that name
   that already exists, a missing repo, or Herdr not running stops it first,
   and a worktree that fails partway is undone.
-- **Remove a task by hand for now:** in each repo run
-  `git worktree remove <project folder>/tasks/<task>/<repo>` and
+- **When the work has merged**, `task finish` removes the task (see
+  [Finishing a task](#finishing-a-task)).
+
+### Finishing a task
+
+Once a task's pull requests have merged, one command ends it.
+
+```sh
+entourage task finish <project> <card>
+```
+
+- **It removes what `task start` made**: each of the task's worktrees, the
+  task's branch in each repo, and the task's folder with its `CLAUDE.md` and
+  `AGENTS.md` links. Then it closes the task's tab, the one named after the
+  task in the project's space. The card's write-up tab, named after the card,
+  stays open.
+- **Run it anywhere, the task's own tab included.** It works from the project
+  folder, so it can remove the worktree it was run in. Closing the tab is the
+  last thing it does, so from the task's own tab everything else is done, and
+  said, before the tab closes. When it is the space's last tab, Herdr asks
+  first, since closing it closes the space. When Herdr is not running, `jq` is
+  missing or no such tab is open, it says so and leaves the tab.
+- **It finds the task from the card**, as the folder `tasks/<card>-…` that
+  `task start` made, without asking Linear. A card with no task on this
+  machine stops it, and nothing is changed.
+- **It checks every repo of the task before it removes anything**, and
+  removes nothing when that would lose work. It names every problem in every
+  repo in one go, then says that nothing was removed:
+
+  | It stops for | It names |
+  |---|---|
+  | Changes that are not committed: staged, unstaged or untracked | each file, as `git status` shows it |
+  | Commits on the branch that are not in the remote's default branch, pushed or not, such as a fix pushed to the branch after its pull request merged | each commit |
+  | Git-ignored files that the repo's setup does not make again (see [What a repo provides](#what-a-repo-provides)), such as `.env` or notes in an ignored `docs/` | each file |
+  | Anything in the task folder outside its worktrees | each one |
+  | A worktree that is locked, or not on the task's branch | the worktree |
+
+- **Merged means in the default branch's history**, where a merge commit puts
+  a pull request's commits. A pull request merged by squash or rebase leaves
+  them out, so its task is refused, which loses nothing.
+- **It fetches each repo first.** A repo that cannot be fetched is checked
+  against what is local, with a warning, which can only make it refuse.
+- **Ignored files the repo's setup makes again**, such as `node_modules`, are
+  removed with the worktree without a word. Without `just`, or in a repo with
+  no `made-by-setup` recipe, every ignored file counts as work, and it says
+  why.
+- **It forces nothing.** `git worktree remove` keeps git's own refusal, and
+  the branch is deleted only while it is still on the commit that was
+  checked.
+- **It leaves the rest alone**: the branch on the remote, the card in Linear
+  and the card's hand-offs, so `task log` still shows the card.
+- **To throw away a task it refuses**, remove it by hand: in each repo run
+  `git worktree remove --force <project folder>/tasks/<task>/<repo>` and
   `git branch -D <branch>`, then delete the task's folder and close its tab.
 
 ## What a repo provides
@@ -455,11 +506,24 @@ have the same names in every repo. entourage only knows the names.
 | Recipe | What it must do | Used by |
 |---|---|---|
 | `setup` | Make a fresh checkout ready to work in: install dependencies and anything else a new worktree lacks. Safe to run twice. Called with group names (`just setup athlete coach`), make ready only what those groups need, and fail with a clear message for a group the repo does not have. | `entourage task start`, when `ENTOURAGE_SETUP=1` |
+| `made-by-setup` | Print what `setup` makes again, as patterns like `.gitignore`'s, one per line, such as `node_modules/`. Print nothing else, and change nothing. | `entourage task finish`, which removes the git-ignored files these match with the worktree, and stops for any other ignored file |
 
 ```just
 setup:
     npm install
+
+# What setup makes again, so a task can throw it away.
+made-by-setup:
+    @echo node_modules/
+    @echo dist/
 ```
+
+- **`made-by-setup` says which ignored files are not work.** A task's
+  worktree is checked out from the branch, so the recipe is the branch's own.
+  It runs in the worktree, and its `@` keeps `just` from printing each line
+  before it runs. A pattern that matches a folder matches everything in it;
+  a folder it matches only part of is checked file by file. A repo without
+  the recipe can still finish a task with no ignored files in it.
 
 - **Only a justfile at the repo's own root counts**: `justfile`, `Justfile` or
   `.justfile`. One in a folder above is never used.
