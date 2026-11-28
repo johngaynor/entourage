@@ -678,7 +678,8 @@ card_asked() {
 task_branches() { git -C "$HOME/Dev/api" branch --format='%(refname:short)' | grep -v '^main$' || true; }
 
 # Linear keeps a card as its team's key and a number, so that is how it is
-# asked: once, with the key on stdin as for every question.
+# asked: once, with the key on stdin as for every question. The question
+# after it is the card's move, once the task is made.
 task_start_asks_linear_for_the_card_by_team_and_number() {
   card_asked "$(card_answer ABC-122 'Export orders' feat)"
   "$E" task start demo abc-122 >/dev/null || fail "task start exited non-zero"
@@ -686,7 +687,8 @@ task_start_asks_linear_for_the_card_by_team_and_number() {
   case $(curl_calls) in *'"number":122'*) ;; *) fail "did not ask for number 122: $(curl_calls)" ;; esac
   [ "$(key_given_to_curl)" = "$KEY" ] || fail "curl was not given the key on stdin"
   case $(curl_calls) in *"$KEY"*) fail "passed the key to curl as an argument" ;; esac
-  [ "$(curl_count)" = 1 ] || fail "asked Linear $(curl_count) times"
+  [ "$(curl_calls | grep -c 'labels')" = 1 ] || fail "asked Linear for the card $(curl_calls | grep -c 'labels') times"
+  case $(curl_calls | head -n 1) in *labels*) ;; *) fail "the card was not the first question: $(curl_calls)" ;; esac
 }
 
 # The type is the card's label in the Type group. A label in another group,
