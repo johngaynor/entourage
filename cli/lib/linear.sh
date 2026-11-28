@@ -636,13 +636,14 @@ linear_section() {
 
 # --- moving a card ----------------------------------------------------------
 #
-# entourage moves a card at the two points it sees for itself: `task start`
-# moves it to its team's first started status, and the hand-off that records
-# its merge moves it to the first completed one. The status is picked by its
-# kind and its place in the team's order, never by its name, which each team
-# chooses. A card only moves forward, so a person who has moved it further on
-# by hand is never undone, and a card that is done, canceled or a duplicate
-# is never moved at all.
+# entourage moves a card at three points: `task start` moves it to its team's
+# first started status, `sdlc-pr` runs `linear move <card> review` once every
+# pull request for it is open, which moves it to the last started status, and
+# the hand-off that records its merge moves it to the first completed one. The
+# status is picked by its kind and its place in the team's order, never by its
+# name, which each team chooses. A card only moves forward, so a person who
+# has moved it further on by hand is never undone, and a card that is done,
+# canceled or a duplicate is never moved at all.
 
 # The kinds of status a card moves through, in order. A card in a completed
 # status, or one of any other kind, is closed.
@@ -656,22 +657,24 @@ MOVE_QUERY='query($team: String!, $number: Float!) {
   }
 }'
 
-# From the answer to MOVE_QUERY, on stdin, what to do: $to is the kind to
-# move to, started or completed, and $order is MOVE_ORDER. The target is the
-# status of that kind that comes first in the team's order. The card moves
-# only when the target is further along: a later kind, or a later place
-# within the same kind.
+# From the answer to MOVE_QUERY, on stdin, what to do: $to is where to move
+# to, started, review or completed, and $order is MOVE_ORDER. The target is
+# the status of that kind that comes first in the team's order; for review it
+# is the started status that comes last, which in a team with one started
+# status is that one. The card moves only when the target is further along: a
+# later kind, or a later place within the same kind.
 MOVE_PLAN='
   def place: (.position | numbers) // 1000000;
-  if (.issues.nodes | type) != "array" then error("no list of cards")
+  (if $to == "review" then "started" else $to end) as $kind
+  | if (.issues.nodes | type) != "array" then error("no list of cards")
   elif (.issues.nodes | length) == 0 then {state: "none"}
   else .issues.nodes[0] as $card
     | $card.state as $now
     | if ($card.id | type) != "string" or ($now.id? | type) != "string"
         or ($now.type? | type) != "string" or ($card.team.states.nodes? | type) != "array"
       then error("unreadable") else . end
-    | ([$card.team.states.nodes[] | select(.type == $to and (.id | type) == "string")]
-       | sort_by(place) | .[0]) as $target
+    | ([$card.team.states.nodes[] | select(.type == $kind and (.id | type) == "string")]
+       | sort_by(place) | if $to == "review" then last else first end) as $target
     | if $target == null then {state: "notarget"}
       elif $now.id == $target.id then {state: "there", now: $now.name}
       elif $order[$now.type] == null or $now.type == "completed" then {state: "closed", now: $now.name}
@@ -682,12 +685,14 @@ MOVE_PLAN='
       end
   end'
 
-# Move a card forward to its team's first status of a kind, or leave it
-# where it is and say why. The change is read back: the card has to be in the
-# status asked for. It stops, as the other commands here do, when it cannot.
-#   linear_move <card ID, in upper case> <started|completed>
+# Move a card forward to its team's first status of a kind, or for review its
+# last started one, or leave it where it is and say why. The change is read
+# back: the card has to be in the status asked for. It stops, as the other
+# commands here do, when it cannot.
+#   linear_move <card ID, in upper case> <started|review|completed>
 linear_move() {
-  local card=$1 to=$2 key vars data plan saved
+  local card=$1 to=$2 kind=$2 key vars data plan saved
+  [ "$to" != review ] || kind=started
   linear_tools
   key=$(linear_saved_key) || exit 1
   vars=$(jq -cn --arg team "${card%-*}" --arg number "${card##*-}" \
@@ -701,7 +706,7 @@ linear_move() {
     past) say "$card stays in $(printf '%s' "$plan" | jq -r '.now'), which is past $(printf '%s' "$plan" | jq -r '.name'): a card only moves forward"; return ;;
     closed) say "$card stays in $(printf '%s' "$plan" | jq -r '.now'), which is closed: a card that is done or canceled is never moved"; return ;;
     none) die "Linear has no card $card that the saved key can see." ;;
-    notarget) die "team ${card%-*} has no $to status in Linear." ;;
+    notarget) die "team ${card%-*} has no $kind status in Linear." ;;
     *) die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it." ;;
   esac
   data=$(linear_update "$key" "$(printf '%s' "$plan" | jq -r '.id')" \
@@ -738,11 +743,41 @@ linear_move_note() {
   fi
 }
 
+# The places `linear move` takes a card to. done is the first completed
+# status, which linear_move calls completed.
+MOVE_WORDS='started review done'
+
+# Move a card forward in Linear, by the rules of linear_move: started is its
+# team's first started status, review its last started one (In Review in Lab
+# and PHY), and done its first completed one. Moving the card is the whole of
+# this command, unlike in `task start` and `task handoff`, so a move that
+# cannot be made stops it, saying that the card was not moved, and why. A card
+# that is there already, further on or closed stays where it is, and that is
+# not a failure.
+#   entourage linear move <card> <started|review|done>
+linear_move_cmd() {
+  local card=${1:-} word=${2:-} to out
+  [ "$#" -eq 2 ] ||
+    die "usage: entourage linear move <card> <$(printf '%s' "$MOVE_WORDS" | tr ' ' '|')>, like: entourage linear move ABC-122 review"
+  [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
+  card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
+  in_list "$word" "$MOVE_WORDS" ||
+    die "'$word' is not a place a card moves to. A card moves to one of: $MOVE_WORDS."
+  to=$word
+  [ "$word" != done ] || to=completed
+  if out=$(linear_move "$card" "$to" 2>&1); then
+    say "$out"
+  else
+    die "$card was not moved in Linear: ${out#entourage: }"
+  fi
+}
+
 cmd_linear() {
   case ${1:-} in
     key) shift; linear_key "$@" ;;
     type) shift; linear_type "$@" ;;
     section) shift; linear_section "$@" ;;
-    *) die "usage: entourage linear key, or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace] (see: entourage help)" ;;
+    move) shift; linear_move_cmd "$@" ;;
+    *) die "usage: entourage linear key, or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <started|review|done> (see: entourage help)" ;;
   esac
 }
