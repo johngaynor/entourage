@@ -408,6 +408,67 @@ pr_waits_for_the_human_to_merge() {
     fail "sdlc-pr does not wait for every pull request to merge"
 }
 
+# sdlc-pr's section that waits for the merge, from its heading to the next.
+pr_wait_section() {
+  awk '/^## / { if (on) exit } /^## [0-9]+\. Wait for the merge/ { on = 1 } on' "$REPO/skills/sdlc-pr/SKILL.md"
+}
+
+# While the pull requests wait, the agent watches them on GitHub in the
+# background, started after its needs-human, so that it learns of the merge
+# without being told. Told "merged", it checks at once, with --once.
+pr_watches_the_pull_requests() {
+  local wait asked watched
+  wait=$(pr_wait_section)
+  [ -n "$wait" ] || { fail "sdlc-pr has no section that waits for the merge"; return; }
+  asked=$(printf '%s\n' "$wait" | grep -nx 'status: needs-human' | head -n1 | cut -d: -f1)
+  watched=$(printf '%s\n' "$wait" | grep -nF 'entourage task watch <project> <card ID>`' | head -n1 | cut -d: -f1)
+  if [ -z "$asked" ] || [ -z "$watched" ]; then
+    fail "sdlc-pr's wait does not hand off needs-human and start entourage task watch"
+  elif [ "$asked" -ge "$watched" ]; then
+    fail "sdlc-pr starts the watch before it hands off needs-human"
+  fi
+  case $wait in *'in the background'*) ;; *) fail "sdlc-pr does not run the watch in the background" ;; esac
+  case $wait in
+    *'They say it has merged.'*'entourage task watch <project> <card ID> --once'*) ;;
+    *) fail "sdlc-pr does not check at once with --once when told it has merged" ;;
+  esac
+  case $wait in *'gh pr view'*) fail "sdlc-pr's wait still checks with gh pr view" ;; esac
+}
+
+# When the watch ends with every pull request merged, the agent records it as
+# the human's answer, so the log shows the wait, then hands off done with
+# merged next, with no one typing in the tab.
+pr_records_a_merge_the_watch_sees() {
+  local wait ended
+  wait=$(pr_wait_section)
+  ended=$(printf '%s\n' "$wait" | awk '/^- \*\*It ends with 0/ { on = 1 } on && /^- \*\*It ends with [^0]/ { exit } on')
+  [ -n "$ended" ] || { fail "sdlc-pr does not say what to do when the watch ends with 0"; return; }
+  case $ended in
+    *'status: answered'*'answer: merged on GitHub'*) ;;
+    *) fail "sdlc-pr does not record answered, merged on GitHub, when the watch ends with 0" ;;
+  esac
+  case $ended in *'section 7'*) ;; *) fail "sdlc-pr does not hand off as section 7 says once the watch sees the merge" ;; esac
+  grep -A4 -F "entourage task handoff <project> <card ID> <<'EOF'" "$REPO/skills/sdlc-pr/SKILL.md" |
+    grep -A2 -x 'status: done' | grep -qx 'next: merged' || fail "sdlc-pr's section 7 does not hand off done with merged next"
+}
+
+# When the watch ends with a pull request closed, the agent records that and
+# asks the human whether to stop.
+pr_asks_when_a_pull_request_is_closed() {
+  local wait ended
+  wait=$(pr_wait_section)
+  ended=$(printf '%s\n' "$wait" | awk '/^- \*\*It ends with 3/ { on = 1 } on && /^- \*\*It ends with [^3]/ { exit } on')
+  [ -n "$ended" ] || { fail "sdlc-pr does not say what to do when the watch ends with 3"; return; }
+  case $ended in
+    *'status: answered'*'answer: closed on GitHub'*) ;;
+    *) fail "sdlc-pr does not record answered, closed on GitHub, when the watch ends with 3" ;;
+  esac
+  case $ended in
+    *'whether to stop'*'`needs-human`'* | *'`needs-human`'*'whether to stop'*) ;;
+    *) fail "sdlc-pr does not ask the human whether to stop when a pull request was closed" ;;
+  esac
+}
+
 # The human merges. No agent does, by hand or by auto-merge.
 no_agent_merges_a_pull_request() {
   local skill=$REPO/skills/sdlc-pr/SKILL.md line
@@ -447,6 +508,86 @@ pr_makes_a_change_asked_for_in_the_tab() {
     *) fail "sdlc-pr does not hand off needs-human again once the change is pushed" ;;
   esac
   case $section in *'--force'*) fail "sdlc-pr's section that makes a change shows a forced push" ;; esac
+}
+
+# Print one of sdlc-pr's numbered sections: its heading, such as "## 7.", and
+# everything up to the next second-level heading.
+pr_section() {
+  awk -v want="## $1. " '/^## / { if (on) exit } index($0, want) == 1 { on = 1 } on' \
+    "$REPO/skills/sdlc-pr/SKILL.md"
+}
+
+# Once the merge is recorded, the agent finishes the task with `task finish`,
+# which removes its worktrees, branches and folder and closes its tab. It
+# runs after the done hand-off, since closing the tab ends the session.
+pr_finishes_the_task_after_the_merge() {
+  local section done_at finish_at prompt=$REPO/prompts/task-build.md
+  section=$(pr_section 7)
+  [ -n "$section" ] || fail "sdlc-pr has no section 7"
+  done_at=$(printf '%s\n' "$section" | grep -nx 'next: merged' | head -n1 | cut -d: -f1)
+  finish_at=$(printf '%s\n' "$section" | grep -nF 'entourage task finish <project> <card ID>' | head -n1 | cut -d: -f1)
+  if [ -z "$done_at" ]; then
+    fail "sdlc-pr's section 7 does not show its done hand-off with next: merged"
+  elif [ -z "$finish_at" ]; then
+    fail "sdlc-pr's section 7 does not run entourage task finish <project> <card ID>"
+  elif [ "$finish_at" -le "$done_at" ]; then
+    fail "sdlc-pr's section 7 runs task finish before it records the merge"
+  fi
+  case $section in
+    *'last command'*) ;;
+    *) fail "sdlc-pr's section 7 does not say task finish is the run's last command" ;;
+  esac
+  # The task used to be left as it was after the merge.
+  ! grep -qF 'tab stay as they are' "$REPO/skills/sdlc-pr/SKILL.md" ||
+    fail "sdlc-pr still says the task's worktrees and its tab stay as they are"
+  grep -qF 'entourage task finish {project} {card}' "$prompt" ||
+    fail "the task-build prompt does not say the task is finished at next: merged"
+  ! grep -qF 'tab stay' "$prompt" || fail "the task-build prompt says the task's tab stays"
+}
+
+# When finishing the task would lose work, `task finish` removes nothing and
+# names it. The agent tells the human all of it and changes nothing more.
+pr_says_what_finish_would_lose() {
+  local section want
+  section=$(pr_section 7)
+  for want in 'removes nothing' 'everything it named'; do
+    case $section in
+      *"$want"*) ;;
+      *) fail "sdlc-pr's section 7 does not say, for a task finish that refuses: $want" ;;
+    esac
+  done
+  case $section in
+    *[Cc]'hange nothing more'*) ;;
+    *) fail "sdlc-pr's section 7 does not say to change nothing more when task finish refuses" ;;
+  esac
+  # It records no hand-off for it: the merge is recorded already.
+  case $section in
+    *'no other hand-off'*) ;;
+    *) fail "sdlc-pr's section 7 does not say to record no other hand-off when task finish refuses" ;;
+  esac
+  grep -E '^\| `task finish` ' "$REPO/skills/sdlc-pr/SKILL.md" | grep -qF 'everything it named' ||
+    fail "sdlc-pr's 'If something goes wrong' has no row for a task finish that refuses"
+}
+
+# A pull request closed without merging never reaches section 7, so the task
+# stays: the agent asks whether to stop, and runs no `task finish`.
+pr_finishes_nothing_for_a_closed_pull_request() {
+  local line
+  # The watch's ending for it, from its bullet to the next one.
+  line=$(pr_section 5 | awk '/^- \*\*It ends with 3: a pull request was closed without merging/ { on = 1; print; next }
+    on && /^- \*\*/ { exit } on')
+  [ -n "$line" ] || fail "sdlc-pr's section 5 has no answer for a pull request closed without merging"
+  case $line in
+    *'whether to stop'*) ;;
+    *) fail "sdlc-pr does not ask whether to stop when a pull request is closed" ;;
+  esac
+  case $line in
+    *'no `task finish`'*) ;;
+    *) fail "sdlc-pr does not say it runs no task finish for a pull request closed without merging" ;;
+  esac
+  grep -E '^\| A pull request was closed without merging' "$REPO/skills/sdlc-pr/SKILL.md" |
+    grep -qF 'no `task finish`' ||
+    fail "sdlc-pr's 'If something goes wrong' row for a closed pull request does not say it runs no task finish"
 }
 
 # What can stop the push is checked before anything is pushed, and a check
@@ -650,8 +791,11 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   pr_follows_the_repos_rules_for_pull_requests pr_waits_for_the_human_to_merge
   no_agent_merges_a_pull_request pr_checks_it_can_push_before_pushing
   pr_makes_a_change_asked_for_in_the_tab
+  pr_watches_the_pull_requests pr_records_a_merge_the_watch_sees pr_asks_when_a_pull_request_is_closed
   pr_moves_the_card_to_review_once_every_pull_request_is_open pr_goes_on_when_the_card_cannot_be_moved
   pr_no_longer_leaves_the_status_to_the_human
+  pr_finishes_the_task_after_the_merge pr_says_what_finish_would_lose
+  pr_finishes_nothing_for_a_closed_pull_request
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop

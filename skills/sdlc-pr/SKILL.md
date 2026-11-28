@@ -1,11 +1,11 @@
 ---
 name: sdlc-pr
-description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, moving the card to In Review once they are all open, waiting for the human to merge them while making in the same pull requests any change they ask for in the tab, and recording the merge. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
+description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, moving the card to In Review once they are all open, waiting for the human to merge them while watching them on GitHub and making in the same pull requests any change they ask for in the tab, recording the merge once GitHub shows it, without being told, and then finishing the task. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
 ---
 
 # Open the pull request
 
-Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, moves the card to In Review once they are all open, waits for the human to merge them, makes in the same pull requests any change they ask for in the tab while they wait, and records the merge.
+Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, moves the card to In Review once they are all open, watches them on GitHub while the human merges them, makes in the same pull requests any change they ask for in the tab while they wait, records the merge once GitHub shows it, without the human having to say so, and then finishes the task, which removes its worktrees and closes its tab.
 
 The human reads the pull request, not this session. So each pull request has to name the card and say, for each Done when item, how the review showed that it is met and what is left to the human to check.
 
@@ -69,26 +69,51 @@ If the command exits non-zero, the card was not moved, and what it printed says 
 
 ## 5. Wait for the merge
 
-With every pull request open, hand off as `needs-human` with their links, and wait:
+With every pull request open, hand off as `needs-human` with their links:
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
 phase: pr
 status: needs-human
 summary: <the pull requests opened, one for each repo the work changed, what is left to the human in them, and why the card was not moved to In Review, if it was not>
-question: Merge <the link of each pull request>, then tell me when they have merged.
+question: Merge <the link of each pull request>. I watch GitHub and record the merge myself; tell me here if you want a change instead.
 options: merged | a change you want made | stop here
 EOF
 ```
 
-When the human answers, record the answer first, as the handoff block section says. Then:
+Then start `entourage task watch <project> <card ID>` in the background, the way your tools run a long command without waiting for it to end, such as `run_in_background` in Claude Code. You are told when it ends, and can answer the human meanwhile. It asks GitHub about each pull request for the card on a schedule: every minute for the first 10 minutes after the newest was opened, every 5 minutes for the hour after that, then every 30 minutes. Each check prints a line for each pull request, `merged`, `open` or `closed` and its URL, and it ends only once every one has merged or one is closed. It costs nothing while it sleeps. Start it once: an answer from the human, or a change made as section 6 says, leaves it running. When it ends:
 
-- **They say it has merged.** Check each pull request with `gh pr view <url> --json state,mergedAt`. Its `state` is `MERGED` once it has merged. Record the merge only once every pull request for the card has merged, and then hand off as section 7 says. If one is still `OPEN`, hand off as `needs-human` again, naming the one that has not merged, and wait.
-- **A pull request was closed without merging.** Its `state` is `CLOSED`. Ask the human whether to stop here, as `needs-human`, naming it. If they want it stopped, hand off as `failed`, with the pull request that was closed in `reason`.
-- **They ask for a change.** Make it as section 6 says, then wait again.
-- **They say to stop.** Hand off as `failed`, with the pull requests that are still open in `reason`. Leave them open, as they are.
+- **It ends with 0: every pull request for the card has merged.** Its last lines say `merged` for each. The human typed nothing, but the merge is their answer, so record it as one. That way `entourage task log` shows how long the pull requests waited on them, as it does for an answer typed in the tab:
 
-Whatever they say, the human merges. Never run `gh pr merge` yourself, never turn on auto-merge, and never close a pull request.
+  ```
+  entourage task handoff <project> <card ID> <<'EOF'
+  phase: pr
+  status: answered
+  answer: merged on GitHub, seen by the watch
+  EOF
+  ```
+
+  Then hand off as section 7 says.
+- **It ends with 3: a pull request was closed without merging.** Its last lines name it, with `closed`. Record that first, as the answer:
+
+  ```
+  entourage task handoff <project> <card ID> <<'EOF'
+  phase: pr
+  status: answered
+  answer: closed on GitHub, <its link>
+  EOF
+  ```
+
+  Then ask the human whether to stop here, as `needs-human`, naming it. If they want it stopped, hand off as `failed`, with the pull request that was closed in `reason`. Run no `task finish`, whatever they answer. A card whose pull request was closed never reaches section 7, so its task stays as it is, with its work. If they reopen it, start the watch again.
+- **It ends with 1, or keeps saying it could not ask GitHub.** See the table in "If something goes wrong".
+
+When the human answers in the tab, record the answer first, as the handoff block section says. Then:
+
+- **They say it has merged.** Check at once with `entourage task watch <project> <card ID> --once`, which checks once and does not wait: it exits with 0 when every pull request for the card has merged, 2 while one is still open, and 3 when one was closed. With 0, stop the watch in the background, and hand off as section 7 says. With 2, hand off as `needs-human` again, naming the one that has not merged, and leave the watch in the background running. With 3, ask whether to stop, as for a watch that ends with 3.
+- **They ask for a change.** Make it as section 6 says, then wait again. The watch in the background goes on: don't start another.
+- **They say to stop.** Stop the watch in the background, and hand off as `failed`, with the pull requests that are still open in `reason`. Leave them open, as they are.
+
+Record the merge once, whichever saw it first: a watch that ends after the merge is recorded needs nothing more. Whatever happens, the human merges. Never run `gh pr merge` yourself, never turn on auto-merge, and never close a pull request.
 
 ## 6. Make a change asked for in the tab
 
@@ -105,21 +130,21 @@ Then, for each change asked for:
 5. Add what changed to the pull request's description, so whoever reads it sees what was asked for and which commit made it. Read the description with `gh pr view <url> --json body`, add a line for the change under **Changes asked for:** at its end, putting that heading in the first time, write it to a file, and give it with `gh pr edit <number> --body-file <file>`.
 6. Read the pull request back with `gh pr view <url> --json body,commits`, and check that its description says what you wrote and that the new commit is in it.
 
-Then hand off as `needs-human` again, with the links, and wait as section 5 says:
+Then hand off as `needs-human` again, with the links, and wait as section 5 says. The watch in the background is still running, and a pull request just opened for the change is in its next check:
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
 phase: pr
 status: needs-human
 summary: <the change made, the commit in each pull request that makes it, and that the tests pass>
-question: Merge <the link of each pull request>, then tell me when they have merged.
+question: Merge <the link of each pull request>. I watch GitHub and record the merge myself; tell me here if you want a change instead.
 options: merged | a change you want made | stop here
 EOF
 ```
 
 ## 7. Hand off
 
-When every pull request for the card has merged, record the hand-off. The step is not finished until it is recorded:
+When every pull request for the card has merged, as the watch saw it or `--once` showed it, record the hand-off. The step is not finished until it is recorded:
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
@@ -131,7 +156,17 @@ flags: <each item that was left to the human, a card that was not moved to In Re
 EOF
 ```
 
-Put your own words in place of each hint in angle brackets, and leave the `flags` line out when there is nothing to flag. `merged` is where the card ends. No step comes after it, and nothing hands off as it, so the run is over. The task's worktrees and its tab stay as they are.
+Put your own words in place of each hint in angle brackets, and leave the `flags` line out when there is nothing to flag. `merged` is where the card ends. No step comes after it, and nothing hands off as it.
+
+Then finish the task. Run this right after the hand-off is recorded. It is the run's last command:
+
+```
+entourage task finish <project> <card ID>
+```
+
+It removes the task's worktrees, deletes the task's branch in each repo, removes the task's folder and then closes the task's tab. That is the tab this session runs in when `entourage task build` started it. Closing the tab is the last thing it does, and it ends the session. So record the hand-off first, and run nothing after it. The branch on GitHub is left alone: the repo's own settings delete it or keep it.
+
+`task finish` checks every repo before it removes anything. If removing the task would lose work, it removes nothing, and names each thing that would be lost under the repo it is in: changes that are not committed, commits that are not in the default branch, such as a fix pushed after the merge, and ignored files that the repo's setup does not make again, such as a design doc or an `.env`. Then tell the human everything it named, as it said it, and that the task is left as it is. The merge is recorded already, so record no other hand-off. Change nothing more. Don't commit, push or remove anything to get `task finish` through, and don't remove the task by hand. What to keep is the human's call. The same goes for any other stop. It may find no task for the card, or stop partway and name what it removed. Tell the human what it said. When it finishes the task but leaves the tab open, because Herdr is not running or has no such tab, tell the human that too.
 
 ## The handoff block
 
@@ -182,8 +217,10 @@ EOF
 | `gh pr create` or `gh pr edit` fails | Hand off as `failed`, with what `gh` said and which branches are already pushed |
 | The branch already has an open pull request | Update it with `gh pr edit`. Don't open a second one |
 | `entourage linear move` exits non-zero | The card was not moved. Say so, and why, in the summary of the hand-off that waits, and in `flags` when the step hands off `done`, and go on to wait for the merge. Don't move it with the Linear tools |
-| The human says it has merged, and GitHub says it is open | Name the pull request that has not merged, and ask again |
-| A pull request was closed without merging | Ask the human whether to stop. Don't reopen it or open another |
+| The human says it has merged, and the watch's `--once` says it is open | Name the pull request that has not merged, and ask again. Leave the watch in the background running |
+| A pull request was closed without merging | Ask the human whether to stop. Don't reopen it or open another, and run no `task finish`: the task stays |
+| The watch ends with 1, or keeps saying it could not ask GitHub | Hand off as `needs-human`, with what it said and what would put it right, such as `gh auth login`. Start the watch again once the human says it is right. Never merge to get past it |
+| `task finish` refuses, or stops partway | Tell the human everything it named, and that the task is left as it is. Record no other hand-off, and change nothing to get it through |
 | The human asks for a change | Make it as section 6 says, push it and wait again. Ask first if it would alter what they approved on the card |
 | The tests fail after a change asked for, and can't be made to pass | Hand off as `failed`, with the failing tests. Commit and push nothing, and leave the pull requests open |
 
@@ -224,7 +261,7 @@ entourage task handoff shop ABC-122 <<'EOF'
 phase: pr
 status: needs-human
 summary: Opened acme/api#141 and acme/web#88 into main, each linking the card and the other, and moved ABC-122 to In Review. One item is left to you: open the file in a spreadsheet.
-question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88, then tell me when they have merged.
+question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88. I watch GitHub and record the merge myself; tell me here if you want a change instead.
 options: merged | a change you want made | stop here
 EOF
 ```
@@ -242,7 +279,7 @@ entourage task handoff shop ABC-122 <<'EOF'
 phase: pr
 status: needs-human
 summary: The file is named orders-YYYY-MM-DD.csv now, with its test, in commit 5c1e0d2 on acme/api#141, and its description lists the change. Both test suites pass.
-question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88, then tell me when they have merged.
+question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88. I watch GitHub and record the merge myself; tell me here if you want a change instead.
 options: merged | a change you want made | stop here
 EOF
 ```
@@ -251,7 +288,7 @@ EOF
 entourage task handoff shop ABC-122 <<'EOF'
 phase: pr
 status: answered
-answer: merged
+answer: merged on GitHub, seen by the watch
 EOF
 ```
 
@@ -262,4 +299,10 @@ status: done
 next: merged
 summary: acme/api#141 and acme/web#88 have both merged into main.
 EOF
+```
+
+**The last command**
+
+```
+entourage task finish shop ABC-122
 ```

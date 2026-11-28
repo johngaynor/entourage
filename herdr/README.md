@@ -315,15 +315,26 @@ started status (In Review) with `entourage linear move <card> review`; in a
 team with one started status the card stays in it. When the card cannot be
 moved, it still goes on, and says so, and why, in its hand-offs. With the pull
 requests open it waits as `needs-human`, with their links, while you merge
-them. A change you ask for in the tab instead goes on the task's branch and
-into the same pull requests, and it waits as `needs-human` again. Once GitHub
-says every pull request for the card has merged it hands off `done` with
-`merged` next. Recording that hand-off moves the card in Linear to its team's
-first completed status (Done), whatever recorded it: your answer, or a watch
-on the pull requests. A card that is done or canceled already stays as it is,
-and a pull request closed without merging moves nothing. What happened to the
+them, and watches them on GitHub with `entourage task watch`, run in the
+background, so you don't have to tell it they have merged. A change you ask
+for in the tab instead goes on the task's branch and into the same pull
+requests, and it waits as `needs-human` again. Once GitHub says every pull
+request for the card has merged, it records that as your answer, `answered`,
+so the log shows how long the pull requests waited on you, and hands off
+`done` with `merged` next. Recording that hand-off moves the card in Linear
+to its team's first completed status (Done), whatever recorded it: your
+answer, or a watch on the pull requests. A card that is done or canceled
+already stays as it is. When a pull request is closed without merging, it
+records that the same way and asks you whether to stop, and the card is not
+moved. What happened to the
 card is said on stderr, so the block printed is the one recorded; when the
 card cannot be moved, the hand-off is still recorded, and the note says why.
+Right after that hand-off, as the run's last command, the agent finishes the
+task with `entourage task finish` (see [Finishing a task](#finishing-a-task)):
+its worktrees, its branch in each repo and its folder go, and then its tab
+closes. When that would lose work, it removes nothing, and the agent tells you
+everything it named and leaves the task as it is. A pull request closed
+without merging finishes nothing either: the agent asks you whether to stop.
 When it cannot push or open a pull request, such as when `gh`
 is not signed in or a repo has no remote, it hands off `failed` with the
 reason. `merged` is where a card ends: it is only ever next, and
@@ -460,11 +471,21 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   with `sdlc-build`, then review the build with `sdlc-review`, and back to the
   build when the review sends it back. When the review finds every item met,
   `sdlc-pr` pushes the branch and opens the pull requests, and waits for you
-  to merge them and tell the agent so. The run ends when it hands off with
-  `merged` next. No agent merges a pull request. `task build` refuses to run
-  outside the card's own task folder, with no agent on your `PATH`, with the
-  skills not linked, or, for `claude`, with the build profile not linked. If
-  the agent stops, run the same command again in the tab.
+  to merge them, watching them on GitHub with `entourage task watch
+  <project> <card>` in the background. The watch asks GitHub every minute
+  for the first 10 minutes after the newest pull request was opened, every 5
+  minutes for the hour after that, then every 30 minutes, printing a line for
+  each pull request (`merged`, `open` or `closed`, and its URL), and ends once
+  every one has merged (exit 0) or one is closed without merging (exit 3). It
+  changes nothing, and wakes the agent only when it ends. Telling the agent in
+  the tab that they have merged makes it check at once, with `--once`, which
+  checks once and exits 2 while one is still open. Once it hands off with
+  `merged` next, it finishes the task with `task finish`, which closes the
+  tab, and the run is over. No agent merges a pull request. `task build`
+  refuses to run outside the card's own task folder, with no agent on your
+  `PATH`, with the skills not linked, or, for `claude`, with the build
+  profile not linked. If the agent stops, run the same command again in the
+  tab.
 - **The card moves to In Progress.** Once the tab is open, `task start` moves
   the card in Linear to its team's first started status: picked by its kind
   and its place in the team's order, not by its name, so it is In Progress in
@@ -502,12 +523,15 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
 - **Nothing is made unless everything can be.** A task or branch of that name
   that already exists, a missing repo, or Herdr not running stops it first,
   and a worktree that fails partway is undone.
-- **When the work has merged**, `task finish` removes the task (see
+- **When the work has merged**, the agent runs `task finish` itself, which
+  removes the task and closes its tab (see
   [Finishing a task](#finishing-a-task)).
 
 ### Finishing a task
 
-Once a task's pull requests have merged, one command ends it.
+Once a task's pull requests have merged, one command ends it. The build's
+agent runs it itself, as its last command once it has recorded the merge, so
+you run it only for a task it left, such as one it refused.
 
 ```sh
 entourage task finish <project> <card>
