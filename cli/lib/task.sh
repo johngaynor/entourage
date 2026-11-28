@@ -62,7 +62,7 @@ check_card() {
     # Only the first sentence of why: the rest of linear_ask's message is
     # advice for a command that stops, such as to run it again, which here
     # would start a second agent on the card.
-    *) why=${why#entourage: }; why=${why%%$'\n'*}; why=${why%%. *}; why=${why%.}
+    *) why=$(first_sentence "$why")
        say "  note      could not check $card with Linear${why:+: $why}. Starting it anyway." ;;
   esac
 }
@@ -451,6 +451,12 @@ task_start() {
   start_in_tab "$tab" "$name" "$card"
   [ "${#repos[@]}" -gt 1 ] || repo_trust_note "${repos[0]}"
   record_start "$name" "$card" start
+  # The work has started, so the card shows it in Linear. The task is made and
+  # open by now, so a card that cannot be moved is a note, never a failure.
+  local moved
+  if moved=$(linear_move_note "$card" started); then say "  card      $moved"
+  else say "  note      $moved"
+  fi
   say "Opened task '$task' on branch $branch"
 }
 

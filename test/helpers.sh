@@ -201,9 +201,10 @@ key_given_to_curl() { sed -n 's/^header = "Authorization: \(.*\)"$/\1/p' "$TMP/c
 # arguments go on one line of curl-calls.log, and what it was given on stdin
 # goes in curl-stdin.log. It answers its Nth call with $TMP/linear/N.json, or
 # with the last answer there is, and then a line holding the HTTP status
-# ($TMP/linear/status, or 200), as the real one does for
-# --write-out '\n%{http_code}'. With $TMP/linear/exit it answers nothing and
-# exits with that code, as curl does when it cannot reach the server.
+# ($TMP/linear/N.status, else $TMP/linear/status, else 200), as the real one
+# does for --write-out '\n%{http_code}'. With $TMP/linear/exit it answers
+# nothing and exits with that code, as curl does when it cannot reach the
+# server; with $TMP/linear/exit-from, it does that from the call it names on.
 stub_linear() {
   mkdir -p "$TMP/linear"
   cat > "$TMP/bin/curl" <<EOF
@@ -211,15 +212,16 @@ stub_linear() {
 d="$TMP/linear"
 printf '%s\n' "\$*" >> "$TMP/curl-calls.log"
 cat >> "$TMP/curl-stdin.log"
-if [ -f "\$d/exit" ]; then
-  echo "curl: (6) Could not resolve host: api.linear.app" >&2
-  exit "\$(cat "\$d/exit")"
-fi
 n=\$(( \$(cat "\$d/count" 2>/dev/null || echo 0) + 1 ))
 echo "\$n" > "\$d/count"
+if [ -f "\$d/exit" ] || { [ -f "\$d/exit-from" ] && [ "\$n" -ge "\$(cat "\$d/exit-from")" ]; }; then
+  echo "curl: (6) Could not resolve host: api.linear.app" >&2
+  exit "\$(cat "\$d/exit" 2>/dev/null || echo 6)"
+fi
+status=\$(cat "\$d/\$n.status" 2>/dev/null || cat "\$d/status" 2>/dev/null || echo 200)
 while [ ! -f "\$d/\$n.json" ] && [ "\$n" -gt 1 ]; do n=\$((n - 1)); done
 [ ! -f "\$d/\$n.json" ] || cat "\$d/\$n.json"
-printf '\n%s' "\$(cat "\$d/status" 2>/dev/null || echo 200)"
+printf '\n%s' "\$status"
 EOF
   chmod +x "$TMP/bin/curl"
 }
@@ -232,6 +234,10 @@ linear_answers() {
 
 # The HTTP status of every answer from now on.
 linear_status() { echo "$1" > "$TMP/linear/status"; }
+# The HTTP status of the Nth answer alone: linear_status_at <N> <status>.
+linear_status_at() { echo "$2" > "$TMP/linear/$1.status"; }
+# Linear out of reach from the Nth call on, as when the network goes.
+linear_gone_from() { echo "$1" > "$TMP/linear/exit-from"; }
 
 # Linear's answer when asked for one card: the card $1, titled $2, with $3 as
 # its label in the Type group, or with no labels when $3 is empty. The title
@@ -252,6 +258,43 @@ linear_has_card() {
   stub_linear
   linear_answers "$(card_answer "$@")"
 }
+
+# A team's statuses as Linear keeps them, each with its kind and its place in
+# the team's order, listed out of that order as Linear may send them. Lab's
+# and PHY's, with two started statuses:
+LAB_STATUSES='[{"id":"s-review","name":"In Review","type":"started","position":4},
+  {"id":"s-done","name":"Done","type":"completed","position":5},
+  {"id":"s-progress","name":"In Progress","type":"started","position":3},
+  {"id":"s-todo","name":"Todo","type":"unstarted","position":2},
+  {"id":"s-backlog","name":"Backlog","type":"backlog","position":1},
+  {"id":"s-triage","name":"Triage","type":"triage","position":0},
+  {"id":"s-canceled","name":"Canceled","type":"canceled","position":6},
+  {"id":"s-duplicate","name":"Duplicate","type":"canceled","position":7}]'
+# And a team that calls them something else.
+OTHER_STATUSES='[{"id":"o-shipped","name":"Shipped","type":"completed","position":40},
+  {"id":"o-checking","name":"Checking","type":"started","position":30},
+  {"id":"o-doing","name":"Doing","type":"started","position":20},
+  {"id":"o-waiting","name":"Waiting","type":"unstarted","position":10}]'
+
+# Linear's answer to a move's question: the card $1, in its team's status
+# named $2, with the team's statuses ($3 as JSON, or Lab's).
+move_answer() {
+  jq -cn --arg card "$1" --arg now "$2" --argjson states "${3:-$LAB_STATUSES}" \
+    '{data: {issues: {nodes: [{id: ("id-" + $card), identifier: $card,
+      state: ($states[] | select(.name == $now)), team: {states: {nodes: $states}}}]}}}'
+}
+# Linear's answer to the move itself: the card now in the status named $1
+# ($2 the team's statuses as JSON, or Lab's).
+moved_answer() {
+  jq -cn --arg now "$1" --argjson states "${2:-$LAB_STATUSES}" \
+    '{data: {issueUpdate: {success: true, issue: {state: ($states[] | select(.name == $now))}}}}'
+}
+# Linear's answer to a change that a key with Read permission alone may not
+# make, at HTTP 400.
+NO_WRITE='{"errors":[{"message":"Invalid scope: `write` required","extensions":{"type":"forbidden","code":"FORBIDDEN","statusCode":403,"userError":true,"userPresentableMessage":"You need the write scope to make this change."}}]}'
+
+# The calls that asked Linear to change a card, one line each.
+changes_sent() { curl_calls | grep issueUpdate || true; }
 
 # Every call made to curl, one line each, and how many there were.
 curl_calls() { cat "$TMP/curl-calls.log" 2>/dev/null; }

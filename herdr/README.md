@@ -149,7 +149,7 @@ entourage task ls <project> [--json]
 
   | Set once | With | What it is |
   |---|---|---|
-  | Your Linear API key | `entourage linear key` | Make the key in Linear, under Settings, Account, Security & access, Personal API keys. Read permission is enough to list cards; the card skills' writes need Write too (see [Writing the card up](#writing-the-card-up)). The command asks for it without showing it, checks it with Linear, and saves it. |
+  | Your Linear API key | `entourage linear key` | Make the key in Linear, under Settings, Account, Security & access, Personal API keys. Read permission is enough to list cards; the card skills' writes need Write too (see [Writing the card up](#writing-the-card-up)), and so do the card's moves (see [Starting the work](#starting-the-work)). The command asks for it without showing it, checks it with Linear, and saves it. |
   | The project's teams | `entourage project team <project> <team>...` | A team's key is what its cards' IDs start with: `ABC` for `ABC-122`. A project can name several teams, and several projects can name the same team. With no team given, the command prints the ones that are set. |
 
 - **The key is one of entourage's variables, `LINEAR_API_KEY`.** `linear key`
@@ -250,7 +250,10 @@ entourage task new <project> <card>
 
 On the `test` layout, the Cards panel under the projects list shows the open
 cards of the project whose space is showing, each with a button that writes
-the card up.
+the card up. Each card is under its status in Linear, which shows where its
+work is: `task start` moves a card to In Progress, and recording its merge
+moves it to Done, which takes it off the list (see
+[Starting the work](#starting-the-work)).
 
 - **It shows what `task ls` lists**: the same statuses in the same order, each
   with its count, and the cards under them. A click on a status closes its
@@ -293,7 +296,13 @@ requests open it waits as `needs-human`, with their links, while you merge
 them. A change you ask for in the tab instead goes on the task's branch and
 into the same pull requests, and it waits as `needs-human` again. Once GitHub
 says every pull request for the card has merged it hands off `done` with
-`merged` next. When it cannot push or open a pull request, such as when `gh`
+`merged` next. Recording that hand-off moves the card in Linear to its team's
+first completed status (Done), whatever recorded it: your answer, or a watch
+on the pull requests. A card that is done or canceled already stays as it is,
+and a pull request closed without merging moves nothing. What happened to the
+card is said on stderr, so the block printed is the one recorded; when the
+card cannot be moved, the hand-off is still recorded, and the note says why.
+When it cannot push or open a pull request, such as when `gh`
 is not signed in or a repo has no remote, it hands off `failed` with the
 reason. `merged` is where a card ends: it is only ever next, and
 `task handoff` refuses it as a phase. It does the same with `start`, since
@@ -434,6 +443,17 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   outside the card's own task folder, with no agent on your `PATH`, with the
   skills not linked, or, for `claude`, with the build profile not linked. If
   the agent stops, run the same command again in the tab.
+- **The card moves to In Progress.** Once the tab is open, `task start` moves
+  the card in Linear to its team's first started status: picked by its kind
+  and its place in the team's order, not by its name, so it is In Progress in
+  a team that calls it that and Doing in one that calls it Doing. A card only
+  moves forward: one already further along, such as in review, stays there,
+  and one that is done or canceled is never moved; the output says why. The
+  move needs your key to have Write permission. When Linear cannot be
+  reached, or refuses the move, the task is still made and open, and the
+  output says that the card was not moved, and why. Move it by hand then.
+  Once every pull request has merged, recording the merge moves the card to
+  Done (see [Hand-offs](#hand-offs)).
 - **Claude Code asks once to trust a repo it does not know.** With one repo,
   the tab starts in its worktree, and a worktree takes the trust of its repo's
   own checkout, not of the project folder above it. When Claude Code's file

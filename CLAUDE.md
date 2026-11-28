@@ -9,9 +9,10 @@ machine running from a clone gets whatever `git pull` brings.
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
 are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
 `linear`, `runner`, `release`, `guard`, `after-merge`). The `handoff` tests use
-the real `sqlite3`, the `linear`, `task` and `skills` tests the real `jq`, the
-`release` tests the real `git` and `jq`, the `guard` tests all three, and the
-`after-merge` tests the real `git`; they have to be in `/usr/bin` or `/bin`.
+the real `sqlite3` and `jq`, the `linear`, `task` and `skills` tests the real
+`jq`, the `release` tests the real `git` and `jq`, the `guard` tests all three,
+and the `after-merge` tests the real `git`; they have to be in `/usr/bin` or
+`/bin`.
 No test reaches Linear: a
 stand-in `curl` answers from canned files. Cases run side by side, each in a
 process of its own, so a case must not depend on another case or on anything
