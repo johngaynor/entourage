@@ -211,14 +211,14 @@ entourage task build my-project ABC-122
 ```
 
 `task build` starts the agent for the build phase in the harness, `claude`
-unless `ENTOURAGE_AGENT` names another, with the `entourage-build` phase
+unless `ENTOURAGE_HARNESS` names another, with the `entourage-build` phase
 profile on the `build` profile's model and effort, and a first message that
 has it build the card with the `sdlc-build` skill, check that work with the
 `sdlc-review` skill, and then put it up as a pull request with the `sdlc-pr`
 skill. If the agent stops, run the same command again in the tab. It runs only
 in the card's own task folder. When a phase profile is not linked, `task new`
 and `task build` stop before they start anything, and say to run
-`entourage update`. Another harness, named by `ENTOURAGE_AGENT`, starts as it
+`entourage update`. Another harness, named by `ENTOURAGE_HARNESS`, starts as it
 always has, with no profile, model or effort. When the task has one repo and
 Claude Code has not trusted that repo yet, `task start` says so: Claude Code
 asks once in the tab, and not again for that repo. `task log` shows when the
