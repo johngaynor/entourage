@@ -14,7 +14,7 @@ entourage: set up and maintain this machine from the entourage repo
 Usage:
   entourage install            first-time setup: link everything into the tools on this machine
   entourage update [--no-pull] get the latest entourage, link anything new, drop stale links, refresh Herdr
-  entourage status             show what is linked and what is not, and check your projects
+  entourage status             show what is linked and what is not, and check your projects and your Linear key
   entourage project new <name> [<path>...]  make a project from the template, with the repos at those paths
   entourage project add <name> <path>       add a repo that is already on this machine
   entourage project open <name>             show the project as a Herdr space
@@ -74,6 +74,7 @@ with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
+Once you do, it runs task start, unless you hold the build phase for later.
 claude starts with the entourage-write-up profile (see below).
 With a Linear key saved, it first checks that Linear has the card, and stops
 on a mistyped ID; when Linear cannot be asked, it starts the card anyway.
@@ -84,9 +85,9 @@ group, and the short name is the first four words of its title, leaving out
 a, an and the, like feat/abc-122-export-orders-as-csv. It stops before it
 makes anything when Linear has no such card, the card has no type, no key is
 saved, or Linear cannot be asked. Without a key Linear accepts, give the
-card's type and title after it, as the command the write-up phase gives you
-then does: `--type feat --title 'Export orders as CSV'` names the branch
-Linear's would. They are used only when no key is saved or Linear cannot be
+card's type and title after it, as the command the write-up phase runs or
+gives you then does: `--type feat --title 'Export orders as CSV'` names the
+branch Linear's would. They are used only when no key is saved or Linear cannot be
 asked (a rejected key, the network, no curl or jq), with a note saying why.
 With a key Linear accepts, Linear's type and title win, with a note naming
 each given one that differs. Both are given or neither, and a type that is
@@ -154,7 +155,7 @@ that are not committed, commits that are not in the remote's default branch
 files the repo's `made-by-setup` recipe does not say its setup makes again.
 It names every problem in every repo in one go.
 `task handoff` is run by the agent each time a step ends or pauses, and
-when the human answers a question. It reads a handoff block on stdin (phase,
+when the human answers a question. It reads a handoff block on stdin (step,
 status, next and so on, one per line), refuses one that breaks the rules, and
 records it. `task log` lists what was recorded for a card, with how long each
 step took and how long it waited on the human. With no card it lists the
@@ -166,8 +167,8 @@ programs: the Steps panel in Herdr draws it. Run
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
 Skills are linked into ~/.claude/skills, and agent profiles into
-~/.claude/agents (CLAUDE_CONFIG_DIR picks another ~/.claude). The agent is
-claude (ENTOURAGE_AGENT picks another command).
+~/.claude/agents (CLAUDE_CONFIG_DIR picks another ~/.claude). The harness is
+claude (ENTOURAGE_HARNESS picks another command).
 Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage). Hand-offs are recorded beside them, in
 entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
@@ -178,7 +179,7 @@ for `task new` and entourage-build for `task build`, and with Linear's MCP
 server alone (agents/linear-mcp.json), not the servers of your own sessions.
 Claude Code asks once to sign in to Linear as linear-server on a machine
 where it is not signed in under that name. When the profile is not linked,
-both stop before starting anything; run `entourage update`. Another agent
+both stop before starting anything; run `entourage update`. Another harness
 starts as it is, with no profile, model or effort.
 
 Each profile runs on the model and effort that ~/.config/entourage/settings.json

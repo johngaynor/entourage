@@ -38,9 +38,33 @@ each_skill_hands_off_as_itself() {
   local s
   for s in $CARD_SKILL_NAMES; do
     grep -A1 -F "entourage task handoff <project> <card ID> <<'EOF'" "$REPO/skills/$s/SKILL.md" |
-      grep -qx "phase: ${s#sdlc-}" ||
-      fail "$s does not show the command for handing off with phase: ${s#sdlc-}"
+      grep -qx "step: ${s#sdlc-}" ||
+      fail "$s does not show the command for handing off with step: ${s#sdlc-}"
   done
+}
+
+# The line of a block that names its step is step:. It used to be phase:, and
+# nothing an agent or the human reads still names one, in a block or in a
+# sentence: not the skills, not the READMEs or the glossary, not the usage
+# text. The command's own code names phase: only to refuse it, so there it is
+# a line of the usage that must not start with one.
+no_doc_shows_a_phase_line() {
+  local f s found
+  for f in "$REPO/skills/"sdlc-*/SKILL.md "$ROOT/herdr/README.md" "$ROOT/README.md" \
+      "$ROOT/GLOSSARY.md" "$REPO/cli/entourage"; do
+    if found=$(grep -nF 'phase:' "$f"); then
+      f=${f#"$REPO/"}; fail "${f#"$ROOT/"} names a phase: line: $found"
+    fi
+  done
+  if found=$(grep -nE '^[[:space:]]*phase:' "$REPO/cli/lib/handoff.sh"); then
+    fail "cli/lib/handoff.sh shows a phase: line: $found"
+  fi
+  for s in $CARD_SKILL_NAMES; do
+    ! grep -qF '`phase`' "$REPO/skills/$s/SKILL.md" ||
+      fail "$s still lists \`phase\` as a line of the block"
+  done
+  ! grep -qF '(phase,' "$REPO/cli/entourage" ||
+    fail "the usage text still names the block's phase line"
 }
 
 # "Then stop" is how a skill used to end. It contradicts the block's own rule
@@ -53,8 +77,8 @@ no_skill_says_then_stop() {
   done
 }
 
-# task start takes the card, and names the branch from it. The command the
-# human is given after approval is the card's, not a branch put together.
+# task start takes the card, and names the branch from it. The command that
+# starts the work after approval is the card's, not a branch put together.
 task_new_prompt_gives_task_start_the_card() {
   local prompt=$REPO/prompts/task-new.md
   grep -qF 'entourage task start {project} {card}' "$prompt" ||
@@ -82,6 +106,32 @@ breakdown_hands_on_to_start() {
   return 0
 }
 
+# Approving the card starts its build phase, unless the human holds it for later:
+# breakdown asks which, and the task-new prompt has the agent run task start
+# itself only for an approval to start now.
+approval_starts_the_build_unless_held() {
+  local skill=$REPO/skills/sdlc-breakdown/SKILL.md prompt=$REPO/prompts/task-new.md section want
+  grep -qxF 'question: Approve <card ID> as specified, planned and broken down, and start its build phase now?' "$skill" ||
+    fail "the approval's question does not ask whether to start the build phase now"
+  grep -qxF 'options: approve and start | approve, start later | change breakdown | change plan | change specification' "$skill" ||
+    fail "sdlc-breakdown does not offer to start now or later"
+  grep -qF 'Go by what they mean, not by the exact words.' "$skill" ||
+    fail "sdlc-breakdown does not tell a start now from a start later by what the human means"
+  section=$(sed -n '/^### Start the build phase/,/^## /p' "$skill")
+  [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build phase section"; return; }
+  for want in 'the first sub-issue in order that is not already started, done or canceled' \
+      'start later:** give them the command, `entourage task start <project> <ID>`, and run nothing' \
+      'start now:** run that command yourself, once, after the hand-off above is recorded' \
+      'every `agent` and `note` line' "If it stops, don't run it again." \
+      'it says `made the task at <folder>`' 'run `entourage task build <project> <ID>` there'; do
+    case $section in *"$want"*) ;; *) fail "sdlc-breakdown's Start the build phase does not say: $want" ;; esac
+  done
+  ! grep -qF 'which the human runs' "$skill" || fail "sdlc-breakdown still says the human always runs task start"
+  ! grep -qF "don't run it yourself" "$prompt" || fail "the task-new prompt still has the agent never run task start"
+  grep -qF 'Run it yourself only when I approved to start now. When I chose to start later, give it to me and' "$prompt" ||
+    fail "the task-new prompt does not say when the agent runs task start and when it holds it"
+}
+
 # Recording the approval moves the card, and its slices, to the team's
 # not-started status. The hand-off is recorded either way, so when the command
 # notes that a card was not moved, sdlc-breakdown tells the human which, and
@@ -105,19 +155,19 @@ breakdown_tells_the_human_when_the_approval_did_not_move_a_card() {
 }
 
 # Without a key Linear accepts, task start cannot read the card's type and
-# title, so the command sdlc-breakdown gives the human carries them, quoted
-# so that it runs as pasted whatever the title holds. The approval's note is
-# what says the key is missing or was rejected.
+# title, so the command sdlc-breakdown runs or gives the human carries them,
+# quoted so that it runs as pasted whatever the title holds. The approval's
+# note is what says the key is missing or was rejected.
 breakdown_gives_the_type_and_title_without_a_key() {
   local skill=$REPO/skills/sdlc-breakdown/SKILL.md prompt=$REPO/prompts/task-new.md section want
-  section=$(awk '/^## / { if (on) exit } /^## Hand off$/ { on = 1 } on' "$skill")
-  [ -n "$section" ] || { fail "sdlc-breakdown has no Hand off section"; return; }
-  for want in "entourage task start <project> <card ID> --type <type> --title '<title>'" \
+  section=$(sed -n '/^### Start the build phase/,/^## /p' "$skill")
+  [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build phase section"; return; }
+  for want in "entourage task start <project> <ID> --type <type> --title '<title>'" \
       'no Linear key is saved' 'Linear rejected the key' 'first sub-issue' "'\\''" \
-      'entourage task start <project> <card ID>`'; do
+      'whether you run it or give it' 'the plain `entourage task start <project> <ID>`'; do
     case $section in
       *"$want"*) ;;
-      *) fail "sdlc-breakdown's Hand off does not say: $want" ;;
+      *) fail "sdlc-breakdown's Start the build phase does not say: $want" ;;
     esac
   done
   for want in '--type' '--title'; do
@@ -963,11 +1013,12 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   pr_brings_a_conflicting_branch_up_to_date pr_asks_only_when_a_conflict_cannot_be_settled
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
-  each_skill_hands_off_as_itself no_skill_says_then_stop
+  each_skill_hands_off_as_itself no_doc_shows_a_phase_line no_skill_says_then_stop
   review_profiles_are_named_with_only_their_tools review_profiles_leave_out_the_listing_tools
   review_profiles_carry_the_review_rules write_up_profile_has_only_its_tools
   build_profile_has_only_its_tools every_profile_runs_on_opus no_profile_names_a_person
   no_skill_names_a_person a_routed_change_returns_to_breakdown
+  approval_starts_the_build_unless_held
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
   task_build_prompt_drives_build_and_review breakdown_hands_on_to_start

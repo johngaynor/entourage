@@ -103,24 +103,24 @@ task_new_needs_the_skills_linked() {
   [ "$(tab_calls)" = 0 ] || fail "opened a tab"
 }
 
-task_new_needs_an_agent() {
+task_new_needs_a_harness() {
   "$E" install >/dev/null
   "$E" project new demo >/dev/null
   : > "$TMP/herdr-calls.log"
-  "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" && fail "exited zero with no agent on PATH"
-  grep -q 'ENTOURAGE_AGENT' "$TMP/err" || fail "did not name the setting: $(cat "$TMP/err")"
+  "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" && fail "exited zero with no harness on PATH"
+  grep -q 'ENTOURAGE_HARNESS' "$TMP/err" || fail "did not name the setting: $(cat "$TMP/err")"
   [ "$(tab_calls)" = 0 ] || fail "opened a tab"
 }
 
-# Another agent starts as it always has: no profile, and none needed.
-task_new_honors_the_agent_setting() {
+# Another harness starts as it always has: no profile, and none needed.
+task_new_honors_the_harness_setting() {
   card_demo
   stub codex
   rm "$AG/entourage-write-up.md"
   # Nor are the profiles' settings read: a broken file does not stop it.
   echo 'not json' > "$HOME/.config/entourage/settings.json"
-  ENTOURAGE_AGENT=codex "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
-  case $(last_call) in *'"argv":["codex"],'*) ;; *) fail "did not start the chosen agent alone: $(last_call)" ;; esac
+  ENTOURAGE_HARNESS=codex "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+  case $(last_call) in *'"argv":["codex"],'*) ;; *) fail "did not start the chosen harness alone: $(last_call)" ;; esac
 }
 
 # claude starts with the write-up profile, so without it nothing is started.
@@ -917,23 +917,35 @@ task_start_leaves_other_worktrees_alone() {
 # entourage's variables can be set in its env file. Herdr starts commands
 # without a shell's exports, so the file is the only place a mod's run of
 # `task new` can find them.
-task_new_takes_the_agent_from_the_env_file() {
-  card_demo; stub myagent
-  echo 'ENTOURAGE_AGENT=myagent' > "$(env_file)"
+task_new_takes_the_harness_from_the_env_file() {
+  card_demo; stub myharness
+  echo 'ENTOURAGE_HARNESS=myharness' > "$(env_file)"
   "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
   case $(last_call) in
-    *'"argv":["myagent"]'*) ;;
-    *) fail "did not start the agent the env file names: $(last_call)" ;;
+    *'"argv":["myharness"]'*) ;;
+    *) fail "did not start the harness the env file names: $(last_call)" ;;
   esac
 }
 
-task_new_prefers_an_exported_agent_to_the_env_file() {
-  card_demo; stub myagent; stub other
-  echo 'ENTOURAGE_AGENT=myagent' > "$(env_file)"
-  ENTOURAGE_AGENT=other "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+task_new_prefers_an_exported_harness_to_the_env_file() {
+  card_demo; stub myharness; stub other
+  echo 'ENTOURAGE_HARNESS=myharness' > "$(env_file)"
+  ENTOURAGE_HARNESS=other "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
   case $(last_call) in
     *'"argv":["other"]'*) ;;
-    *) fail "did not start the exported agent: $(last_call)" ;;
+    *) fail "did not start the exported harness: $(last_call)" ;;
+  esac
+}
+
+# ENTOURAGE_HARNESS took the place of ENTOURAGE_AGENT, which is not read at
+# all: a machine that still sets it gets claude, with the write-up profile.
+task_new_ignores_the_old_agent_setting() {
+  card_demo; stub codex
+  echo 'ENTOURAGE_AGENT=codex' > "$(env_file)"
+  "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
+  case $(last_call) in
+    *'"argv":["claude","--agent=entourage-write-up",'*) ;;
+    *) fail "did not start claude with the write-up profile: $(last_call)" ;;
   esac
 }
 
@@ -1097,11 +1109,12 @@ CARD_CASES="task_new_refuses_a_card_linear_does_not_have task_new_starts_a_card_
   task_new_asks_linear_nothing_without_a_key task_new_starts_anyway_when_linear_is_out_of_reach
   task_new_starts_anyway_with_a_key_linear_rejects task_new_starts_anyway_when_the_answer_lists_no_cards
   task_new_starts_anyway_without_curl task_new_starts_anyway_without_jq
-  task_new_takes_the_agent_from_the_env_file task_new_prefers_an_exported_agent_to_the_env_file
+  task_new_takes_the_harness_from_the_env_file task_new_prefers_an_exported_harness_to_the_env_file
+  task_new_ignores_the_old_agent_setting
   task_new_starts_an_agent task_new_sends_one_line_of_json task_new_takes_a_lowercase_card
   task_new_makes_no_task_folder task_new_selects_an_open_space task_new_refuses_a_branch
   task_new_refuses_a_bad_card task_new_refuses_unknown_project task_new_needs_the_skills_linked
-  task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_the_write_up_profile_linked
+  task_new_needs_a_harness task_new_honors_the_harness_setting task_new_needs_the_write_up_profile_linked
   task_new_needs_herdr_running
   task_new_says_when_the_tab_fails task_new_escapes_the_folder
   task_new_trusts_a_project_made_before task_new_trusts_before_the_tab_opens
@@ -1332,7 +1345,7 @@ task_start_records_the_start() {
 # hands on to start, and start is the row task start records.
 task_start_follows_breakdown_by_one_name() {
   task_demo api
-  printf 'phase: breakdown\nstatus: done\nnext: start\nsummary: Approved as one piece.\n' |
+  printf 'step: breakdown\nstatus: done\nnext: start\nsummary: Approved as one piece.\n' |
     "$E" task handoff demo ABC-1 >/dev/null 2>&1 || fail "task handoff refused breakdown with next: start"
   out=$("$E" task log demo) || fail "task log with no card exited non-zero"
   printf '%s\n' "$out" | grep -Eq '^ABC-1 +breakdown done, then start +for ' ||
@@ -1425,11 +1438,11 @@ task_build_refuses_outside_the_cards_task() {
   agent_ran && fail "the agent started"
 }
 
-task_build_needs_an_agent() {
+task_build_needs_a_harness() {
   build_demo
   rm "$TMP/bin/claude"
-  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "exited zero with no agent on PATH"
-  grep -q ENTOURAGE_AGENT "$TMP/err" || fail "did not name the setting: $(cat "$TMP/err")"
+  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "exited zero with no harness on PATH"
+  grep -q ENTOURAGE_HARNESS "$TMP/err" || fail "did not name the setting: $(cat "$TMP/err")"
 }
 
 task_build_needs_the_skills_linked() {
@@ -1458,18 +1471,41 @@ task_build_needs_the_build_profile_linked() {
   agent_ran && fail "the agent started"
 }
 
-# Another agent starts as it always has: the first message alone, no profile,
-# and none needed.
-task_build_starts_another_agent_with_no_profile() {
+# Another harness starts as it always has: the first message alone, no
+# profile, and none needed.
+task_build_starts_another_harness_with_no_profile() {
   build_demo
   agent_stub codex
   rm "$AG/entourage-build.md"
   # Nor are the profiles' settings read: a broken file does not stop it.
   echo 'not json' > "$HOME/.config/entourage/settings.json"
-  (cd "$WT" && ENTOURAGE_AGENT=codex "$E" task build demo ABC-1) || fail "task build exited non-zero"
-  agent_ran || fail "the agent did not start"
+  (cd "$WT" && ENTOURAGE_HARNESS=codex "$E" task build demo ABC-1) || fail "task build exited non-zero"
+  agent_ran || fail "the harness did not start"
   [ "$(cat "$TMP/agent-argc")" = 1 ] || fail "codex was given $(cat "$TMP/agent-argc") arguments, not the first message alone: $(agent_arg 1)"
   case $(cat "$TMP/agent-message") in *"Linear card ABC-1"*) ;; *) fail "codex was not given the first message: $(cat "$TMP/agent-message")" ;; esac
+}
+
+# The env file names the harness for `task build` too. claude is taken off
+# PATH, so only the harness the file names can start.
+task_build_takes_the_harness_from_the_env_file() {
+  build_demo
+  agent_stub myharness
+  rm "$TMP/bin/claude"
+  echo 'ENTOURAGE_HARNESS=myharness' > "$(env_file)"
+  (cd "$WT" && "$E" task build demo ABC-1) 2>"$TMP/err" || fail "task build exited non-zero: $(cat "$TMP/err")"
+  agent_ran || fail "the harness did not start"
+  [ "$(cat "$TMP/agent-argc")" = 1 ] || fail "myharness was given $(cat "$TMP/agent-argc") arguments, not the first message alone: $(agent_arg 1)"
+}
+
+# An exported ENTOURAGE_AGENT is not read either: claude starts, with the
+# build profile, and the program it names is never run.
+task_build_ignores_the_old_agent_setting() {
+  build_demo
+  stub codex
+  (cd "$WT" && ENTOURAGE_AGENT=codex "$E" task build demo ABC-1) || fail "task build exited non-zero"
+  [ ! -e "$TMP/codex-calls.log" ] || fail "started codex: $(cat "$TMP/codex-calls.log")"
+  agent_ran || fail "claude did not start"
+  [ "$(agent_arg 1)" = --agent=entourage-build ] || fail "claude did not start with the build profile: '$(agent_arg 1)'"
 }
 
 # The build runs on the build's model and effort from the settings file, and
@@ -1499,8 +1535,9 @@ BUILD_CASES="task_start_starts_the_agent_in_the_tab task_start_says_how_to_start
   task_start_says_nothing_of_trust_for_several_repos task_start_records_the_start
   task_start_follows_breakdown_by_one_name
   task_start_starts_when_the_store_cannot_be_written task_build_starts_the_agent
-  task_build_refuses_outside_the_cards_task task_build_needs_an_agent task_build_needs_the_skills_linked
-  task_build_needs_the_build_profile_linked task_build_starts_another_agent_with_no_profile"
+  task_build_refuses_outside_the_cards_task task_build_needs_a_harness task_build_needs_the_skills_linked
+  task_build_needs_the_build_profile_linked task_build_starts_another_harness_with_no_profile
+  task_build_takes_the_harness_from_the_env_file task_build_ignores_the_old_agent_setting"
 
 # --- tasks: targets ---------------------------------------------------------
 

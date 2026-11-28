@@ -1,12 +1,13 @@
 # Tasks: a card an agent writes up, then a worktree of each repo on one
 # branch. Sourced by cli/entourage.
 
-# A task is one piece of work in a project, usually a Linear card. A person
-# runs two commands, in this order:
+# A task is one piece of work in a project, usually a Linear card. Two
+# commands make it, in this order:
 #   task new    an agent writes the card up, in a tab in the project's space
 #   task start  a worktree of each repo on the card's branch, in a tab of its
 #               own, where it types `task build` to start the agent that
-#               builds the card
+#               builds the card. The write-up agent runs it once the human
+#               approves the card, unless they hold it; then they run it.
 # The agent runs `task handoff` as each step ends, and `task log` shows what
 # it recorded. Both are in handoff.sh. While the pull requests wait on the
 # human, `task watch` watches them on GitHub; it is in watch.sh. Once the work
@@ -24,8 +25,9 @@ CARD_PROMPT=$REPO/prompts/task-new.md
 BUILD_SKILLS='sdlc-build sdlc-review sdlc-pr'
 # The build agent's first message. {card} and {project} are filled in.
 BUILD_PROMPT=$REPO/prompts/task-build.md
-# The agent a new task's tab runs: one word, a command on PATH.
-AGENT=${ENTOURAGE_AGENT:-claude}
+# The harness a task's agent runs in: one word, a command on PATH. claude
+# unless ENTOURAGE_HARNESS names another.
+HARNESS=${ENTOURAGE_HARNESS:-claude}
 # The profiles claude starts with: Claude Code agent definitions in agents/,
 # linked into Claude Code's agents folder. Each gives the session only the
 # tools its steps use. The write-up's is for `task new`, the build's for
@@ -40,8 +42,8 @@ PROFILE_MCP=$REPO/agents/linear-mcp.json
 
 # The flags that start claude with a profile, in PROFILE_ARGS, or stop when
 # the profile is not linked or the settings file is not valid settings.
-# Another agent is started as it is, with none, and the settings file is not
-# read. Each flag holds its value after an =, because --mcp-config takes
+# Another harness is started as it is, with none, and the settings file is
+# not read. Each flag holds its value after an =, because --mcp-config takes
 # several values and would take the first message as one of them. --model=
 # and --effort= beat the profile's own model and the human's own Claude Code
 # settings; only CLAUDE_CODE_EFFORT_LEVEL beats --effort=.
@@ -50,7 +52,7 @@ PROFILE_ARGS=()
 profile_args() {
   local profile=$1 settings=$2
   PROFILE_ARGS=()
-  [ "${AGENT##*/}" = claude ] || return 0
+  [ "${HARNESS##*/}" = claude ] || return 0
   [ -f "$AGENTS_HOME/$profile.md" ] ||
     die "the $profile agent profile is not in $AGENTS_HOME, so the agent could not start with it. Run: entourage update"
   settings_check
@@ -91,8 +93,8 @@ task_new() {
   # The agent runs in a tab, so Herdr has to be there before anything is opened.
   require_herdr
   herdr_running || die "Herdr is not running. Open it, then run this again."
-  command -v "$AGENT" >/dev/null 2>&1 ||
-    die "'$AGENT' is not on your PATH, so there is no agent to start. Install it, or set ENTOURAGE_AGENT to the one you use."
+  command -v "$HARNESS" >/dev/null 2>&1 ||
+    die "'$HARNESS' is not on your PATH, so there is no harness to start the agent in. Install it, or set ENTOURAGE_HARNESS to the one you use."
   for skill in $CARD_SKILLS; do
     [ -f "$SKILLS_HOME/$skill/SKILL.md" ] ||
       die "the $skill skill is not in $SKILLS_HOME, so the agent could not use it. Run: entourage update"
@@ -110,9 +112,9 @@ task_new() {
   (show_space "$name" "$dir") ||
     die "could not show the space for '$name', so no agent was started."
   # No `space` argument: the tab goes in the selected space, which show_space
-  # has just selected or made. argv is the agent and its profile's flags, and
-  # task is its first message.
-  argv="\"$(json_str "$AGENT")\""
+  # has just selected or made. argv is the harness and its profile's flags,
+  # and task is the agent's first message.
+  argv="\"$(json_str "$HARNESS")\""
   for arg in ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"}; do argv="$argv,\"$(json_str "$arg")\""; done
   herdr_app do tab.new "{\"name\":\"$card\",\"folder\":\"$(json_str "$dir")\",\"argv\":[$argv],\"task\":\"$(json_str "$prompt")\"}" >/dev/null 2>&1 ||
     die "could not open a tab for $card. Is Herdr open?"
@@ -566,8 +568,8 @@ task_build() {
     "$dir/tasks/$low/"* | "$dir/tasks/$low-"*/*) ;;
     *) die "run this in $card's task, the folder task start made for it in $dir/tasks. To make it: entourage task start $name $card" ;;
   esac
-  command -v "$AGENT" >/dev/null 2>&1 ||
-    die "'$AGENT' is not on your PATH, so there is no agent to start. Install it, or set ENTOURAGE_AGENT to the one you use."
+  command -v "$HARNESS" >/dev/null 2>&1 ||
+    die "'$HARNESS' is not on your PATH, so there is no harness to start the agent in. Install it, or set ENTOURAGE_HARNESS to the one you use."
   for skill in $BUILD_SKILLS; do
     [ -f "$SKILLS_HOME/$skill/SKILL.md" ] ||
       die "the $skill skill is not in $SKILLS_HOME, so the agent could not use it. Run: entourage update"
@@ -576,7 +578,7 @@ task_build() {
   [ -f "$BUILD_PROMPT" ] || die "the agent's first message is missing from $BUILD_PROMPT"
   prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$BUILD_PROMPT")
   # The first message goes last, after the profile's flags.
-  exec "$AGENT" ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} "$prompt"
+  exec "$HARNESS" ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} "$prompt"
 }
 
 # List the open cards of a project's Linear teams, grouped by status: the

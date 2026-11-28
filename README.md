@@ -24,7 +24,7 @@ They live in [skills/](skills/). `entourage install` links them into
 name, such as `/sdlc-define ABC-122`.
 
 Whenever a skill ends or pauses, it hands off with a block: which step it was,
-on the block's `phase:` line, and whether it is `done`, `needs-human` or
+on the block's `step:` line, and whether it is `done`, `needs-human` or
 `failed`. A `done` block also names
 the step that comes next. The agent records each block with
 `entourage task handoff`, and your answer when you reply to a question.
@@ -115,8 +115,9 @@ else. This needs `jq`; without it Claude Code asks once.
 
 ## Tasks
 
-A task is one piece of work in a project, usually a Linear card. You run two
-commands, in this order.
+A task is one piece of work in a project, usually a Linear card. Two commands
+make it, in this order: `task new`, then `task start`, which the write-up phase
+runs once you approve the card, unless you hold it for later.
 
 To see which cards there are first, `task ls` lists the open cards of the
 project's Linear teams, under their statuses:
@@ -127,8 +128,11 @@ entourage project team my-project ABC # once: the team whose cards are ABC-122
 entourage task ls my-project
 ```
 
-It asks Linear itself, with no agent running. See
-[herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
+It asks Linear itself, with no agent running. `entourage status` checks the
+saved key with Linear each time it runs: it says whose the key is when it
+works, notes when no key is saved or when the key could not be checked, and
+lists a key Linear rejects as a problem, which makes `status` exit non-zero.
+See [herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
 
 `task new` writes the card up. It opens a tab in the project's Herdr space and
 starts an agent there for the write-up phase, with the `entourage-write-up`
@@ -142,7 +146,8 @@ entourage task new my-project ABC-122
 Recording your approval moves the card in Linear to its team's first
 not-started status (Todo in Lab), and each of its sub-issues with it. When a
 card cannot be moved, the approval is still recorded, and the agent tells you
-which card, and why.
+which card, and why. Then the agent starts the build phase with `task start`,
+unless you hold it for later.
 
 As it goes, the agent records how each step ended. `task log` lists that for
 a card, oldest first, with how long each step took and how long a question
@@ -162,7 +167,8 @@ entourage task log my-project
 `task start` starts the work, once you have approved the card. It takes the
 card too, makes a branch and a git worktree of it in every repo of the
 project, opens a tab for it, and starts the agent there that runs the build
-phase. The write-up phase gives you the command:
+phase. The write-up phase runs it once you approve the card, or gives it to
+you when you chose to start later:
 
 ```sh
 entourage task start my-project ABC-122
@@ -192,8 +198,8 @@ words of its title, leaving out a, an and the. "Insert the task here" gives
 
 It asks Linear with your Linear key, as `task ls` does. When Linear can't be
 asked, give the card's type and title after it instead. The write-up phase
-gives you the command with them when no key is saved or Linear rejected the
-key:
+adds them to the command it runs or gives you when no key is saved or Linear
+rejected the key:
 
 ```sh
 entourage task start my-project ABC-122 --type feat --title 'Insert the task here'
@@ -228,14 +234,14 @@ entourage task build my-project ABC-122
 ```
 
 `task build` starts the agent for the build phase in the harness, `claude`
-unless `ENTOURAGE_AGENT` names another, with the `entourage-build` phase
+unless `ENTOURAGE_HARNESS` names another, with the `entourage-build` phase
 profile on the `build` profile's model and effort, and a first message that
 has it build the card with the `sdlc-build` skill, check that work with the
 `sdlc-review` skill, and then put it up as a pull request with the `sdlc-pr`
 skill. If the agent stops, run the same command again in the tab. It runs only
 in the card's own task folder. When a phase profile is not linked, `task new`
 and `task build` stop before they start anything, and say to run
-`entourage update`. Another harness, named by `ENTOURAGE_AGENT`, starts as it
+`entourage update`. Another harness, named by `ENTOURAGE_HARNESS`, starts as it
 always has, with no profile, model or effort. When the task has one repo and
 Claude Code has not trusted that repo yet, `task start` says so: Claude Code
 asks once in the tab, and not again for that repo. `task log` shows when the
