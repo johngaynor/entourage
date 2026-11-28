@@ -16,7 +16,7 @@ task_new_starts_an_agent() {
   "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
   call=$(last_call)
   case $call in
-    "do tab.new {\"name\":\"ABC-122\",\"folder\":\"$P/demo\",\"argv\":[\"claude\"],\"task\":\""*"\"}") ;;
+    "do tab.new {\"name\":\"ABC-122\",\"folder\":\"$P/demo\",\"argv\":[\"claude\",\"--agent=entourage-write-up\",\"--strict-mcp-config\",\"--mcp-config=$REPO/agents/linear-mcp.json\"],\"task\":\""*"\"}") ;;
     *) fail "wrong last call: $call" ;;
   esac
   for want in "Linear card ABC-122" sdlc-define sdlc-plan sdlc-breakdown "entourage task start demo ABC-122"; do
@@ -34,7 +34,7 @@ task_new_sends_one_line_of_json() {
   [ "$(tab_calls)" = 1 ] || fail "expected one tab.new line, got $(tab_calls)"
   json=$(last_call); json=${json#do tab.new }
   if command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "\n" in d["task"] and d["argv"]==["claude"]' ||
+    printf '%s' "$json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "\n" in d["task"] and d["argv"]==["claude","--agent=entourage-write-up","--strict-mcp-config","--mcp-config="+sys.argv[1]+"/agents/linear-mcp.json"]' "$REPO" ||
       fail "the call is not valid JSON with a multi-line task: $json"
   fi
 }
@@ -112,11 +112,24 @@ task_new_needs_an_agent() {
   [ "$(tab_calls)" = 0 ] || fail "opened a tab"
 }
 
+# Another agent starts as it always has: no profile, and none needed.
 task_new_honors_the_agent_setting() {
   card_demo
   stub codex
+  rm "$AG/entourage-write-up.md"
   ENTOURAGE_AGENT=codex "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
-  case $(last_call) in *'"argv":["codex"]'*) ;; *) fail "did not start the chosen agent: $(last_call)" ;; esac
+  case $(last_call) in *'"argv":["codex"],'*) ;; *) fail "did not start the chosen agent alone: $(last_call)" ;; esac
+}
+
+# claude starts with the write-up profile, so without it nothing is started.
+task_new_needs_the_write_up_profile_linked() {
+  card_demo
+  rm "$AG/entourage-write-up.md"
+  "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" && fail "started an agent with no write-up profile linked"
+  grep -q entourage-write-up "$TMP/err" && grep -q 'entourage update' "$TMP/err" ||
+    fail "did not say the write-up profile is missing: $(cat "$TMP/err")"
+  [ "$(tab_calls)" = 0 ] || fail "opened a tab"
+  ! grep -q '^do space\.' "$TMP/herdr-calls.log" || fail "showed the space first: $(cat "$TMP/herdr-calls.log")"
 }
 
 task_new_needs_herdr_running() {
@@ -868,7 +881,8 @@ CARD_CASES="task_new_refuses_a_card_linear_does_not_have task_new_starts_a_card_
   task_new_starts_an_agent task_new_sends_one_line_of_json task_new_takes_a_lowercase_card
   task_new_makes_no_task_folder task_new_selects_an_open_space task_new_refuses_a_branch
   task_new_refuses_a_bad_card task_new_refuses_unknown_project task_new_needs_the_skills_linked
-  task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_herdr_running
+  task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_the_write_up_profile_linked
+  task_new_needs_herdr_running
   task_new_says_when_the_tab_fails task_new_escapes_the_folder
   task_new_trusts_a_project_made_before task_new_trusts_before_the_tab_opens
   task_new_leaves_trusted_claude_state_alone task_new_starts_when_trust_cannot_be_written
@@ -1127,16 +1141,28 @@ task_start_starts_when_the_store_cannot_be_written() {
 build_demo() {
   "$E" install >/dev/null
   "$E" project new demo >/dev/null
-  cat > "$TMP/bin/claude" <<EOF
-#!/usr/bin/env bash
-pwd -P > "$TMP/agent-folder"
-printf '%s' "\$*" > "$TMP/agent-message"
-EOF
-  chmod +x "$TMP/bin/claude"
+  agent_stub claude
   WT=$P/demo/tasks/abc-1-x/api
   mkdir -p "$WT"
 }
 agent_ran() { [ -e "$TMP/agent-folder" ]; }
+
+# An agent on PATH, named $1, that notes where it ran, how many arguments it
+# was given, each one in agent-arg.<n>, and its last, the first message, in
+# agent-message.
+agent_stub() {
+  cat > "$TMP/bin/$1" <<EOF
+#!/usr/bin/env bash
+pwd -P > "$TMP/agent-folder"
+rm -f "$TMP"/agent-arg.*
+echo "\$#" > "$TMP/agent-argc"
+n=0
+for a in "\$@"; do n=\$((n + 1)); printf '%s' "\$a" > "$TMP/agent-arg.\$n"; done
+printf '%s' "\$a" > "$TMP/agent-message"
+EOF
+  chmod +x "$TMP/bin/$1"
+}
+agent_arg() { cat "$TMP/agent-arg.$1" 2>/dev/null; }
 
 task_build_starts_the_agent() {
   build_demo
@@ -1144,7 +1170,13 @@ task_build_starts_the_agent() {
   agent_ran || fail "the agent did not start"
   [ "$(cat "$TMP/agent-folder")" = "$WT" ] || fail "the agent started in $(cat "$TMP/agent-folder")"
   local msg want d
+  # The build profile, the Linear server alone, then the first message last.
+  [ "$(cat "$TMP/agent-argc")" = 4 ] || fail "the agent was given $(cat "$TMP/agent-argc") arguments, not 4"
+  [ "$(agent_arg 1)" = --agent=entourage-build ] || fail "the first argument is '$(agent_arg 1)'"
+  [ "$(agent_arg 2)" = --strict-mcp-config ] || fail "the second argument is '$(agent_arg 2)'"
+  [ "$(agent_arg 3)" = "--mcp-config=$REPO/agents/linear-mcp.json" ] || fail "the third argument is '$(agent_arg 3)'"
   msg=$(cat "$TMP/agent-message")
+  [ "$(agent_arg 4)" = "$msg" ] || fail "the first message is not the last argument"
   for want in "Linear card ABC-1" "entourage project \`demo\`" sdlc-build sdlc-review sdlc-pr "entourage task handoff demo ABC-1"; do
     case $msg in *"$want"*) ;; *) fail "the first message does not mention '$want': $msg" ;; esac
   done
@@ -1193,12 +1225,35 @@ task_build_needs_the_skills_linked() {
   agent_ran && fail "the agent started"
 }
 
+# claude starts with the build profile, so without it nothing is started.
+task_build_needs_the_build_profile_linked() {
+  build_demo
+  rm "$AG/entourage-build.md"
+  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "started the agent with no build profile linked"
+  grep -q entourage-build "$TMP/err" && grep -q 'entourage update' "$TMP/err" ||
+    fail "did not say the build profile is missing: $(cat "$TMP/err")"
+  agent_ran && fail "the agent started"
+}
+
+# Another agent starts as it always has: the first message alone, no profile,
+# and none needed.
+task_build_starts_another_agent_with_no_profile() {
+  build_demo
+  agent_stub codex
+  rm "$AG/entourage-build.md"
+  (cd "$WT" && ENTOURAGE_AGENT=codex "$E" task build demo ABC-1) || fail "task build exited non-zero"
+  agent_ran || fail "the agent did not start"
+  [ "$(cat "$TMP/agent-argc")" = 1 ] || fail "codex was given $(cat "$TMP/agent-argc") arguments, not the first message alone: $(agent_arg 1)"
+  case $(cat "$TMP/agent-message") in *"Linear card ABC-1"*) ;; *) fail "codex was not given the first message: $(cat "$TMP/agent-message")" ;; esac
+}
+
 BUILD_CASES="task_start_starts_the_agent_in_the_tab task_start_says_how_to_start_the_agent_without_hc
   task_start_notes_a_repo_claude_code_has_not_trusted task_start_says_nothing_of_a_trusted_repo
   task_start_says_nothing_of_trust_for_several_repos task_start_records_the_start
   task_start_follows_breakdown_by_one_name
   task_start_starts_when_the_store_cannot_be_written task_build_starts_the_agent
-  task_build_refuses_outside_the_cards_task task_build_needs_an_agent task_build_needs_the_skills_linked"
+  task_build_refuses_outside_the_cards_task task_build_needs_an_agent task_build_needs_the_skills_linked
+  task_build_needs_the_build_profile_linked task_build_starts_another_agent_with_no_profile"
 
 # --- tasks: targets ---------------------------------------------------------
 
@@ -1306,7 +1361,279 @@ TARGET_CASES="task_start_refuses_bad_groups_in_any_locale task_start_does_not_fe
   task_start_refuses_bad_targets task_start_refuses_a_repo_named_twice
   task_start_lists_repos_for_an_unknown_target"
 
-CASES="$TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES
+# --- tasks: finishing -------------------------------------------------------
+
+# Commit a file on the branch of the worktree $1: $2 is the file, $3 the
+# commit's message.
+commit_in() {
+  mkdir -p "$(dirname "$1/$2")"
+  echo "$2" > "$1/$2"
+  git -C "$1" add "$2"
+  git -C "$1" -c user.name=t -c user.email=t@t commit -q -m "${3:-add $2}"
+}
+
+# Push the branch of the worktree $1 to origin, then merge it there with a
+# merge commit, as GitHub merges a pull request.
+merge_on_origin() {
+  local branch clone=$TMP/merging
+  branch=$(branch_of "$1")
+  git -C "$1" push -q origin "HEAD:refs/heads/$branch"
+  git clone -q "$(git -C "$1" remote get-url origin)" "$clone"
+  git -C "$clone" -c user.name=t -c user.email=t@t merge -q --no-ff -m "Merge $branch" "origin/$branch"
+  git -C "$clone" push -q origin main
+  rm -rf "$clone"
+}
+
+# Herdr shows the project's space with the card's write-up tab and the task's
+# tab, tbtask. A space with another folder has a tab of the same name, and so
+# does a closed space in "recent": neither is the task's.
+herdr_shows_the_task() {
+  cat > "$TMP/herdr-ls.json" <<EOF
+{
+  "spaces": [
+    {
+      "id": "spother",
+      "name": "other",
+      "folder": "$TMP/elsewhere",
+      "tabs": [{"id": "tbother", "name": "abc-1-x"}]
+    },
+    {
+      "id": "spdemo",
+      "name": "demo",
+      "folder": "$P/demo",
+      "tabs": [{"id": "tbcard", "name": "ABC-1"}, {"id": "tbtask", "name": "abc-1-x"}]
+    }
+  ],
+  "recent": [
+    {"id": "spold", "name": "demo", "folder": "$P/demo", "tabs": [{"id": "tbold", "name": "abc-1-x"}]}
+  ]
+}
+EOF
+}
+tab_closes() { grep -c '^do tab\.close ' "$TMP/herdr-calls.log" 2>/dev/null || true; }
+worktrees_of() { git -C "$1" worktree list | wc -l | tr -d ' '; }
+
+# The project demo with the repos named, and the task for ABC-1 started on them.
+finish_demo() {
+  task_demo "$@"
+  "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
+}
+
+# Give a repo made by task_demo a .gitignore and a justfile on its default
+# branch, here and on its origin, before its task is started. $2 is the
+# justfile's text.
+give_ignores() {
+  local repo=$HOME/Dev/$1
+  printf 'node_modules/\n.env\ndocs/\n' > "$repo/.gitignore"
+  printf '%b' "$2" > "$repo/justfile"
+  git -C "$repo" add .gitignore justfile
+  git -C "$repo" -c user.name=t -c user.email=t@t commit -q -m ignores
+  git -C "$repo" push -q origin main
+}
+
+task_finish_removes_the_task() {
+  finish_demo api
+  local wt=$T/abc-1-x/api out
+  commit_in "$wt" f.txt
+  merge_on_origin "$wt"
+  herdr_shows_the_task
+  out=$("$E" task finish demo ABC-1 2>&1) || fail "task finish exited non-zero: $out"
+  [ ! -e "$T/abc-1-x" ] || fail "the task folder is still there: $(ls -A "$T/abc-1-x" 2>&1)"
+  [ "$(worktrees_of "$API")" = 1 ] || fail "git still lists the worktree: $(git -C "$API" worktree list)"
+  has_branch "$API" feat/abc-1-x && fail "the branch is still there"
+  [ "$(branch_of "$API")" = main ] || fail "the repo's own checkout moved to $(branch_of "$API")"
+  [ "$(last_call)" = 'do tab.close {"id":"tbtask"}' ] || fail "did not close the task's tab last: $(last_call)"
+  [ "$(tab_closes)" = 1 ] || fail "closed more than the task's tab: $(cat "$TMP/herdr-calls.log")"
+  case $out in *"Finished task 'abc-1-x'"*) ;; *) fail "did not say it finished: $out" ;; esac
+}
+
+task_finish_removes_a_task_of_two_repos() {
+  finish_demo api web
+  local web=$HOME/Dev/web out
+  commit_in "$T/abc-1-x/api" a.txt; merge_on_origin "$T/abc-1-x/api"
+  commit_in "$T/abc-1-x/web" w.txt; merge_on_origin "$T/abc-1-x/web"
+  herdr_shows_the_task
+  out=$("$E" task finish demo ABC-1 2>&1) || fail "task finish exited non-zero: $out"
+  [ ! -e "$T/abc-1-x" ] && [ ! -L "$T/abc-1-x/CLAUDE.md" ] || fail "the task folder or its links are still there: $(ls -A "$T/abc-1-x" 2>&1)"
+  [ "$(worktrees_of "$API")" = 1 ] && [ "$(worktrees_of "$web")" = 1 ] || fail "git still lists a worktree"
+  has_branch "$API" feat/abc-1-x && fail "the branch is still there in api"
+  has_branch "$web" feat/abc-1-x && fail "the branch is still there in web"
+  [ -f "$P/demo/PROJECT.md" ] || fail "the project doc the links pointed to is gone"
+  [ "$(last_call)" = 'do tab.close {"id":"tbtask"}' ] || fail "did not close the task's tab last: $(last_call)"
+}
+
+# A task whose branch has no commits of its own loses nothing. With no tab
+# open for it, it says so and finishes.
+task_finish_removes_a_branch_with_no_commits() {
+  finish_demo api
+  local out
+  out=$("$E" task finish demo ABC-1 2>&1) || fail "task finish exited non-zero: $out"
+  [ ! -e "$T/abc-1-x" ] || fail "the task folder is still there"
+  has_branch "$API" feat/abc-1-x && fail "the branch is still there"
+  [ "$(tab_closes)" = 0 ] || fail "closed a tab that is not the task's: $(cat "$TMP/herdr-calls.log")"
+  case $out in *"tab"*"abc-1-x"*) ;; *) fail "did not say the task had no tab: $out" ;; esac
+}
+
+task_finish_refuses_uncommitted_changes() {
+  finish_demo api
+  local wt=$T/abc-1-x/api out
+  commit_in "$wt" tracked.txt
+  merge_on_origin "$wt"
+  echo changed >> "$wt/tracked.txt"
+  echo staged > "$wt/staged.txt"; git -C "$wt" add staged.txt
+  mkdir -p "$wt/new"; echo untracked > "$wt/new/untracked.txt"
+  echo notes > "$T/abc-1-x/notes.md"
+  out=$("$E" task finish demo ABC-1 2>&1) && fail "finished a task with changes that are not committed"
+  local change
+  for change in " M tracked.txt" "A  staged.txt" "?? new/untracked.txt"; do
+    case $out in *api*"$change"*) ;; *) fail "did not name api and the change '$change': $out" ;; esac
+  done
+  case $out in *"task folder"*"notes.md"*) ;; *) fail "did not name the file outside any worktree: $out" ;; esac
+  [ "$(cat "$wt/new/untracked.txt" 2>/dev/null)" = untracked ] || fail "the untracked file is gone"
+  [ -f "$T/abc-1-x/notes.md" ] || fail "the file in the task folder is gone"
+  has_branch "$API" feat/abc-1-x || fail "deleted the branch"
+}
+
+# The branch was merged, then a fix was pushed to it (the PR 22 case): the
+# fix is on origin's copy of the branch but not in main. Another repo has a
+# commit that was never pushed at all.
+task_finish_refuses_unmerged_commits() {
+  finish_demo api web
+  local a=$T/abc-1-x/api w=$T/abc-1-x/web out late local_
+  commit_in "$a" one.txt; merge_on_origin "$a"
+  commit_in "$a" late.txt "fix: pushed after the merge"
+  git -C "$a" push -q origin HEAD:refs/heads/feat/abc-1-x
+  commit_in "$w" local.txt "feat: never pushed"
+  late=$(git -C "$a" rev-parse --short HEAD) local_=$(git -C "$w" rev-parse --short HEAD)
+  out=$("$E" task finish demo ABC-1 2>&1) && fail "finished a task with commits that are not in main"
+  case $out in *api*"$late fix: pushed after the merge"*web*"$local_ feat: never pushed"*) ;; *) fail "did not name each repo and its commits: $out" ;; esac
+  case $out in *"origin/main"*) ;; *) fail "did not say what the commits are not in: $out" ;; esac
+  case $out in *"one.txt"*) fail "named a commit that is in main: $out" ;; esac
+  has_branch "$API" feat/abc-1-x && has_branch "$HOME/Dev/web" feat/abc-1-x || fail "deleted a branch"
+  [ -d "$a" ] && [ -d "$w" ] || fail "removed a worktree"
+}
+
+task_finish_refuses_ignored_files() {
+  stub_just; task_demo api
+  give_ignores api 'made-by-setup:\n\t@echo node_modules/\n'
+  "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
+  local wt=$T/abc-1-x/api out
+  mkdir -p "$wt/node_modules/pkg" "$wt/docs"
+  echo x > "$wt/node_modules/pkg/index.js"; echo secret > "$wt/.env"; echo notes > "$wt/docs/notes.md"
+  out=$("$E" task finish demo ABC-1 2>&1) && fail "finished a task with ignored files that are work"
+  case $out in *api*".env"*) ;; *) fail "did not name api and .env: $out" ;; esac
+  case $out in *"docs/notes.md"*) ;; *) fail "did not name docs/notes.md: $out" ;; esac
+  case $out in *node_modules*) fail "named what setup makes again: $out" ;; esac
+  [ "$(cat "$wt/.env" 2>/dev/null)" = secret ] || fail "the ignored file is gone"
+  [ -f "$wt/node_modules/pkg/index.js" ] || fail "removed what setup makes before refusing"
+}
+
+task_finish_removes_what_setup_makes() {
+  stub_just; task_demo api
+  give_ignores api 'setup:\n\t@echo installing\n\nmade-by-setup:\n\t@echo node_modules/\n'
+  "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
+  local wt=$T/abc-1-x/api out
+  mkdir -p "$wt/node_modules/pkg/lib"; echo x > "$wt/node_modules/pkg/lib/index.js"
+  out=$("$E" task finish demo ABC-1 2>&1) || fail "task finish exited non-zero: $out"
+  [ ! -e "$T/abc-1-x" ] || fail "the task folder is still there"
+  has_branch "$API" feat/abc-1-x && fail "the branch is still there"
+  grep -qx -- "--justfile $wt/justfile made-by-setup" "$TMP/just-calls.log" ||
+    fail "did not run the worktree's made-by-setup recipe: $(cat "$TMP/just-calls.log")"
+  case $out in *node_modules*) fail "said a word about what setup makes again: $out" ;; esac
+}
+
+task_finish_without_just_keeps_ignored_files() {
+  task_demo api
+  give_ignores api 'made-by-setup:\n\t@echo node_modules/\n'
+  "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
+  local wt=$T/abc-1-x/api out
+  mkdir -p "$wt/node_modules/pkg"; echo x > "$wt/node_modules/pkg/index.js"
+  out=$("$E" task finish demo ABC-1 2>&1) && fail "finished a task with ignored files and no just to ask"
+  case $out in *api*"node_modules/pkg/index.js"*) ;; *) fail "did not name the ignored file: $out" ;; esac
+  case $out in *"just is not installed"*) ;; *) fail "did not say why every ignored file counts: $out" ;; esac
+  [ -f "$wt/node_modules/pkg/index.js" ] || fail "removed the ignored file"
+}
+
+# A locked worktree may have something still working in it, and a worktree on
+# another branch is not the task's to delete.
+task_finish_refuses_a_locked_or_moved_worktree() {
+  finish_demo api web
+  local out
+  git -C "$API" worktree lock --reason "a session is in it" "$T/abc-1-x/api"
+  git -C "$T/abc-1-x/web" switch -q -c other
+  out=$("$E" task finish demo ABC-1 2>&1) && fail "finished a locked worktree and one on another branch"
+  case $out in *api*"locked (a session is in it)"*web*"other"*) ;; *) fail "did not name the lock and the branch: $out" ;; esac
+  has_branch "$HOME/Dev/web" other && has_branch "$HOME/Dev/web" feat/abc-1-x || fail "deleted a branch"
+  [ -d "$T/abc-1-x/api" ] && [ -d "$T/abc-1-x/web" ] || fail "removed a worktree"
+}
+
+# Problems in two repos are both named in one run, and nothing changes: the
+# task folder, each repo's worktrees and branches, and the tab.
+task_finish_refusal_changes_nothing() {
+  finish_demo api web
+  local a=$T/abc-1-x/api w=$T/abc-1-x/web web=$HOME/Dev/web out before
+  commit_in "$a" f.txt "feat: not merged"
+  echo x > "$w/untracked.txt"
+  herdr_shows_the_task
+  snapshot() {
+    (cd "$T" && find . -print | LC_ALL=C sort)
+    git -C "$API" worktree list --porcelain; git -C "$web" worktree list --porcelain
+    git -C "$API" for-each-ref refs/heads; git -C "$web" for-each-ref refs/heads
+  }
+  before=$(snapshot)
+  out=$("$E" task finish demo ABC-1 2>&1) && fail "finished a task that would lose work"
+  case $out in *api*"feat: not merged"*web*"untracked.txt"*) ;; *) fail "did not name both repos' problems in one run: $out" ;; esac
+  case $out in *"othing was removed"*) ;; *) fail "did not say that nothing was removed: $out" ;; esac
+  [ "$(snapshot)" = "$before" ] || fail "something changed: $(diff <(echo "$before") <(snapshot))"
+  [ "$(tab_closes)" = 0 ] || fail "closed the tab: $(cat "$TMP/herdr-calls.log")"
+}
+
+# Closing the tab the command runs in hangs up its shell, and the command with
+# it. Everything else has been done by then, and said.
+task_finish_from_its_own_tab() {
+  finish_demo api
+  local wt=$T/abc-1-x/api rc=0
+  commit_in "$wt" f.txt
+  merge_on_origin "$wt"
+  herdr_shows_the_task
+  cat > "$TMP/bin/herdr-app" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/herdr-calls.log"
+[ "\$1" = status ] && echo '  "layout": "test",'
+[ "\$1" = ls ] && cat "$TMP/herdr-ls.json"
+[ "\$2" = tab.close ] && kill -HUP "\$PPID"
+exit 0
+EOF
+  (cd "$wt" && "$E" task finish demo ABC-1) > "$TMP/out" 2>&1 || rc=$?
+  [ "$rc" = 129 ] || fail "the command was not hung up by its tab closing (exit $rc): $(cat "$TMP/out")"
+  [ ! -e "$T/abc-1-x" ] || fail "the task folder is still there"
+  [ "$(worktrees_of "$API")" = 1 ] || fail "git still lists the worktree"
+  has_branch "$API" feat/abc-1-x && fail "the branch is still there"
+  grep -q "Finished task 'abc-1-x'" "$TMP/out" || fail "did not say it finished before its tab closed: $(cat "$TMP/out")"
+  [ "$(last_call)" = 'do tab.close {"id":"tbtask"}' ] || fail "closing the tab was not the last call: $(last_call)"
+}
+
+task_finish_with_no_task() {
+  task_demo api
+  # ABC-12's task is not ABC-1's.
+  linear_answers "$(card_answer ABC-12 Y feat)"
+  "$E" task start demo ABC-12 >/dev/null || fail "task start exited non-zero"
+  local before out
+  before=$(machine_snapshot)
+  out=$("$E" task finish demo ABC-1 2>&1) && fail "task finish exited zero with no task"
+  case $out in *ABC-1[!0-9]*) ;; *) fail "the message does not name the card: $out" ;; esac
+  [ "$(machine_snapshot)" = "$before" ] || fail "changed the machine"
+  [ -d "$T/abc-12-y/api" ] || fail "touched another card's task"
+}
+
+FINISH_CASES="task_finish_removes_the_task task_finish_removes_a_task_of_two_repos
+  task_finish_removes_a_branch_with_no_commits task_finish_refuses_uncommitted_changes
+  task_finish_refuses_unmerged_commits task_finish_refuses_ignored_files
+  task_finish_removes_what_setup_makes task_finish_without_just_keeps_ignored_files
+  task_finish_refuses_a_locked_or_moved_worktree task_finish_refusal_changes_nothing
+  task_finish_from_its_own_tab task_finish_with_no_task"
+
+CASES="$FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES
   task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
   task_start_keeps_the_task_when_the_space_fails task_start_branch_has_no_upstream
   task_start_refusal_keeps_the_first_task task_start_refusal_keeps_an_existing_branch

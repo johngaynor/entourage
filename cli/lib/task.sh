@@ -8,7 +8,8 @@
 #               own, where it types `task build` to start the agent that
 #               builds the card
 # The agent runs `task handoff` as each step ends, and `task log` shows what
-# it recorded. Both are in handoff.sh.
+# it recorded. Both are in handoff.sh. Once the work has merged, `task finish`
+# removes the task; it is in finish.sh.
 
 # A card ID is a team key and a number, like ABC-122.
 CARD_RE='^[A-Za-z][A-Za-z0-9]*-[0-9]+$'
@@ -24,6 +25,30 @@ BUILD_SKILLS='sdlc-build sdlc-review sdlc-pr'
 BUILD_PROMPT=$REPO/prompts/task-build.md
 # The agent a new task's tab runs: one word, a command on PATH.
 AGENT=${ENTOURAGE_AGENT:-claude}
+# The profiles claude starts with: Claude Code agent definitions in agents/,
+# linked into Claude Code's agents folder. Each gives the session only the
+# tools its steps use, and its own model. The write-up's is for `task new`,
+# the build's for `task build`, whose one session also reviews the build.
+CARD_PROFILE=entourage-write-up
+BUILD_PROFILE=entourage-build
+# The MCP servers a profile's session has, and no others: Linear's own, under
+# the name the profiles' tools are given with.
+PROFILE_MCP=$REPO/agents/linear-mcp.json
+
+# The flags that start claude with a profile, in PROFILE_ARGS, or stop when
+# the profile is not linked. Another agent is started as it is, with none.
+# Each flag holds its value after an =, because --mcp-config takes several
+# values and would take the first message as one of them.
+#   $1 the profile
+PROFILE_ARGS=()
+profile_args() {
+  local profile=$1
+  PROFILE_ARGS=()
+  [ "${AGENT##*/}" = claude ] || return 0
+  [ -f "$AGENTS_HOME/$profile.md" ] ||
+    die "the $profile agent profile is not in $AGENTS_HOME, so the agent could not start with it. Run: entourage update"
+  PROFILE_ARGS=("--agent=$profile" --strict-mcp-config "--mcp-config=$PROFILE_MCP")
+}
 
 # Stop if Linear has no such card, before an agent is started on it: a
 # mistyped ID is caught now, not by the agent after it has looked for the card.
@@ -48,7 +73,7 @@ check_card() {
 # It makes no branch, worktree or task folder; `task start` does that once the
 # card has a type.
 task_new() {
-  local name=${1:-} card=${2:-} dir skill prompt
+  local name=${1:-} card=${2:-} dir skill prompt arg argv
   dir=$(project_dir "$name")
   [ -n "$card" ] ||
     die "which card? Usage: entourage task new $name <card>, like: entourage task new $name ABC-122"
@@ -64,6 +89,7 @@ task_new() {
     [ -f "$SKILLS_HOME/$skill/SKILL.md" ] ||
       die "the $skill skill is not in $SKILLS_HOME, so the agent could not use it. Run: entourage update"
   done
+  profile_args "$CARD_PROFILE"
   [ -f "$CARD_PROMPT" ] || die "the agent's first message is missing from $CARD_PROMPT"
   prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$CARD_PROMPT")
   check_card "$card"
@@ -76,8 +102,11 @@ task_new() {
   (show_space "$name" "$dir") ||
     die "could not show the space for '$name', so no agent was started."
   # No `space` argument: the tab goes in the selected space, which show_space
-  # has just selected or made. argv is the agent and task is its first message.
-  herdr_app do tab.new "{\"name\":\"$card\",\"folder\":\"$(json_str "$dir")\",\"argv\":[\"$(json_str "$AGENT")\"],\"task\":\"$(json_str "$prompt")\"}" >/dev/null 2>&1 ||
+  # has just selected or made. argv is the agent and its profile's flags, and
+  # task is its first message.
+  argv="\"$(json_str "$AGENT")\""
+  for arg in ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"}; do argv="$argv,\"$(json_str "$arg")\""; done
+  herdr_app do tab.new "{\"name\":\"$card\",\"folder\":\"$(json_str "$dir")\",\"argv\":[$argv],\"task\":\"$(json_str "$prompt")\"}" >/dev/null 2>&1 ||
     die "could not open a tab for $card. Is Herdr open?"
   record_start "$name" "$card"
   say "Started $card in the space for '$name'"
@@ -459,9 +488,11 @@ task_build() {
     [ -f "$SKILLS_HOME/$skill/SKILL.md" ] ||
       die "the $skill skill is not in $SKILLS_HOME, so the agent could not use it. Run: entourage update"
   done
+  profile_args "$BUILD_PROFILE"
   [ -f "$BUILD_PROMPT" ] || die "the agent's first message is missing from $BUILD_PROMPT"
   prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$BUILD_PROMPT")
-  exec "$AGENT" "$prompt"
+  # The first message goes last, after the profile's flags.
+  exec "$AGENT" ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} "$prompt"
 }
 
 # List the open cards of a project's Linear teams, grouped by status: the
@@ -503,8 +534,9 @@ cmd_task() {
     ls | list) shift; task_ls "$@" ;;
     start) shift; task_start "$@" ;;
     build) shift; task_build "$@" ;;
+    finish) shift; task_finish "$@" ;;
     handoff) shift; task_handoff "$@" ;;
     log) shift; task_log "$@" ;;
-    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task build <project> <card>, or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
+    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task build <project> <card>, or: entourage task finish <project> <card>, or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
   esac
 }

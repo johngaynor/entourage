@@ -504,6 +504,118 @@ pr_no_longer_leaves_the_status_to_the_human() {
     fail "sdlc-pr still says the card's status is the human's to move"
 }
 
+# --- agent profiles ---------------------------------------------------------
+
+# A profile is a Claude Code agent definition: frontmatter between two ---
+# lines, then the agent's instructions. The reviewer and the verifier are for
+# work on entourage itself, in the repo's own .claude/agents/, which is not
+# copied into a case's repo. The write-up and the build ship in agents/.
+REVIEW_PROFILES="$ROOT/.claude/agents/reviewer.md $ROOT/.claude/agents/verifier.md"
+factory_profiles() { printf '%s\n' "$REPO/agents/entourage-write-up.md" "$REPO/agents/entourage-build.md"; }
+
+# Print the value of one key in a profile's frontmatter, or nothing.
+profile_field() {
+  awk -v k="$2" '
+    NR == 1 { if ($0 != "---") exit; next }
+    $0 == "---" { exit }
+    { i = index($0, ":"); if (i && substr($0, 1, i - 1) == k) { v = substr($0, i + 1); sub(/^[ \t]+/, "", v); print v } }
+  ' "$1"
+}
+
+# Fail unless a profile's tools are exactly the list given.
+profile_tools_are() {
+  local tools
+  tools=$(profile_field "$1" tools)
+  [ "$tools" = "$2" ] || fail "${1##*/} has the tools '$tools', not '$2'"
+}
+
+# In a session on entourage, a reviewer and a verifier can be started by name,
+# each with only the tools it uses. Those include writing files: reviewers
+# write throwaway copies and repro scripts.
+review_profiles_are_named_with_only_their_tools() {
+  local f name
+  for f in $REVIEW_PROFILES; do
+    [ -f "$f" ] || { fail "there is no ${f#"$ROOT"/}"; continue; }
+    name=${f##*/}; name=${name%.md}
+    [ "$(profile_field "$f" name)" = "$name" ] || fail "${f##*/} is not named $name: '$(profile_field "$f" name)'"
+    [ -n "$(profile_field "$f" description)" ] || fail "${f##*/} has no description, so the Agent tool cannot list it"
+    profile_tools_are "$f" 'Read, Bash, Edit, Write'
+  done
+}
+
+# Without the Skill and ToolSearch tools a session starts without the skill
+# listing and the deferred tool list, and without Agent it starts no
+# subagents of its own.
+review_profiles_leave_out_the_listing_tools() {
+  local f tool
+  for f in $REVIEW_PROFILES; do
+    for tool in Skill ToolSearch Agent; do
+      case ", $(profile_field "$f" tools), " in
+        *", $tool, "*) fail "${f##*/} has the $tool tool" ;;
+      esac
+    done
+  done
+}
+
+# The rules that every review prompt used to repeat are in the profiles, so a
+# prompt can leave them out.
+review_profiles_carry_the_review_rules() {
+  local f want
+  for f in $REVIEW_PROFILES; do
+    for want in '~/.config/entourage/.env' LINEAR_API_KEY api.linear.app herdr-app 'mktemp -d' \
+        ENTOURAGE_HOME '~/Dev/entourage' 'bash 3.2' subagents CLAUDE.md README.md herdr/README.md; do
+      grep -qF -- "$want" "$f" || fail "${f##*/} does not mention $want"
+    done
+  done
+  for want in Critical Important Minor verdict; do
+    grep -qF -- "$want" "$ROOT/.claude/agents/reviewer.md" || fail "reviewer.md does not mention $want"
+  done
+  for want in fix-now fix-later skip refute; do
+    grep -qF -- "$want" "$ROOT/.claude/agents/verifier.md" || fail "verifier.md does not mention $want"
+  done
+}
+
+# The write-up profile has only the tools a write-up uses, and the Linear
+# server its session is given is the only one it has.
+write_up_profile_has_only_its_tools() {
+  local f=$REPO/agents/entourage-write-up.md mcp=$REPO/agents/linear-mcp.json
+  [ -f "$f" ] || { fail "there is no agents/entourage-write-up.md"; return; }
+  [ "$(profile_field "$f" name)" = entourage-write-up ] || fail "the write-up profile is not named entourage-write-up"
+  profile_tools_are "$f" 'Bash, Read, Skill, mcp__linear-server__get_issue, mcp__linear-server__list_comments, mcp__linear-server__list_issues, mcp__linear-server__save_issue'
+  jq -e '.mcpServers | keys == ["linear-server"]' "$mcp" >/dev/null 2>&1 ||
+    fail "agents/linear-mcp.json does not parse, or names other servers than linear-server: $(cat "$mcp" 2>&1)"
+  jq -e '.mcpServers["linear-server"] | .type == "http" and .url == "https://mcp.linear.app/mcp"' "$mcp" >/dev/null 2>&1 ||
+    fail "agents/linear-mcp.json does not give Linear's own server: $(cat "$mcp" 2>&1)"
+}
+
+# The build profile has only the tools a build and a review use.
+build_profile_has_only_its_tools() {
+  local f=$REPO/agents/entourage-build.md
+  [ -f "$f" ] || { fail "there is no agents/entourage-build.md"; return; }
+  [ "$(profile_field "$f" name)" = entourage-build ] || fail "the build profile is not named entourage-build"
+  profile_tools_are "$f" 'Bash, Read, Edit, Write, Skill, mcp__linear-server__get_issue, mcp__linear-server__list_comments, mcp__linear-server__save_issue'
+}
+
+# Every profile runs on Opus, whatever the human's own sessions use. None
+# sets an effort yet, so that still comes from the human's own sessions.
+every_profile_runs_on_opus() {
+  local f
+  for f in $REVIEW_PROFILES $(factory_profiles); do
+    [ -f "$f" ] || { fail "there is no $f"; continue; }
+    [ "$(profile_field "$f" model)" = opus ] || fail "${f##*/} does not say model: opus"
+    [ -z "$(profile_field "$f" effort)" ] || fail "${f##*/} sets an effort"
+  done
+}
+
+# The factory's profiles ship to everyone who installs entourage, so they
+# name no one.
+no_profile_names_a_person() {
+  local f
+  for f in $(factory_profiles); do
+    ! grep -qw 'John' "$f" || fail "${f##*/} names John; say 'the human'"
+  done
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_writes_its_section_with_the_command no_skill_writes_a_section_itself
   each_skill_revises_its_section_with_replace each_skill_falls_back_without_a_key
@@ -521,6 +633,9 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop
+  review_profiles_are_named_with_only_their_tools review_profiles_leave_out_the_listing_tools
+  review_profiles_carry_the_review_rules write_up_profile_has_only_its_tools
+  build_profile_has_only_its_tools every_profile_runs_on_opus no_profile_names_a_person
   no_skill_names_a_person a_routed_change_returns_to_breakdown
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card

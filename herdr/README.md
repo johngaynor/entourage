@@ -18,7 +18,9 @@ layouts (whole-window arrangements of mods).
 
 The skills are in [../skills/](../skills/), outside this folder. They are
 linked into `~/.claude/skills` (`CLAUDE_CONFIG_DIR` picks another `~/.claude`)
-by the same `entourage install` and `entourage update`.
+by the same `entourage install` and `entourage update`. So are the agent
+profiles in [../agents/](../agents/), into `~/.claude/agents`: the ones
+`task new` and `task build` start `claude` with.
 
 ## How it works
 
@@ -56,9 +58,10 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
    entourage install
    ```
 
-   It links every mod and layout into Herdr and refreshes Herdr if it is
-   running. It is safe to re-run, and it never replaces a real file that is
-   already in Herdr's folder.
+   It links every mod and layout into Herdr, every skill into
+   `~/.claude/skills` and both agent profiles into `~/.claude/agents`, and
+   refreshes Herdr if it is running. It is safe to re-run, and it never
+   replaces a real file or someone else's link that is already there.
 
 5. Pick a layout from the Layout dropdown at the top of the sidebar, or press
    `ctrl-shift-l` to cycle. The dropdown only appears on our layouts, so the
@@ -70,12 +73,12 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
 entourage update
 ```
 
-This reinstalls the latest entourage through npm, links any mod or layout that
-is new, removes links to ones that were deleted, and refreshes Herdr so it
-re-reads everything.
+This reinstalls the latest entourage through npm, links any mod, layout,
+skill or agent profile that is new, removes links to ones that were deleted,
+and refreshes Herdr so it re-reads everything.
 
-- **Check a machine:** `entourage status` lists each mod and layout and whether
-  it is linked.
+- **Check a machine:** `entourage status` lists each mod, layout, skill and
+  agent profile and whether it is linked.
 - **Remove one from a machine:** delete its link in `~/.config/herdr-app/mods`
   or `layouts`. The next `entourage update` will link it again, so remove it
   from the repo to drop it everywhere.
@@ -194,6 +197,15 @@ entourage task new <project> <card>
 - **It opens a tab named after the card** in the project's space, in the
   project folder, and starts an agent in it. The agent is `claude`;
   `ENTOURAGE_AGENT` picks another command.
+- **`claude` starts with the write-up profile**,
+  [../agents/entourage-write-up.md](../agents/entourage-write-up.md), linked
+  into `~/.claude/agents`: `claude --agent=entourage-write-up
+  --strict-mcp-config --mcp-config=<repo>/agents/linear-mcp.json`. The profile
+  gives the session only the tools a write-up uses and runs it on Opus, and the
+  MCP config gives it Linear's server alone, whatever your own sessions have.
+  Claude Code asks once to sign in to Linear as `linear-server` on a machine
+  where it is not signed in under that name. Another agent starts as it is,
+  with no profile.
 - **The project folder is trusted first.** Claude Code asks "do you trust this
   folder?" the first time it starts somewhere, which would leave the agent
   waiting. So `project new`, and `task new` before it opens the tab, mark the
@@ -210,9 +222,10 @@ entourage task new <project> <card>
 - **It makes no branch, worktree or task folder.** The card has no type until
   the agent has defined it, and the type is the start of the branch name.
 - **It checks first.** An unknown project, something that is not a card ID,
-  Herdr not running, no agent on your `PATH`, or the skills not linked into
-  `~/.claude/skills` stops it before anything is opened. Run
-  `entourage update` to link the skills.
+  Herdr not running, no agent on your `PATH`, the skills not linked into
+  `~/.claude/skills`, or, for `claude`, the write-up profile not linked into
+  `~/.claude/agents` stops it before anything is opened. Run
+  `entourage update` to link them.
 - **With a Linear key saved, it checks that Linear has the card**, so a
   mistyped ID stops it before an agent starts. It looks the card up by its
   team's key and number, so it does not check that the card is one of the
@@ -426,15 +439,19 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   setup runs, so the agent starts on the card with no one typing there, and
   not before setup has finished. `task build` starts the agent
   (`ENTOURAGE_AGENT`, or `claude`) in the folder it is run in, with the first
-  message in [prompts/task-build.md](../prompts/task-build.md): build the card
+  message in [prompts/task-build.md](../prompts/task-build.md). `claude` starts
+  with the build profile,
+  [../agents/entourage-build.md](../agents/entourage-build.md), and Linear's
+  server alone, as `task new` starts the write-up's: the tools a build and a
+  review use, on Opus. The first message has it build the card
   with `sdlc-build`, then review the build with `sdlc-review`, and back to the
   build when the review sends it back. When the review finds every item met,
   `sdlc-pr` pushes the branch and opens the pull requests, and waits for you
   to merge them and tell the agent so. The run ends when it hands off with
   `merged` next. No agent merges a pull request. `task build` refuses to run
-  outside the card's own task folder, with no agent on your `PATH`, or with
-  the skills not linked. If the agent stops, run the same command again in
-  the tab.
+  outside the card's own task folder, with no agent on your `PATH`, with the
+  skills not linked, or, for `claude`, with the build profile not linked. If
+  the agent stops, run the same command again in the tab.
 - **The card moves to In Progress.** Once the tab is open, `task start` moves
   the card in Linear to its team's first started status: picked by its kind
   and its place in the team's order, not by its name, so it is In Progress in
@@ -472,8 +489,59 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
 - **Nothing is made unless everything can be.** A task or branch of that name
   that already exists, a missing repo, or Herdr not running stops it first,
   and a worktree that fails partway is undone.
-- **Remove a task by hand for now:** in each repo run
-  `git worktree remove <project folder>/tasks/<task>/<repo>` and
+- **When the work has merged**, `task finish` removes the task (see
+  [Finishing a task](#finishing-a-task)).
+
+### Finishing a task
+
+Once a task's pull requests have merged, one command ends it.
+
+```sh
+entourage task finish <project> <card>
+```
+
+- **It removes what `task start` made**: each of the task's worktrees, the
+  task's branch in each repo, and the task's folder with its `CLAUDE.md` and
+  `AGENTS.md` links. Then it closes the task's tab, the one named after the
+  task in the project's space. The card's write-up tab, named after the card,
+  stays open.
+- **Run it anywhere, the task's own tab included.** It works from the project
+  folder, so it can remove the worktree it was run in. Closing the tab is the
+  last thing it does, so from the task's own tab everything else is done, and
+  said, before the tab closes. When it is the space's last tab, Herdr asks
+  first, since closing it closes the space. When Herdr is not running, `jq` is
+  missing or no such tab is open, it says so and leaves the tab.
+- **It finds the task from the card**, as the folder `tasks/<card>-…` that
+  `task start` made, without asking Linear. A card with no task on this
+  machine stops it, and nothing is changed.
+- **It checks every repo of the task before it removes anything**, and
+  removes nothing when that would lose work. It names every problem in every
+  repo in one go, then says that nothing was removed:
+
+  | It stops for | It names |
+  |---|---|
+  | Changes that are not committed: staged, unstaged or untracked | each file, as `git status` shows it |
+  | Commits on the branch that are not in the remote's default branch, pushed or not, such as a fix pushed to the branch after its pull request merged | each commit |
+  | Git-ignored files that the repo's setup does not make again (see [What a repo provides](#what-a-repo-provides)), such as `.env` or notes in an ignored `docs/` | each file |
+  | Anything in the task folder outside its worktrees | each one |
+  | A worktree that is locked, or not on the task's branch | the worktree |
+
+- **Merged means in the default branch's history**, where a merge commit puts
+  a pull request's commits. A pull request merged by squash or rebase leaves
+  them out, so its task is refused, which loses nothing.
+- **It fetches each repo first.** A repo that cannot be fetched is checked
+  against what is local, with a warning, which can only make it refuse.
+- **Ignored files the repo's setup makes again**, such as `node_modules`, are
+  removed with the worktree without a word. Without `just`, or in a repo with
+  no `made-by-setup` recipe, every ignored file counts as work, and it says
+  why.
+- **It forces nothing.** `git worktree remove` keeps git's own refusal, and
+  the branch is deleted only while it is still on the commit that was
+  checked.
+- **It leaves the rest alone**: the branch on the remote, the card in Linear
+  and the card's hand-offs, so `task log` still shows the card.
+- **To throw away a task it refuses**, remove it by hand: in each repo run
+  `git worktree remove --force <project folder>/tasks/<task>/<repo>` and
   `git branch -D <branch>`, then delete the task's folder and close its tab.
 
 ## What a repo provides
@@ -485,11 +553,24 @@ have the same names in every repo. entourage only knows the names.
 | Recipe | What it must do | Used by |
 |---|---|---|
 | `setup` | Make a fresh checkout ready to work in: install dependencies and anything else a new worktree lacks. Safe to run twice. Called with group names (`just setup athlete coach`), make ready only what those groups need, and fail with a clear message for a group the repo does not have. | `entourage task start`, when `ENTOURAGE_SETUP=1` |
+| `made-by-setup` | Print what `setup` makes again, as patterns like `.gitignore`'s, one per line, such as `node_modules/`. Print nothing else, and change nothing. | `entourage task finish`, which removes the git-ignored files these match with the worktree, and stops for any other ignored file |
 
 ```just
 setup:
     npm install
+
+# What setup makes again, so a task can throw it away.
+made-by-setup:
+    @echo node_modules/
+    @echo dist/
 ```
+
+- **`made-by-setup` says which ignored files are not work.** A task's
+  worktree is checked out from the branch, so the recipe is the branch's own.
+  It runs in the worktree, and its `@` keeps `just` from printing each line
+  before it runs. A pattern that matches a folder matches everything in it;
+  a folder it matches only part of is checked file by file. A repo without
+  the recipe can still finish a task with no ignored files in it.
 
 - **Only a justfile at the repo's own root counts**: `justfile`, `Justfile` or
   `.justfile`. One in a folder above is never used.
@@ -518,11 +599,11 @@ shell, or written as a `NAME=value` line in entourage's env file,
 | Variable | What it sets |
 |---|---|
 | `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
-| `ENTOURAGE_AGENT` | The agent `task new` and `task build` start. `claude` when it is not set. |
+| `ENTOURAGE_AGENT` | The agent `task new` and `task build` start. `claude` when it is not set, which starts with an agent profile. Another agent starts as it is, with no profile. |
 | `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
 | `ENTOURAGE_SETUP` | `1` makes `task start` run each repo's `setup` recipe. Off when it is not set, for now. |
 | `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |
-| `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills are linked. `~/.claude` when it is not set. |
+| `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills and agent profiles are linked. `~/.claude` when it is not set. |
 | `ENTOURAGE_HOME` | entourage's own folder. `~/.config/entourage` when it is not set. Export only: it says where the env file is, so the file cannot set it. |
 | `ENTOURAGE_LIVE` | `1` lets the copy of entourage in a git worktree of its repo change the machine, for that run (see [Changing things](#changing-things)). Export only, best on the command line: the file cannot set it, so it is never left on. |
 

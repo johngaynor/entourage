@@ -6,6 +6,7 @@
     "entourage": "cli/entourage"
   },
   "files": [
+    "agents/",
     "cli/entourage",
     "cli/lib/",
     "herdr/",

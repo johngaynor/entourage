@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # entourage: set up and maintain this machine's copy of the software factory.
-# It links the Herdr mods and layouts under herdr/ and the agent skills under
-# skills/, and manages projects (groups of repos that show up in Herdr as
+# It links the Herdr mods and layouts under herdr/, the agent skills under
+# skills/ and the agent profiles under agents/, and manages projects (groups of repos that show up in Herdr as
 # spaces) and their tasks (a card an agent writes up, then a worktree of each
 # repo on one branch, each shown as a tab in the project's space).
 set -euo pipefail
@@ -25,6 +25,8 @@ Usage:
                                            start the work: a worktree per repo, opened as a tab
                                            where the agent builds the card
   entourage task build <project> <card>    start the agent that builds the card, in its task's tab
+  entourage task finish <project> <card>   end a task whose work has merged: remove its worktrees,
+                                           its branch in each repo and its folder, and close its tab
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
   entourage task log <project> [<card>] [--json]
                                            list a card's hand-offs and how long each step took,
@@ -60,6 +62,7 @@ with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
+claude starts with the entourage-write-up profile (see below).
 With a Linear key saved, it first checks that Linear has the card, and stops
 on a mistyped ID; when Linear cannot be asked, it starts the card anyway.
 `task start` takes the card's ID too, once the card is written up. It asks
@@ -80,7 +83,8 @@ Targets after the card narrow the task: `app` takes only that repo, and
 `app:athlete` sets it up for its athlete group (`just setup athlete`).
 Join several groups with a comma: `app:athlete,coach`.
 `task build` starts the agent in the folder it is run in, which has to be the
-card's task, with the first message in prompts/task-build.md: build the card
+card's task, with the entourage-build profile when it is claude (see below),
+and with the first message in prompts/task-build.md: build the card
 with the sdlc-build skill, review the build with the sdlc-review skill, then
 put it up as a pull request with the sdlc-pr skill.
 Run it again in the tab if the agent stops. The build makes the change the
@@ -106,6 +110,13 @@ in a note, and sdlc-pr in its hand-off. `linear move` alone exits non-zero
 then, saying why.
 Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122`, `/sdlc-pr ABC-122`.
+`task finish` ends a task once its work has merged: it removes the task's
+worktrees, deletes its branch in each repo, deletes its folder and closes its
+tab. It checks first, and removes nothing when that would lose work: changes
+that are not committed, commits that are not in the remote's default branch
+(pushed or not), anything in the task folder outside its worktrees, or ignored
+files the repo's `made-by-setup` recipe does not say its setup makes again.
+It names every problem in every repo in one go.
 `task handoff` is run by the agent each time a step ends or pauses, and
 when the human answers a question. It reads a handoff block on stdin (phase,
 status, next and so on, one per line), refuses one that breaks the rules, and
@@ -118,11 +129,21 @@ programs: the Steps panel in Herdr draws it. Run
 `entourage task handoff <project> <card>` with no block to see the rules.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
-Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another
-~/.claude). The agent is claude (ENTOURAGE_AGENT picks another command).
+Skills are linked into ~/.claude/skills, and agent profiles into
+~/.claude/agents (CLAUDE_CONFIG_DIR picks another ~/.claude). The agent is
+claude (ENTOURAGE_AGENT picks another command).
 Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage). Hand-offs are recorded beside them, in
 entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
+
+A profile is a Claude Code agent definition: the tools a session has and the
+model it runs on, whatever your own sessions use. claude starts with one,
+entourage-write-up for `task new` and entourage-build for `task build`, and
+with Linear's MCP server alone (agents/linear-mcp.json), not the servers of
+your own sessions. Claude Code asks once to sign in to Linear as
+linear-server on a machine where it is not signed in under that name. When
+the profile is not linked, both stop before starting anything; run
+`entourage update`. Another agent starts as it is, with no profile.
 
 These variables, and your Linear key as LINEAR_API_KEY, can be exported in
 your shell or written as NAME=value lines in ~/.config/entourage/.env, which
@@ -244,6 +265,9 @@ load_env
 APP_HOME=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
 # Where Claude Code looks for a person's own skills.
 SKILLS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
+# Where Claude Code looks for a person's own agent definitions: the profiles
+# `task new` and `task build` start claude with.
+AGENTS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/agents
 # Claude Code's own record for this machine. Among much else it holds the
 # folders Claude Code starts in without asking.
 CLAUDE_STATE=${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json
@@ -261,7 +285,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common guard links recipes trust project linear task handoff commands; do
+for part in common guard links recipes trust project linear task finish handoff commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null

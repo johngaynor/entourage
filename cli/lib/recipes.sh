@@ -30,3 +30,25 @@ recipe_state() {
     *) echo no-recipe ;;
   esac
 }
+
+# Print what a folder's setup makes again, as its `made-by-setup` recipe
+# prints it: patterns like .gitignore's, one per line, such as node_modules/.
+# `task finish` throws away the ignored files they match. When there is no
+# such list it prints nothing on stdout, says why on stderr, and returns 1:
+# just is not installed, there is no justfile or no such recipe, or the recipe
+# failed. Nothing then counts as made again.
+setup_makes() {
+  local dir=$1 file
+  have_just || { echo "just is not installed" >&2; return 1; }
+  case $(recipe_state "$dir" made-by-setup) in
+    ok) ;;
+    no-justfile) echo "it has no justfile" >&2; return 1 ;;
+    no-recipe) echo "its justfile has no made-by-setup recipe" >&2; return 1 ;;
+    *) echo "just could not read its justfile" >&2; return 1 ;;
+  esac
+  file=$(root_justfile "$dir")
+  # The recipe runs in the folder its justfile is in. It gets no stdin, so it
+  # cannot wait on the terminal.
+  just --justfile "$file" made-by-setup < /dev/null 2>/dev/null ||
+    { echo "its made-by-setup recipe failed" >&2; return 1; }
+}
