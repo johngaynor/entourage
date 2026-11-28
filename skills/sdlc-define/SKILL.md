@@ -7,7 +7,7 @@ description: Fill out a Linear card from its title and short description by sett
 
 Define is the first step of the lifecycle. It takes a card that holds a title and a sentence or two, and leaves it with a type and a Specification that says what is wanted and how anyone can tell it is done.
 
-Everything after this step is checked against the Specification. Plan maps its tests to Done when, breakdown cuts along it, build is finished when it is true, and the human reads it to approve the card. A vague Specification doesn't slow an agent down. It gets built as whatever the agent guessed.
+Everything after this step is checked against the Specification. Plan maps its tests to Done when, breakdown cuts along it, the build step is finished when it is true, and the human reads it to approve the card. A vague Specification doesn't slow an agent down. It gets built as whatever the agent guessed.
 
 Define says what and why. How it will be built belongs to plan, and whether it is one piece or several belongs to breakdown. Leave both alone here.
 
@@ -15,7 +15,7 @@ Define says what and why. How it will be built belongs to plan, and whether it i
 
 1. Get the card. If you weren't given a card ID, ask for one.
 2. Read the card with the Linear tools: title, description, labels and comments.
-3. If the card already has a Specification section, don't write a second one. If the human has asked for it to be revised, revise it in place, with `--replace` (see step 4). Otherwise tell the human and ask whether they want it revised, and if they don't, hand off as `done` without changing it.
+3. If the card already has a Specification section, don't write a second one. If the human has asked for it to be revised, revise it in place, with `--replace` (see section 4). Otherwise tell the human and ask whether they want it revised, and if they don't, hand off as `done` without changing it.
 4. Read the project's `PROJECT.md`, and look at only enough of the product, docs and code to use the right names and to know what exists today. Stop there. Working out the approach is plan's job, and doing it now tends to leak files and design into the Specification.
 
 ## 1. Set the type
@@ -142,7 +142,7 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<project>` is the entourage project this session is in. The `phase:` line names this step, not a phase. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|

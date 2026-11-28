@@ -1,6 +1,10 @@
 # entourage
 
-A collection of agent skills for the software development lifecycle (SDLC).
+A software factory: agent skills, and the Herdr setup to run them, that take a
+Linear card from its title to a merged pull request. The `entourage` CLI is
+the orchestrator in it: it opens a tab for each agent, starts it, records how
+each step ended and moves the card in Linear. The words these docs use, such
+as step, phase and harness, are in [GLOSSARY.md](GLOSSARY.md).
 
 ## Status
 
@@ -8,19 +12,20 @@ Early setup. Six skills are in, and they have had only a few runs on real cards:
 
 | Skill | What it does |
 |---|---|
-| `sdlc-define` | Sets a card's type and writes its Specification |
-| `sdlc-plan` | Reads the card and the code, and writes the Plan |
-| `sdlc-breakdown` | Decides whether the card is one piece or several slices, then asks you to approve it |
-| `sdlc-build` | Builds an approved card in its task: makes the change the Plan describes, runs the tests and commits, pushing nothing |
-| `sdlc-review` | Reviews the build against the card's Done when, writes what it found on the card, and sends what is not met back to build |
-| `sdlc-pr` | Pushes a reviewed card's branch, opens its pull requests, moves the card to In Review, watches GitHub while you merge them and records the merge once it sees it. It never merges |
+| `sdlc-define` | The define step: sets a card's type and writes its Specification |
+| `sdlc-plan` | The plan step: reads the card and the code, and writes the Plan |
+| `sdlc-breakdown` | The breakdown step: decides whether the card is one piece or several slices, then asks you to approve it |
+| `sdlc-build` | The build step: builds an approved card in its task, making the change the Plan describes, running the tests and committing, pushing nothing |
+| `sdlc-review` | The review step: checks the build step's work against the card's Done when, writes what it found on the card as its Review, and sends what is not met back to the build step |
+| `sdlc-pr` | The pr step: pushes a reviewed card's branch, opens its pull requests, moves the card to In Review, watches GitHub while you merge them and records the merge once it sees it. It never merges |
 
 They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
 name, such as `/sdlc-define ABC-122`.
 
 Whenever a skill ends or pauses, it hands off with a block: which step it was,
-and whether it is `done`, `needs-human` or `failed`. A `done` block also names
+on the block's `phase:` line, and whether it is `done`, `needs-human` or
+`failed`. A `done` block also names
 the step that comes next. The agent records each block with
 `entourage task handoff`, and your answer when you reply to a question.
 `entourage task log` shows them for a card, with how long each step took, and
@@ -36,19 +41,21 @@ entourage install
 
 `entourage install` links this repo into the tools on a machine, and
 `entourage update` keeps it current. That covers the Herdr setup, the skills,
-and the two agent profiles in [agents/](agents/), which it links into
+and the two phase profiles in [agents/](agents/), which it links into
 `~/.claude/agents`; see [herdr/README.md](herdr/README.md) for the full
 walkthrough.
 
-A profile is a Claude Code agent definition: the tools a session has. When
-the agent is `claude`, `task new` starts it with `entourage-write-up`, and
-`task build` with `entourage-build`, so each has only the tools its steps
-use, whatever your own sessions have. Each also gets Linear's MCP
+A phase profile is a Claude Code agent definition: the tools a session has.
+When the harness is `claude`, `task new` starts the agent with
+`entourage-write-up`, for the write-up phase, and `task build` with
+`entourage-build`, for the build phase, so each agent has only the tools its
+steps use, whatever your own sessions have. Each also gets Linear's MCP
 server alone, from [agents/linear-mcp.json](agents/linear-mcp.json), not the
 servers of your own sessions. Claude Code asks once to sign in to Linear as
 `linear-server` on a machine where it is not signed in under that name.
 
-Each profile runs on the model and effort you pick for it, kept in
+Each of the four profiles, the two phase profiles and the two dev profiles,
+runs on the model and effort you pick for it, kept in
 `~/.config/entourage/settings.json`. `entourage install` makes the file, with
 every profile on Opus at `xhigh` effort, and neither `install` nor `update`
 changes it once it is there:
@@ -59,24 +66,23 @@ entourage profile set build effort high  # change one
 entourage profile set write-up model sonnet
 ```
 
-| Profile | Runs |
-|---|---|
-| `write-up` | the agent `task new` starts |
-| `build` | the agent `task build` starts |
-| `reviewer`, `verifier` | the `entourage-reviewer` and `entourage-verifier` subagents, for work on entourage itself |
+| Profile | Kind | Runs |
+|---|---|---|
+| `write-up` | phase profile | the agent `task new` starts, for the write-up phase |
+| `build` | phase profile | the agent `task build` starts, for the build phase |
+| `reviewer`, `verifier` | dev profiles | the `entourage-reviewer` and `entourage-verifier` subagents, for work on entourage itself |
 
 A model is one of claude's aliases (`fable`, `opus`, `sonnet`, `haiku`) or a
 full model name like `claude-opus-5-5`, and an effort is `low`, `medium`,
 `high`, `xhigh` or `max`. `profile set` refuses anything else and leaves the
 file as it was. `task new` and `task build` start `claude` with `--model=` and
-`--effort=`, which beat the profile's own model and your own Claude Code
+`--effort=`, which beat the phase profile's own model and your own Claude Code
 settings; only `CLAUDE_CODE_EFFORT_LEVEL` beats the effort. A profile or value
-the file leaves out is Opus at `xhigh`. A file that is not valid settings stops
-`task new` and `task build` before an agent starts, saying what in it is
+the file leaves out is Opus at `xhigh`. A file that is not valid settings
+stops `task new` and `task build` before an agent starts, saying what in it is
 wrong, and `entourage status` says so too. The file is read with `jq`. In
-Herdr, the Agents button at the right end of the tab bar shows and changes
-the same values; see
-[herdr/README.md](herdr/README.md#agent-settings).
+Herdr, the Agents button at the right end of the tab bar shows and changes the
+same values; see [herdr/README.md](herdr/README.md#agent-settings).
 
 ## Projects
 
@@ -125,9 +131,9 @@ It asks Linear itself, with no agent running. See
 [herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
 
 `task new` writes the card up. It opens a tab in the project's Herdr space and
-starts an agent there, with the `entourage-write-up` profile on the
-write-up's model and effort, which runs the three skills on the card and then
-asks you to approve it:
+starts an agent there for the write-up phase, with the `entourage-write-up`
+phase profile on the `write-up` profile's model and effort. The agent runs
+the phase's three skills on the card and then asks you to approve it:
 
 ```sh
 entourage task new my-project ABC-122
@@ -155,8 +161,8 @@ entourage task log my-project
 
 `task start` starts the work, once you have approved the card. It takes the
 card too, makes a branch and a git worktree of it in every repo of the
-project, opens a tab for it, and starts the agent there that builds the card.
-The write-up gives you the command:
+project, opens a tab for it, and starts the agent there that runs the build
+phase. The write-up phase gives you the command:
 
 ```sh
 entourage task start my-project ABC-122
@@ -172,8 +178,8 @@ entourage task start my-project ABC-122 app:athlete billing
 It asks Linear for the card and names the branch from it:
 `<type>/<card-id>-<short-name>`, following
 [Conventional Branch](https://conventionalbranch.org). The type is the one
-the write-up set on the card, and the short name is the first four words of
-its title, leaving out a, an and the. "Insert the task here" gives
+the write-up phase set on the card, and the short name is the first four
+words of its title, leaving out a, an and the. "Insert the task here" gives
 `feat/abc-122-insert-task-here`. Everything after the type names the task:
 
 ```
@@ -201,52 +207,53 @@ nothing there:
 entourage task build my-project ABC-122
 ```
 
-`task build` starts the agent, `claude` unless `ENTOURAGE_AGENT` names
-another, with the `entourage-build` profile on the build's model and effort,
-and a first message that has it
-build the card with the
-`sdlc-build` skill, review the build with the `sdlc-review` skill, and then
-put it up as a pull request with the `sdlc-pr` skill. If the agent stops, run
-the same command again in the tab. It runs only in the
-card's own task folder. When a profile is not linked, `task new` and
-`task build` stop before they start anything, and say to run
-`entourage update`. Another agent, named by `ENTOURAGE_AGENT`, starts as it
-always has, with no profile, model or effort. When the task has one repo and Claude Code has not
-trusted that repo yet, `task start` says so: Claude Code asks once in the tab,
-and not again for that repo. `task log` shows when the work was started.
+`task build` starts the agent for the build phase in the harness, `claude`
+unless `ENTOURAGE_AGENT` names another, with the `entourage-build` phase
+profile on the `build` profile's model and effort, and a first message that
+has it build the card with the `sdlc-build` skill, check that work with the
+`sdlc-review` skill, and then put it up as a pull request with the `sdlc-pr`
+skill. If the agent stops, run the same command again in the tab. It runs only
+in the card's own task folder. When a phase profile is not linked, `task new`
+and `task build` stop before they start anything, and say to run
+`entourage update`. Another harness, named by `ENTOURAGE_AGENT`, starts as it
+always has, with no profile, model or effort. When the task has one repo and
+Claude Code has not trusted that repo yet, `task start` says so: Claude Code
+asks once in the tab, and not again for that repo. `task log` shows when the
+work was started.
 
 See [herdr/README.md](herdr/README.md#tasks) for the details.
 
-The build reads the card's Plan, makes the change in the task's worktrees,
-runs the tests and commits on the task's branch. Since setup is off, it first
-installs into each worktree what the tests need, the way that repo's own docs
-say. It installs only: it starts no app, server or database, and asks you when
-the tests need one running. It pushes nothing and opens no pull request: that
-comes after the review. Like the write-up, it records how it ended,
-and `task log` shows it: `done` only when the tests pass, `needs-human` with a
-question, or `failed` with the reason. A card with no Plan is not built.
+The build step reads the card's Plan, makes the change in the task's
+worktrees, runs the tests and commits on the task's branch. Since setup is
+off, it first installs into each worktree what the tests need, the way that
+repo's own docs say. It installs only: it starts no app, server or database,
+and asks you when the tests need one running. It pushes nothing and opens no
+pull request: that comes after the review step. Like each step of the write-up
+phase, it records how it ended, and `task log` shows it: `done` only when the
+tests pass, `needs-human` with a question, or `failed` with the reason. A card
+with no Plan is not built.
 
-Then the review runs the tests itself, checks each Done when item against the
-test the Plan names for it, and writes what it found on the card as a Review.
-It changes no code, pushes nothing and opens no pull request. When every item
-is met, it hands off `done` with `pr` next, and the pull request comes next.
-When an item is not met or a test fails, it hands
-off with `build` next, and `sdlc-build` builds only what the Review names.
-After one send-back, it asks you whether to build again or stop.
+Then the review step runs the tests itself, checks each Done when item against
+the test the Plan names for it, and writes what it found on the card as a
+Review. It changes no code, pushes nothing and opens no pull request. When
+every item is met, it hands off `done` with `pr` next, and the pull request
+comes next. When an item is not met or a test fails, it hands off with `build`
+next, and `sdlc-build` builds only what the Review names. After one send-back,
+it asks you whether to build again or stop.
 
-Then the pull request. `sdlc-pr` reads the Review on the card and opens
-nothing unless every item in it is met or left to you. Before it pushes
-anything, it checks that `gh` is signed in and that each repo the work changed
-has an `origin` GitHub knows; when one is not, it hands off `failed` with the
-reason and what to run, and pushes nothing. Then, in each repo whose branch
-has commits ahead of its default branch, and no other, it pushes the task's
+Then the pr step. `sdlc-pr` reads the Review on the card and opens nothing
+unless every item in it is met or left to you. Before it pushes anything, it
+checks that `gh` is signed in and that each repo the work changed has an
+`origin` GitHub knows; when one is not, it hands off `failed` with the reason
+and what to run, and pushes nothing. Then, in each repo whose branch has
+commits ahead of its default branch, and no other, it pushes the task's
 branch, never forced, and opens a pull request into the default branch, by the
 repo's own rules and pull request template. Each one links the card and says,
-for each Done when item, how the review showed it and what is left to you.
-Once every one is open, it moves the card in Linear to In Review, the team's
-last started status, with `entourage linear move <card> review`; in a team
-with one started status the card stays in it. When the card cannot be moved,
-it says so, and why, and goes on.
+for each Done when item, how the review step showed it and what is left to
+you. Once every one is open, it moves the card in Linear to In Review, the
+team's last started status, with `entourage linear move <card> review`; in a
+team with one started status the card stays in it. When the card cannot be
+moved, it says so, and why, and goes on.
 
 Then it asks you to merge them, as `needs-human` with their links. Merge each
 one on GitHub yourself; you don't have to tell the agent. It watches them
@@ -267,17 +274,17 @@ in the tab that they have merged makes it check at once, with
 When one is closed without merging, it asks you whether to stop. No agent
 merges a pull request.
 
-When the default branch moves on and a pull request comes to conflict with
-it, the agent brings it up to date without asking you. It merges the default
+When the default branch moves on and a pull request comes to conflict with it,
+the agent brings it up to date without asking you. It merges the default
 branch into the task's branch, never by a rebase, fixes what the repo's tests
-then find and commits the merge, and the review checks each Done when item
-again and revises the card's Review. Then it pushes, never forced, adds a line
-under **Brought up to date:** to the pull request's description, saying which
-files conflicted and what the fix changed, and waits for you again. A pull
-request with no conflict gets no push. It asks you, as `needs-human` naming
-the pull request and the files in conflict, only when it cannot get the tests
-to pass or when the fix would change what a Done when item says, and pushes
-nothing until you answer.
+then find and commits the merge, and the review step checks each Done when
+item again and revises the card's Review. Then it pushes, never forced, adds a
+line under **Brought up to date:** to the pull request's description, saying
+which files conflicted and what the fix changed, and waits for you again. A
+pull request with no conflict gets no push. It asks you, as `needs-human`
+naming the pull request and the files in conflict, only when it cannot get the
+tests to pass or when the fix would change what a Done when item says, and
+pushes nothing until you answer.
 
 ```sh
 entourage task watch my-project ABC-122 [--once]
@@ -299,7 +306,7 @@ it, and adds it to the pull request's description. Then it asks you again,
 and `task log` shows another `pr` `needs-human` after your answer. A change
 that would alter what you approved on the card, such as a Done when item or a
 new dependency, it asks you about before it makes it. It takes changes only
-from what you say in the tab, not from review comments or CI on GitHub.
+from what you say in the tab, not from GitHub review comments or CI.
 
 Once the merge is recorded, the agent ends the task with `task finish`, as its
 last command, so you remove nothing by hand:
@@ -319,15 +326,16 @@ without merging leaves the task too. Run the command yourself for a task the
 agent left, once you have kept what it named. See
 [herdr/README.md](herdr/README.md#finishing-a-task).
 
-Each skill also runs on its own in any agent, as `/sdlc-build ABC-122`,
-`/sdlc-review ABC-122` or `/sdlc-pr ABC-122`.
+Each skill also runs on its own in any Claude Code session, as
+`/sdlc-build ABC-122`, `/sdlc-review ABC-122` or `/sdlc-pr ABC-122`.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
-from the clone instead. A clone also writes the `entourage-reviewer` and
-`entourage-verifier` subagents from [.claude/profiles/](.claude/profiles/)
+from the clone instead. A clone also writes the dev profiles, the
+`entourage-reviewer` and `entourage-verifier` subagents, from
+[.claude/profiles/](.claude/profiles/)
 into `~/.claude/agents`, with the model and effort the settings file names for
 the reviewer and the verifier, so a session can start them by name to review
-a change or check what a review found; see
+a change or check what the reviewer found; see
 [CLAUDE.md](CLAUDE.md#reviewing-a-change). It writes them again at each
 `update`, and at each `profile set` for one of them, and replaces or removes
 only a file it wrote: one of your own of the same name is left alone, and
