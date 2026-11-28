@@ -136,8 +136,8 @@ EOF
 # `herdr-app ls`: one argument per tab, its name and its terminals, as
 # ABC-122:t1 or abc-122-fix-it:t2,t3 (ABC-122: for a tab with none). Another
 # space, for another folder, has tabs of the same names, whose terminal tx
-# hc knows nothing about, so a card's agent is looked for in its project's
-# space alone.
+# hc knows nothing about, so a card's agent is looked for in its own space
+# alone.
 herdr_tabs() {
   local dir spec tabs='[]'
   dir=$(cd -P "$P/demo" && pwd)

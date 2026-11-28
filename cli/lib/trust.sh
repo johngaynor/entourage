@@ -4,7 +4,7 @@
 # and keeps the answer in its own file, $CLAUDE_STATE, as
 #   .projects["<the folder's real path>"].hasTrustDialogAccepted
 # A folder cannot answer for itself. entourage answers for the folders it made
-# itself (a project's folder), so that an agent `task new` starts there is not
+# itself (a space's folder), so that an agent `task new` starts there is not
 # left waiting on the question. It never answers for a repo.
 #
 # The file is Claude Code's. It holds much more than this, and every running
@@ -23,8 +23,8 @@ trust_recorded() { [ "$(jq --arg d "$1" "$TRUST_TEST" "$2" 2>/dev/null)" = true 
 # "may ask": not every case below can tell whether the folder is trusted.
 trust_note() { say "  note      Claude Code may ask to trust $1: $2"; }
 
-# Record a folder as trusted. The folder is a real path, as project_dir prints
-# it, because that is what Claude Code looks up. Always returns 0: a project or
+# Record a folder as trusted. The folder is a real path, as space_dir prints
+# it, because that is what Claude Code looks up. Always returns 0: a space or
 # a task is never held up by this, so every command here that can fail is
 # guarded.
 trust_folder() {

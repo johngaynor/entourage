@@ -6,7 +6,7 @@
 # stdin each time a step ends or pauses. The rules for a block are here, once;
 # the skills only say to run the command.
 
-# The store: one SQLite file beside the projects, so it is never published and
+# The store: one SQLite file beside the spaces, so it is never published and
 # an npm reinstall does not delete it.
 STORE=$ENT_HOME/entourage.db
 # The command that reads and writes it: one word, a command on PATH.
@@ -28,9 +28,9 @@ HANDOFF_STEPS='define plan breakdown start build review pr merged'
 # line is slow to check and too big to hand to sqlite3 as an argument.
 HANDOFF_LINE_MAX=2000
 
-HANDOFF_USAGE="Usage: entourage task handoff <project> <card>, with the block on stdin:
+HANDOFF_USAGE="Usage: entourage task handoff <space> <card>, with the block on stdin:
 
-entourage task handoff <project> <card> <<'EOF'
+entourage task handoff <space> <card> <<'EOF'
 step: define
 status: done
 next: plan
@@ -98,7 +98,7 @@ store_ready() {
 }
 
 # Record one hand-off, timed now in UTC:
-#   store_handoff <project> <card> <step> <status> <next> <summary> <flags> <question> <options> <answer> <reason>
+#   store_handoff <space> <card> <step> <status> <next> <summary> <flags> <question> <options> <answer> <reason>
 store_handoff() {
   local at values='' v
   at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -113,7 +113,7 @@ store_handoff() {
 # card, with define next. `task start` records a `start` row, with build next:
 # it starts no run, so the write-up and the build are one run of the card.
 # Neither command is ever failed by it: it only says when it could not record.
-#   record_start <project> <card> [start]
+#   record_start <space> <card> [start]
 record_start() {
   local step=new next=define
   [ "${3:-}" != start ] || step=start next=build
@@ -132,12 +132,12 @@ in_list() {
   case " $2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
-# Is there a project folder with exactly this name? On a Mac the folder demo
+# Is there a space folder with exactly this name? On a Mac the folder demo
 # also answers to Demo, and a hand-off recorded as Demo would never show in
 # demo's log.
-project_named() {
+space_named() {
   local d
-  for d in "$PROJECTS"/*/; do
+  for d in "$SPACES"/*/; do
     d=${d%/}
     [ "${d##*/}" != "$1" ] || return 0
   done
@@ -158,10 +158,10 @@ handoff_card() {
 task_handoff() {
   local name=${1:-} card=${2:-}
   [ -n "$name" ] || die "$HANDOFF_USAGE"
-  # Not project_dir: its advice is to make the project, which is not for an
+  # Not space_dir: its advice is to make the space, which is not for an
   # agent to do in the middle of a step.
-  project_named "$name" ||
-    die "there is no entourage project called '$name', so the hand-off was not recorded. Write the block in your message instead."
+  space_named "$name" ||
+    die "there is no entourage space called '$name', so the hand-off was not recorded. Write the block in your message instead."
   card=$(handoff_card "$name" "$card" handoff) || exit 1
   [ "$#" -le 2 ] || die "$HANDOFF_USAGE"
   [ ! -t 0 ] || die "$HANDOFF_USAGE"
@@ -249,7 +249,7 @@ task_handoff() {
 # took, whether it is a wait, and where the card stood after it. The plain log
 # and the JSON both read it, so they cannot disagree, and a Herdr mod that
 # draws the JSON formats nothing. With no card it works out the view of every
-# card in the project at once, and the list of cards is each one's latest row.
+# card in the space at once, and the list of cards is each one's latest row.
 #
 # Nothing about time is stored beyond each row's own. A step's time is from
 # the row before it to its own row. The time from a needs-human row to its
@@ -277,10 +277,10 @@ sql_took() {
 }
 
 # SQL that starts a query on one card's view, or on every card's in the
-# project, as the table `shown`. Each card's rows are worked out on their own.
-# The step column is step, or phase in a store from before the rename; either
-# is read as step.
-#   log_view <project> <card, or empty for all> <answer column, or null in a store without one> <step column>
+# space, as the table `shown`. Each card's rows are worked out on their own.
+# The store's column for the space is still called project. The step column
+# is step, or phase in a store from before the rename; either is read as step.
+#   log_view <space> <card, or empty for all> <answer column, or null in a store without one> <step column>
 log_view() {
   local cards=''
   [ -z "$2" ] || cards="and card = $(sql_str "$2")"
@@ -330,13 +330,13 @@ log_view() {
     "$(sql_took open_seconds)"
 }
 
-LOG_USAGE='usage: entourage task log <project> [<card>] [--json]'
+LOG_USAGE='usage: entourage task log <space> [<card>] [--json]'
 
-# The project's cards that have hand-offs, newest first by their latest row:
+# The space's cards that have hand-offs, newest first by their latest row:
 # where each stands and how long it has stood there, or what its agent is
 # doing when Herdr says it is stuck or has stopped. With --json, the same as
 # one line of JSON, with the agent beside where the card stands.
-#   log_cards <project> <json: 1 or 0> <view>
+#   log_cards <space> <json: 1 or 0> <view>
 log_cards() {
   local name=$1 json=$2 list
   # Each card's latest row is the one with nothing after it.
@@ -378,7 +378,7 @@ log_cards() {
 }
 
 # List a card's hand-offs, oldest first, with how long each step took. With
-# no card, list the project's cards instead. With --json, the same view as
+# no card, list the space's cards instead. With --json, the same view as
 # one line of JSON.
 task_log() {
   local json=0 a
@@ -393,7 +393,7 @@ task_log() {
   set -- ${args[@]+"${args[@]}"}
   local name=${1:-} card=${2:-}
   [ -n "$name" ] || die "$LOG_USAGE"
-  project_named "$name" || die "there is no entourage project called '$name'. See: entourage project ls"
+  space_named "$name" || die "there is no entourage space called '$name'. See: entourage space ls"
   [ "$#" -le 2 ] || die "$LOG_USAGE"
   [ -z "$card" ] || card=$(handoff_card "$name" "$card" log) || exit 1
   have_sqlite || die "$SQLITE is not installed, so no hand-offs have been recorded on this machine."
@@ -408,7 +408,7 @@ task_log() {
     view=$(log_view "$name" "$card" "$answer_column" "$step_column")
   fi
   # What each card's agent is doing, from Herdr, as the table agents.
-  agents_table "$view" "$(cd -P "$PROJECTS/$name" && pwd)"
+  agents_table "$view" "$(cd -P "$SPACES/$name" && pwd)"
   if [ -z "$card" ]; then
     log_cards "$name" "$json" "$view"
     return

@@ -7,7 +7,8 @@
 # phase, in the tab `task new` names after the card, until the work starts,
 # then the build phase, in the tab `task start` names after the task's
 # folder, tasks/<card>-... The card's latest hand-off says which. A tab is found by its name, in the
-# space whose folder is the project's, as `task finish` finds the task's tab.
+# Herdr space whose folder is the space's, as `task finish` finds the task's
+# tab.
 #
 # For each terminal in that tab, hc says what its program last reported: its
 # status (idle, working, done, blocked or error), the kind of a blocked one
@@ -37,14 +38,14 @@
 # The seconds after a start row in which the agent is still starting.
 AGENT_START_GRACE=15
 
-# What `herdr-app ls` said about the project's space, read once per run by
+# What `herdr-app ls` said about the space in Herdr, read once per run by
 # agents_read: one line per tab, its name and its terminals, separated by the
 # unit separator. AGENTS_ON is 1 once it has been read.
 AGENTS_ON=0
 AGENT_TABS=''
 
-# Read Herdr's tabs in the project's space, when there is a Herdr to ask.
-#   agents_read <the project's folder>
+# Read Herdr's tabs in the space, when there is a Herdr to ask.
+#   agents_read <the space's folder>
 agents_read() {
   local dir=$1 ls tabs
   AGENTS_ON=0 AGENT_TABS=''
@@ -195,7 +196,7 @@ card_agent() {
 # SQL for the table agents (card, agent) that the log's query joins, with
 # each card whose agent has something to say and its JSON. Herdr is read
 # here, once. AGENT_LAST is the last such agent, for the log of one card.
-#   agents_table <view> <the project's folder>
+#   agents_table <view> <the space's folder>
 AGENTS_SQL='agents (card, agent) as (select null, null where 0)'
 AGENT_LAST=''
 agents_table() {

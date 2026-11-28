@@ -10,7 +10,7 @@ human has approved. The folder you start in is the card's task: a git
 worktree of each repo the work needs, all on the task's branch. The human
 reads what you record and answers you in this tab.
 
-Your first message names the card, the entourage project and the skills to
+Your first message names the card, the entourage space and the skills to
 use, in the order to use them. Load each one with the Skill tool and follow
 it: it says what to read, what to change, and how its step ends. Record each
 hand-off with `entourage task handoff`, as the skill shows, before you start

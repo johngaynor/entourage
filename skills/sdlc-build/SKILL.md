@@ -17,7 +17,7 @@ The build step ends with commits on the task's branch. Push nothing and open no 
 2. Read the card with `entourage linear read <card ID>`: the original description, the Specification, the Plan, the Breakdown, the Review if there is one, and the comments.
 3. If the card has no Plan, plan hasn't run, and the card was not approved to build. Change nothing, and hand off as `failed`, saying so.
 4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a Plan of its own. Build the sub-issue, not this card. Change nothing, and hand off as `failed`, naming the sub-issue that comes first.
-5. Check where you are. The work goes in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, change nothing and hand off as `failed`, saying where you are.
+5. Check where you are. The work goes in the task's worktrees, which `entourage task start` made under the space's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, change nothing and hand off as `failed`, saying where you are.
 6. Run `git status` in each worktree. A new task's worktree has no changes. If one has changes that aren't yours, don't touch them: ask the human what to do with them.
 7. If the card has a Review with items not met, this is a later round: the `sdlc-review` skill checked an earlier round and sent it back. Build only what those items need, on top of the commits already there, and leave the items it found met as they are. A test that fails for one of those items is the work, not a reason to ask.
 
@@ -76,7 +76,7 @@ Commit on the task's branch, in each worktree you changed, by the repo's own rul
 When the commits are made and the tests pass, record the hand-off. The build step is not finished until it is recorded:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: build
 status: done
 next: review
@@ -96,7 +96,7 @@ Every step of the lifecycle ends the same way, so whoever is driving it, a perso
 Record a hand-off every time this step ends or pauses: when the step is finished, when you need an answer, and when something has gone wrong. Record it even when you go straight on to another step, because the record is what shows this one ended. Run `entourage task handoff` with the block on stdin, one value per line:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
@@ -109,7 +109,7 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<space>` is the entourage space this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
@@ -118,7 +118,7 @@ EOF
 | `answered` | The human has replied to a `needs-human` hand-off | `step`, `status`, `answer` |
 | `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `step`, `status`, `reason` |
 
-- **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage project, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a project or install anything to get it to run.
+- **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage space, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a space or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
 - **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
 - **`needs-human` is a pause, not an ending.** Wait for the answer. When it comes, record it before anything else, as a hand-off with `status: answered` and what they said in a few words. That is how the time spent waiting on them is told from your own work. Then carry on with this step. The step is over only at `done` or `failed`.

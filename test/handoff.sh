@@ -6,7 +6,7 @@ STORE() { printf '%s\n' "${ENTOURAGE_HOME:-$HOME/.config/entourage}/entourage.db
 q() { sqlite3 "$(STORE)" "$1" 2>/dev/null; }
 rows() { q 'select count(*) from handoffs' || true; }
 
-demo() { "$E" project new demo >/dev/null; }
+demo() { "$E" space new demo >/dev/null; }
 # Hand the block in $1 off for ABC-122 in demo.
 hand() { printf '%s\n' "$1" | "$E" task handoff demo ABC-122; }
 
@@ -161,11 +161,11 @@ handoff_refuses_an_empty_block() {
   case $out in *'phase'*) fail "the usage still names a phase: $out" ;; esac
 }
 
-handoff_refuses_unknown_project_and_bad_card() {
+handoff_refuses_unknown_space_and_bad_card() {
   demo
-  if out=$(printf '%s\n' "$DONE_BLOCK" | "$E" task handoff nope ABC-122 2>&1); then fail "accepted an unknown project"; fi
-  case $out in *"no entourage project called 'nope'"*'not recorded'*) ;; *) fail "unhelpful message: $out" ;; esac
-  case $out in *'project new'*) fail "invites the agent to make a project: $out" ;; esac
+  if out=$(printf '%s\n' "$DONE_BLOCK" | "$E" task handoff nope ABC-122 2>&1); then fail "accepted an unknown space"; fi
+  case $out in *"no entourage space called 'nope'"*'not recorded'*) ;; *) fail "unhelpful message: $out" ;; esac
+  case $out in *"space new"* | *"project new"*) fail "invites the agent to make a space: $out" ;; esac
   if out=$(printf '%s\n' "$DONE_BLOCK" | "$E" task handoff demo not-a-card 2>&1); then fail "accepted a bad card"; fi
   case $out in *'not a card ID'*) ;; *) fail "unhelpful message: $out" ;; esac
   if out=$(printf '%s\n' "$DONE_BLOCK" | "$E" task handoff demo 2>&1); then fail "accepted no card"; fi
@@ -240,7 +240,7 @@ task_new_starts_without_sqlite() {
 status_notes_missing_sqlite() {
   "$E" install >/dev/null
   demo
-  # Fill the doc in, so the project itself is not a problem.
+  # Fill the doc in, so the space itself is not a problem.
   printf '# demo\n' > "$P/demo/PROJECT.md"
   out=$("$E" status) || true
   case $out in *sqlite3*) fail "noted sqlite3 though it is installed: $out" ;; esac
@@ -258,8 +258,8 @@ question: Reuse the invoice export?
 options: yes | write a new one' >/dev/null
   printf 'step: define\nstatus: done\nnext: plan\nsummary: Another card entirely.\n' |
     "$E" task handoff demo ABC-9 >/dev/null
-  "$E" project new other >/dev/null
-  printf 'step: define\nstatus: done\nnext: plan\nsummary: Another project entirely.\n' |
+  "$E" space new other >/dev/null
+  printf 'step: define\nstatus: done\nnext: plan\nsummary: Another space entirely.\n' |
     "$E" task handoff other ABC-122 >/dev/null
   out=$("$E" task log demo abc-122) || fail "task log exited non-zero"
   first=$(printf '%s\n' "$out" | grep -n 'define' | head -1 | cut -d: -f1)
@@ -275,7 +275,7 @@ options: yes | write a new one' >/dev/null
   done
   printf '%s\n' "$out" | grep -Eq 'plan +needs-human( |$)' || fail "the row with no next is printed wrongly: $out"
   case $out in *'Another card entirely.'*) fail "showed another card's hand-off: $out" ;; esac
-  case $out in *'Another project entirely.'*) fail "showed another project's hand-off: $out" ;; esac
+  case $out in *'Another space entirely.'*) fail "showed another space's hand-off: $out" ;; esac
 }
 
 # A store that cannot be read is an error, not an empty history.
@@ -362,7 +362,7 @@ summary: $long" 'characters'
 
 # On a Mac the folder demo also answers to Demo. A hand-off under the wrong
 # name would never show in the log.
-handoff_refuses_a_project_in_the_wrong_case() {
+handoff_refuses_a_space_in_the_wrong_case() {
   demo
   if out=$(printf '%s\n' "$DONE_BLOCK" | "$E" task handoff Demo ABC-122 2>&1); then fail "accepted Demo for demo"; fi
   case $out in *'not recorded'*) ;; *) fail "unhelpful message: $out" ;; esac
@@ -1201,7 +1201,7 @@ log_json_fails_as_the_plain_log_does() {
   case $out in *'--json'*) ;; *) fail "does not say which options there are: $out" ;; esac
 }
 
-# --- the project's cards ----------------------------------------------------
+# --- the space's cards ------------------------------------------------------
 
 # Put a row for any card of demo straight into the store at a set time.
 #   put_for <card> <time> <step> <status> [<next>]
@@ -1212,10 +1212,10 @@ put_for() {
 # Three cards of demo, put in so that the order their first rows came in is
 # not the order their latest rows came in. ABC-3 is still waiting on a
 # question asked 125 seconds ago. The store is made by a hand-off for another
-# project's card, which must not be listed.
+# space's card, which must not be listed.
 three_cards() {
-  "$E" project new other >/dev/null
-  printf 'step: define\nstatus: done\nnext: plan\nsummary: Another project entirely.\n' |
+  "$E" space new other >/dev/null
+  printf 'step: define\nstatus: done\nnext: plan\nsummary: Another space entirely.\n' |
     "$E" task handoff other ABC-9 >/dev/null
   put_for ABC-2 2026-01-01T09:00:00Z new done define
   put_for ABC-1 2026-01-01T10:00:00Z new done define
@@ -1227,11 +1227,11 @@ three_cards() {
      values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-125 seconds'), 'demo', 'ABC-3', 'define', 'needs-human', 'Approve?', 'approve | change');"
 }
 
-log_lists_the_projects_cards_newest_first() {
+log_lists_the_spaces_cards_newest_first() {
   demo; three_cards
   out=$("$E" task log demo) || fail "task log with no card exited non-zero"
   [ "$(printf '%s\n' "$out" | grep -Eo 'ABC-[0-9]+' | tr '\n' ' ')" = 'ABC-3 ABC-2 ABC-1 ' ] ||
-    fail "not newest first by each card's latest row, or another project's card is shown: $out"
+    fail "not newest first by each card's latest row, or another space's card is shown: $out"
   # Where each stands, and for how long. A time of a day or more is in days.
   log_has '^ABC-3 +waiting on the human +for 2m [0-5][0-9]s$'
   log_has '^ABC-2 +define failed +for [0-9]+d [0-9]{2}h$'
@@ -1273,8 +1273,8 @@ log_list_with_nothing_recorded() {
   out=$("$E" task log demo --json) || fail "task log --json with no card exited non-zero with no store"
   none=$out
   j_is .project demo; j_is '.cards | type' array; j_is '.cards | length' 0
-  # A store with only another project's cards looks the same to a reader.
-  "$E" project new other >/dev/null
+  # A store with only another space's cards looks the same to a reader.
+  "$E" space new other >/dev/null
   printf '%s\n' "$DONE_BLOCK" | "$E" task handoff other ABC-1 >/dev/null
   out=$("$E" task log demo) || fail "task log with no card exited non-zero"
   case $out in *"No hand-offs recorded in 'demo'."*) ;; *) fail "does not say there are none: $out" ;; esac
@@ -1372,7 +1372,7 @@ log_shows_a_blocked_agent() {
     out=$("$E" task log demo ABC-122 --json) || fail "task log --json for the card exited non-zero"
     j_is .agent.state blocked; j_is .agent.kind "${kind:-null}"; j_is .agent.label "$label"
     j_is .state 'define done, then plan'
-    # Only the card's own tab, in its project's space, is asked about.
+    # Only the card's own tab, in its space, is asked about.
     [ -z "$(hc_calls | grep -v '^get t1 --json$')" ] || fail "asked hc about another terminal: $(hc_calls)"
   done
 }
@@ -1637,7 +1637,7 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_question handoff_records_a_failure handoff_refuses_a_missing_line
   handoff_refuses_what_it_does_not_know handoff_refuses_a_line_that_does_not_belong
   handoff_refuses_a_value_on_two_lines handoff_refuses_a_repeated_or_empty_line
-  handoff_refuses_an_empty_block handoff_refuses_unknown_project_and_bad_card
+  handoff_refuses_an_empty_block handoff_refuses_unknown_space_and_bad_card
   handoff_keeps_awkward_text handoff_takes_a_lowercase_card handoff_honors_entourage_home
   handoff_without_sqlite_says_so task_new_records_the_start task_new_starts_without_sqlite
   status_notes_missing_sqlite log_lists_a_cards_handoffs_in_order
@@ -1646,7 +1646,7 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_refuses_two_steps_in_one_value handoff_refuses_a_control_character
   handoff_takes_crlf_lines handoff_takes_indented_lines
   handoff_refuses_a_placeholder_left_in handoff_refuses_a_very_long_line
-  handoff_refuses_a_project_in_the_wrong_case handoff_records_an_answer
+  handoff_refuses_a_space_in_the_wrong_case handoff_records_an_answer
   handoff_checks_an_answer handoff_records_a_finished_build
   handoff_records_a_build_that_needs_the_human handoff_records_a_failed_build
   handoff_records_a_review_that_passes handoff_records_a_review_that_sends_the_work_back
@@ -1674,7 +1674,7 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   log_json_is_the_same_view_on_one_line log_json_with_nothing_recorded
   log_json_says_when_a_question_is_still_waiting log_json_keeps_awkward_text
   a_start_row_shows_no_time a_task_start_row_keeps_the_run log_json_fails_as_the_plain_log_does
-  log_lists_the_projects_cards_newest_first log_list_with_nothing_recorded
+  log_lists_the_spaces_cards_newest_first log_list_with_nothing_recorded
   log_list_fails_when_the_store_cannot_be_read
   log_shows_a_blocked_agent log_shows_an_agent_that_hit_an_error
   log_shows_an_agent_that_stopped log_looks_at_the_tab_of_the_step_under_way

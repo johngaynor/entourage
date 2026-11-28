@@ -30,7 +30,7 @@ the step that comes next. The agent records each block with
 `entourage task handoff`, and your answer when you reply to a question.
 `entourage task log` shows them for a card, with how long each step took, and
 the Steps panel in Herdr shows the same for the card whose tab is selected.
-With no card, both list the project's cards and where each stands.
+With no card, both list the space's cards and where each stands.
 
 ## Setting up a machine
 
@@ -84,63 +84,68 @@ wrong, and `entourage status` says so too. The file is read with `jq`. In
 Herdr, the Agents button at the right end of the tab bar shows and changes the
 same values; see [herdr/README.md](herdr/README.md#agent-settings).
 
-## Projects
+## Spaces
 
-A project groups the repos that belong together, with a `PROJECT.md` saying
-what each repo is for. Each project opens in Herdr as one space. A repo is
-cloned once and can be in several projects.
+A space groups the repos that belong together, with a `PROJECT.md` saying
+what each repo is for, and opens in Herdr as one space, the word Herdr uses
+for it too. A repo is cloned once and can be in several spaces.
 
 ```sh
-entourage project new my-project
-entourage project add my-project ~/Dev/api
-entourage project add my-project ~/Dev/web
-entourage project open my-project
+entourage space new my-space
+entourage space add my-space ~/Dev/api
+entourage space add my-space ~/Dev/web
+entourage space open my-space
 ```
 
-`project new` also takes the repos after the name, to do the first three
-lines in one: `entourage project new my-project ~/Dev/api ~/Dev/web`.
+`space new` also takes the repos after the name, to do the first three
+lines in one: `entourage space new my-space ~/Dev/api ~/Dev/web`.
 
-In Herdr, the `+` above the projects list does the same without a terminal:
-choose a repo's folder, name the project, and its space opens.
+`entourage project …` is the old name of `entourage space …`, and still
+works: each `entourage project` command runs its `space` command, with the
+same output and exit code, and first prints a line on stderr that names the
+`space` command to run instead.
 
-Your projects live in `~/.config/entourage/projects`, outside this repo, so
+In Herdr, the `+` above the `projects` mod's list does the same without a
+terminal: choose a repo's folder, name the space, and it opens.
+
+Your spaces live in `~/.config/entourage/projects`, outside this repo, so
 they are never published and survive updates. See
-[herdr/README.md](herdr/README.md#projects) for how a project is laid out.
+[herdr/README.md](herdr/README.md#spaces) for how a space is laid out.
 
-`project new` also marks the project's folder as trusted in Claude Code's own
+`space new` also marks the space's folder as trusted in Claude Code's own
 file, `~/.claude.json`, so an agent started there is not stopped by the "do
-you trust this folder?" question. Only a project folder that entourage made
-is marked: never a repo, and not a project folder you linked in from somewhere
+you trust this folder?" question. Only a space folder that entourage made is
+marked: never a repo, and not a space folder you linked in from somewhere
 else. This needs `jq`; without it Claude Code asks once.
 
 ## Tasks
 
-A task is one piece of work in a project, usually a Linear card. Two commands
+A task is one piece of work in a space, usually a Linear card. Two commands
 make it, in this order: `task new`, then `task start`, which the write-up phase
 runs once you approve the card, unless you hold it for later.
 
 To see which cards there are first, `task ls` lists the open cards of the
-project's Linear teams, under their statuses:
+space's Linear teams, under their statuses:
 
 ```sh
 entourage linear key                  # once: save your Linear API key
-entourage project team my-project ABC # once: the team whose cards are ABC-122
-entourage task ls my-project
+entourage space team my-space ABC     # once: the team whose cards are ABC-122
+entourage task ls my-space
 ```
 
 It asks Linear itself, with no agent running. `entourage status` checks the
 saved key with Linear each time it runs: it says whose the key is when it
 works, notes when no key is saved or when the key could not be checked, and
 lists a key Linear rejects as a problem, which makes `status` exit non-zero.
-See [herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
+See [herdr/README.md](herdr/README.md#seeing-a-spaces-cards) for the details.
 
-`task new` writes the card up. It opens a tab in the project's Herdr space and
+`task new` writes the card up. It opens a tab in the space, in Herdr, and
 starts an agent there for the write-up phase, with the `entourage-write-up`
 phase profile on the `write-up` profile's model and effort. The agent runs
 the phase's three skills on the card and then asks you to approve it:
 
 ```sh
-entourage task new my-project ABC-122
+entourage task new my-space ABC-122
 ```
 
 Recording your approval moves the card in Linear to its team's first
@@ -154,14 +159,14 @@ a card, oldest first, with how long each step took and how long a question
 waited for your answer:
 
 ```sh
-entourage task log my-project ABC-122
+entourage task log my-space ABC-122
 ```
 
-Leave the card out to see every card in the project that has hand-offs,
+Leave the card out to see every card in the space that has hand-offs,
 newest first, with where each stands, such as waiting on you, or merged:
 
 ```sh
-entourage task log my-project
+entourage task log my-space
 ```
 
 It also asks Herdr what each card's agent is doing, and says so when the
@@ -174,19 +179,19 @@ and never stored; with Herdr closed, `task log` shows what it always has. See
 
 `task start` starts the work, once you have approved the card. It takes the
 card too, makes a branch and a git worktree of it in every repo of the
-project, opens a tab for it, and starts the agent there that runs the build
+space, opens a tab for it, and starts the agent there that runs the build
 phase. The write-up phase runs it once you approve the card, or gives it to
 you when you chose to start later:
 
 ```sh
-entourage task start my-project ABC-122
+entourage task start my-space ABC-122
 ```
 
 Name targets after the card to take only what the task needs: a repo, or
 groups inside a repo (`app:athlete`, or `app:athlete,coach` for several).
 
 ```sh
-entourage task start my-project ABC-122 app:athlete billing
+entourage task start my-space ABC-122 app:athlete billing
 ```
 
 It asks Linear for the card and names the branch from it:
@@ -197,7 +202,7 @@ words of its title, leaving out a, an and the. "Insert the task here" gives
 `feat/abc-122-insert-task-here`. Everything after the type names the task:
 
 ```
-~/.config/entourage/projects/my-project/
+~/.config/entourage/projects/my-space/
   tasks/
     abc-122-insert-task-here/   one folder per task
       api/                      a worktree of api on feat/abc-122-insert-task-here
@@ -210,7 +215,7 @@ adds them to the command it runs or gives you when no key is saved or Linear
 rejected the key:
 
 ```sh
-entourage task start my-project ABC-122 --type feat --title 'Insert the task here'
+entourage task start my-space ABC-122 --type feat --title 'Insert the task here'
 ```
 
 That names the same branch, `feat/abc-122-insert-task-here`. The type and
@@ -238,7 +243,7 @@ setup runs, so the agent starts once the checkout is ready and you type
 nothing there:
 
 ```sh
-entourage task build my-project ABC-122
+entourage task build my-space ABC-122
 ```
 
 `task build` starts the agent for the build phase in the harness, `claude`
@@ -321,7 +326,7 @@ tests to pass or when the fix would change what a Done when item says, and
 pushes nothing until you answer.
 
 ```sh
-entourage task watch my-project ABC-122 [--once]
+entourage task watch my-space ABC-122 [--once]
 ```
 
 `task watch` asks GitHub, with `gh`, for the pull request of each of the
@@ -346,7 +351,7 @@ Once the merge is recorded, the agent ends the task with `task finish`, as its
 last command, so you remove nothing by hand:
 
 ```sh
-entourage task finish my-project ABC-122
+entourage task finish my-space ABC-122
 ```
 
 It removes the task's worktrees, deletes its branch in each repo, deletes its
@@ -383,7 +388,7 @@ that the work was done in, deletes its branch and updates the clone; see
 A git worktree of the repo, such as the one `task start` makes for one of
 entourage's own cards, holds a copy of the CLI that is a change being built.
 Its `./cli/entourage` runs only the commands that read: `help`, `status`,
-`project ls`, `project team <name>`, `profile ls`, `task ls`, `task log` and
+`space ls`, `space team <name>`, `profile ls`, `task ls`, `task log` and
 `task watch`.
 Any other command stops before it does anything, says that it is a
 worktree's copy, and gives the command that runs it for real:

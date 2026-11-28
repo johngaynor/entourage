@@ -1,14 +1,14 @@
 <!-- entourage:template -->
-<!-- Delete the line above once this doc is filled in. `entourage status` reports the project as unfinished until then. -->
+<!-- Delete the line above once this doc is filled in. `entourage status` reports the space as unfinished until then. -->
 
 # __NAME__
 
-One paragraph: what this project is, who it is for, and what "done" usually
+One paragraph: what this space is, who it is for, and what "done" usually
 looks like for a piece of work in it.
 
 ## Repos
 
-One section per repo in this project. An agent reads this to decide which
+One section per repo in this space. An agent reads this to decide which
 repo a piece of work belongs in, so be specific.
 
 ### example-repo

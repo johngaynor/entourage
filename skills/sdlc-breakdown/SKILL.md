@@ -107,7 +107,7 @@ Give them a summary they can answer from without opening Linear:
 Then ask them to approve or say what to change. An approval also says when the build phase starts: now, or later, when they start it themselves. Record the ask as a hand-off with this block, then end your message with the summary and, below it, the block the command printed:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: breakdown
 status: needs-human
 question: Approve <card ID> as specified, planned and broken down, and start its build phase now?
@@ -154,7 +154,7 @@ Read the parent and each sub-issue back, then hand off.
 Breakdown is finished when the human has approved the card and, if it was sliced, its sub-issues exist. Then record the hand-off:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: breakdown
 status: done
 next: start
@@ -169,25 +169,25 @@ Recording this hand-off moves the card in Linear to its team's first not-started
 
 ### Start the build phase
 
-Start is not a skill. It is the `entourage task start` command, which makes the task's branch and worktrees, opens its tab in the project's space and starts an agent there for the build phase. It takes one card: the card itself when it is one piece, or, when it was sliced, the first sub-issue in order that is not already started, done or canceled. If every sub-issue is, start nothing and tell the human so.
+Start is not a skill. It is the `entourage task start` command, which makes the task's branch and worktrees, opens its tab in the space and starts an agent there for the build phase. It takes one card: the card itself when it is one piece, or, when it was sliced, the first sub-issue in order that is not already started, done or canceled. If every sub-issue is, start nothing and tell the human so.
 
 When the note below the hand-off says the card was not moved because no Linear key is saved, or because Linear rejected the key, `task start` can't read the card's type and title from Linear either. So the command carries them, whether you run it or give it. Read the type and title of the card it takes, the card itself or the first sub-issue as above, with the Linear tools, and put them after the ID:
 
 ```
-entourage task start <project> <ID> --type <type> --title '<title>'
+entourage task start <space> <ID> --type <type> --title '<title>'
 ```
 
-Put the title between single quotes as Linear has it, and write each `'` in it as `'\''`, so the command runs as pasted whatever the title holds: `Ada's export` is `--title 'Ada'\''s export'`. With any other note, or none, the command is the plain `entourage task start <project> <ID>`.
+Put the title between single quotes as Linear has it, and write each `'` in it as `'\''`, so the command runs as pasted whatever the title holds: `Ada's export` is `--title 'Ada'\''s export'`. With any other note, or none, the command is the plain `entourage task start <space> <ID>`.
 
-- **The human chose to start later:** give them the command, `entourage task start <project> <ID>`, and run nothing.
+- **The human chose to start later:** give them the command, `entourage task start <space> <ID>`, and run nothing.
 - **The human chose to start now:** run that command yourself, once, after the hand-off above is recorded, or written in your message when it could not be recorded. Then tell the human the tab it opened, and pass on every `agent` and `note` line it printed: those say what still needs them, such as an agent it could not start, a repo Claude Code will ask about trusting, or a card it did not move in Linear.
 
 If it stops, don't run it again. Tell the human what it said, and what to do next:
 
 | It stopped | Then tell the human |
 |---|---|
-| Before it made the task: what it said has no `made the task at` | To run `entourage task start <project> <ID>` once what it named is fixed |
-| After it made the task: it says `made the task at <folder>` | That the task is made and a second `task start` would be refused, so to open that folder in the project's space and run `entourage task build <project> <ID>` there |
+| Before it made the task: what it said has no `made the task at` | To run `entourage task start <space> <ID>` once what it named is fixed |
+| After it made the task: it says `made the task at <folder>` | That the task is made and a second `task start` would be refused, so to open that folder in the space, in Herdr, and run `entourage task build <space> <ID>` there |
 
 ## The handoff block
 
@@ -196,7 +196,7 @@ Every step of the lifecycle ends the same way, so whoever is driving it, a perso
 Record a hand-off every time this step ends or pauses: when the step is finished, when you need an answer, and when something has gone wrong. Record it even when you go straight on to another step, because the record is what shows this one ended. Run `entourage task handoff` with the block on stdin, one value per line:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
@@ -209,7 +209,7 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<space>` is the entourage space this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
@@ -218,7 +218,7 @@ EOF
 | `answered` | The human has replied to a `needs-human` hand-off | `step`, `status`, `answer` |
 | `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `step`, `status`, `reason` |
 
-- **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage project, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a project or install anything to get it to run.
+- **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage space, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a space or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
 - **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
 - **`needs-human` is a pause, not an ending.** Wait for the answer. When it comes, record it before anything else, as a hand-off with `status: answered` and what they said in a few words. That is how the time spent waiting on them is told from your own work. Then carry on with this step. The step is over only at `done` or `failed`.

@@ -20,6 +20,15 @@ The `entourage` CLI, the part of the software factory that runs the rest. It
 makes the tabs, starts an agent in each, records how each step ended, and
 moves the card in Linear.
 
+## Space
+
+A group of repos that belong together, with a `PROJECT.md` saying what each
+repo is for. It opens in Herdr as one space, the word Herdr uses for it too,
+and each of its cards' tabs is there. The `entourage space` commands make,
+open and list them, and the first argument of every `task` command names one.
+`entourage project` is its old name, and still works. Project means only a
+Linear project.
+
 ## Step
 
 One of the eight stages a card goes through, in this order: define, plan,

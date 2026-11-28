@@ -98,14 +98,14 @@ cmd_status() {
     done
   fi
   [ "$problems" = 0 ] || say "$problems not linked or not up to date. Run: entourage update"
-  say "Projects: $PROJECTS"
-  local project_problems=0
-  check_projects || project_problems=$?
-  # Only worth saying on a machine that has projects to start tasks in.
-  if ! have_just && [ -n "$(ls -d "$PROJECTS"/*/ 2>/dev/null)" ]; then
+  say "Spaces: $SPACES"
+  local space_problems=0
+  check_spaces || space_problems=$?
+  # Only worth saying on a machine that has spaces to start tasks in.
+  if ! have_just && [ -n "$(ls -d "$SPACES"/*/ 2>/dev/null)" ]; then
     say "  note       just is not installed, so tasks start without setup. Install it: https://just.systems"
   fi
-  if ! have_sqlite && [ -n "$(ls -d "$PROJECTS"/*/ 2>/dev/null)" ]; then
+  if ! have_sqlite && [ -n "$(ls -d "$SPACES"/*/ 2>/dev/null)" ]; then
     say "  note       $SQLITE is not installed, so hand-offs are not recorded."
   fi
   # The Linear key, asked of Linear itself. Only a key Linear rejects, or one
@@ -127,9 +127,9 @@ cmd_status() {
     *) key_out=$(first_sentence "$key_out")
        printf '  %-10s %s\n' note "the key was not checked${key_out:+: $key_out}" ;;
   esac
-  if [ "$problems" -gt 0 ] || [ "$project_problems" -gt 0 ] || [ "$settings_problems" -gt 0 ] ||
+  if [ "$problems" -gt 0 ] || [ "$space_problems" -gt 0 ] || [ "$settings_problems" -gt 0 ] ||
     [ "$key_problems" -gt 0 ]; then
-    [ "$project_problems" = 0 ] || say "$project_problems project problem(s)."
+    [ "$space_problems" = 0 ] || say "$space_problems space problem(s)."
     return 1
   fi
   say "Everything is in order."

@@ -2,9 +2,9 @@
 # entourage: set up and maintain this machine's copy of the software factory.
 # It links the Herdr mods and layouts under herdr/, the agent skills under
 # skills/ and the agent profiles under agents/, keeps the model and effort
-# each profile runs on, and manages projects (groups of repos that show up in
-# Herdr as spaces) and their tasks (a card an agent writes up, then a worktree
-# of each repo on one branch, each shown as a tab in the project's space).
+# each profile runs on, and manages spaces (groups of repos, each of which
+# opens in Herdr as one space) and their tasks (a card an agent writes up, then
+# a worktree of each repo on one branch, each shown as a tab in its space).
 set -euo pipefail
 
 usage() {
@@ -14,30 +14,30 @@ entourage: set up and maintain this machine from the entourage repo
 Usage:
   entourage install            first-time setup: link everything into the tools on this machine
   entourage update [--no-pull] get the latest entourage, link anything new, drop stale links, refresh Herdr
-  entourage status             show what is linked and what is not, and check your projects and your Linear key
-  entourage project new <name> [<path>...]  make a project from the template, with the repos at those paths
-  entourage project add <name> <path>       add a repo that is already on this machine
-  entourage project open <name>             show the project as a Herdr space
-  entourage project ls [--json]             list projects and their repos (--json for programs)
-  entourage project team <name> [<team>...] set the Linear teams whose cards are the project's, or print them
+  entourage status             show what is linked and what is not, and check your spaces and your Linear key
+  entourage space new <name> [<path>...]    make a space from the template, with the repos at those paths
+  entourage space add <name> <path>         add a repo that is already on this machine
+  entourage space open <name>               show the space in Herdr
+  entourage space ls [--json]               list spaces and their repos (--json for programs)
+  entourage space team <name> [<team>...]   set the Linear teams whose cards are the space's, or print them
   entourage profile ls [--json]             show the model and effort each agent profile runs on
                                            (--json for programs)
   entourage profile set <profile> <model|effort> <value>
                                            set the model or the effort of one profile: write-up,
                                            build, reviewer or verifier
-  entourage task ls <project> [--json]     list the open cards of the project's Linear teams, by status
-  entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
-  entourage task start <project> <card> [--type <type> --title <title>] [<repo>[:<group>[,<group>...]] ...]
+  entourage task ls <space> [--json]       list the open cards of the space's Linear teams, by status
+  entourage task new <space> <card>        write a card up: an agent defines, plans and breaks it down
+  entourage task start <space> <card> [--type <type> --title <title>] [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab
                                            where the agent builds the card
-  entourage task build <project> <card>    start the agent that builds the card, in its task's tab
-  entourage task finish <project> <card>   end a task whose work has merged: remove its worktrees,
+  entourage task build <space> <card>      start the agent that builds the card, in its task's tab
+  entourage task finish <space> <card>     end a task whose work has merged: remove its worktrees,
                                            its branch in each repo and its folder, and close its tab
-  entourage task watch <project> <card> [--once]
+  entourage task watch <space> <card> [--once]
                                            watch the card's pull requests on GitHub until every one
                                            has merged, or one is closed or in conflict (--once: check once)
-  entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
-  entourage task log <project> [<card>] [--json]
+  entourage task handoff <space> <card>    record how a step ended: a handoff block on stdin
+  entourage task log <space> [<card>] [--json]
                                            list a card's hand-offs and how long each step took,
                                            or with no card the cards that have hand-offs and where each stands
   entourage linear key                     save your Linear API key, so entourage can read and write Linear cards
@@ -53,26 +53,29 @@ Usage:
                                            started status, its last started one (In Review), or Done
   entourage help
 
-A project groups repos that belong together, with a PROJECT.md saying what
-each repo is for. A repo can be in several projects. `project new` also
-marks the project's folder as trusted in Claude Code's own file
-(~/.claude.json), so an agent started there is not stopped by the trust
-question. It needs jq; without it Claude Code asks once.
+A space groups repos that belong together, with a PROJECT.md saying what
+each repo is for, and opens in Herdr as one space. A repo can be in several
+spaces. `space new` also marks the space's folder as trusted in Claude
+Code's own file (~/.claude.json), so an agent started there is not stopped
+by the trust question. It needs jq; without it Claude Code asks once.
+`entourage project` is the old name of `entourage space`, and still works:
+`entourage project ls` runs `entourage space ls`, with a note on stderr that
+names the space command to run instead.
 
-A task is one piece of work in a project, usually a Linear card.
+A task is one piece of work in a space, usually a Linear card.
 `task ls` lists the cards `task new` can be given: every card of the
-project's Linear teams that is not done, cancelled or a duplicate, under its
+space's Linear teams that is not done, cancelled or a duplicate, under its
 status. It needs two things set once. `linear key` asks for a Linear API key
 and saves it (make one in Linear, under Settings, Account, Security & access,
 Personal API keys; Read permission is enough to list cards and for
 `linear read`, which the card skills read a card with, and the card skills'
 writes, `linear type`, `linear section` and `linear move`, need Write too).
-`project team` names the project's teams by their keys: ABC for the team
-whose cards are ABC-122. A project can name several teams, and several
-projects can name the same one. Linear is asked with curl and its answer read
+`space team` names the space's teams by their keys: ABC for the team
+whose cards are ABC-122. A space can name several teams, and several
+spaces can name the same one. Linear is asked with curl and its answer read
 with jq.
-`task new` takes the card's ID, like ABC-122. It opens a tab in the project's
-Herdr space and starts an agent there, which writes the card up with the
+`task new` takes the card's ID, like ABC-122. It opens a tab in the space,
+in Herdr, and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
 Once you do, it runs task start, unless you hold the build phase for later.
 claude starts with the entourage-write-up profile (see below).
@@ -91,9 +94,9 @@ branch Linear's would. They are used only when no key is saved or Linear cannot 
 asked (a rejected key, the network, no curl or jq), with a note saying why.
 With a key Linear accepts, Linear's type and title win, with a note naming
 each given one that differs. Both are given or neither, and a type that is
-not a branch type stops it. It makes a folder in the project's tasks/ folder
+not a branch type stops it. It makes a folder in the space's tasks/ folder
 with a worktree of each repo on that branch, and opens a tab for it. Then it
-types `entourage task build <project> <card>` into the tab, which starts the
+types `entourage task build <space> <card>` into the tab, which starts the
 agent on the card, with no one typing there.
 Setup is off for now: with ENTOURAGE_SETUP=1, a repo with a justfile that has
 a `setup` recipe gets `just setup` run in that tab first, so the checkout is
@@ -159,17 +162,17 @@ when the human answers a question. It reads a handoff block on stdin (step,
 status, next and so on, one per line), refuses one that breaks the rules, and
 records it. `task log` lists what was recorded for a card, with how long each
 step took and how long it waited on the human. With no card it lists the
-project's cards that have hand-offs, newest first, each with where it stands
+space's cards that have hand-offs, newest first, each with where it stands
 and for how long: a card whose pull requests have merged stands at merged.
 With --json it prints the same view as one line, for
 programs: the Steps panel in Herdr draws it. Run
-`entourage task handoff <project> <card>` with no block to see the rules.
+`entourage task handoff <space> <card>` with no block to see the rules.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
 Skills are linked into ~/.claude/skills, and agent profiles into
 ~/.claude/agents (CLAUDE_CONFIG_DIR picks another ~/.claude). The harness is
 claude (ENTOURAGE_HARNESS picks another command).
-Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
+Your spaces are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage). Hand-offs are recorded beside them, in
 entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
 
@@ -212,7 +215,7 @@ ENTOURAGE_LIVE are the variables the file cannot set.
 
 The copy of entourage in a git worktree of the entourage repo, run as
 ./cli/entourage, is a change being built. It runs only the commands that
-read: help, status, project ls, project team <name> with no teams,
+read: help, status, space ls, space team <name> with no teams,
 profile ls, task ls, task log and task watch. Every other command stops before it does anything,
 says why, and leaves this machine as it was. ENTOURAGE_LIVE=1, set for that one run,
 runs it for real. The installed entourage is never stopped, whatever folder
@@ -232,7 +235,7 @@ while [ -L "$self" ]; do
 done
 REPO=$(cd -P "$(dirname "$self")/.." && pwd)
 
-# The user's own things: their projects, and what entourage keeps for them.
+# The user's own things: their spaces, and what entourage keeps for them.
 # They live outside the repo so that they are never published and an npm
 # reinstall does not delete them.
 ENT_HOME=${ENTOURAGE_HOME:-$HOME/.config/entourage}
@@ -333,7 +336,8 @@ HERDR_INSTALL='curl -fsSL https://releases.herdr.dev/app/install.sh | sh'
 # What `update` reinstalls when entourage came from npm rather than a git clone.
 NPM_SPEC=${ENTOURAGE_NPM_SPEC:-@johngaynor/entourage}
 
-PROJECTS=$ENT_HOME/projects
+# The spaces. The folder keeps its old name for now.
+SPACES=$ENT_HOME/projects
 # The model and effort each agent profile runs on (settings.sh). Not the env
 # file: a Herdr mod changes it, and the env file holds the Linear key.
 SETTINGS=$ENT_HOME/settings.json
@@ -345,7 +349,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common guard links recipes trust settings project linear task finish watch agents handoff commands; do
+for part in common guard links recipes trust settings space linear task finish watch agents handoff commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null
@@ -359,7 +363,9 @@ case ${1:-help} in
   install) shift; cmd_install "$@" ;;
   update) shift; cmd_update "$@" ;;
   status) shift; cmd_status "$@" ;;
-  project) shift; cmd_project "$@" ;;
+  space) shift; cmd_space "$@" ;;
+  # The old name: the same command, with a note on stderr naming the new one.
+  project) shift; old_project_name "$@"; cmd_space "$@" ;;
   task) shift; cmd_task "$@" ;;
   linear) shift; cmd_linear "$@" ;;
   profile) shift; cmd_profile "$@" ;;

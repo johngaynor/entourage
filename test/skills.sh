@@ -37,7 +37,7 @@ handoff_block_names_every_status() {
 each_skill_hands_off_as_itself() {
   local s
   for s in $CARD_SKILL_NAMES; do
-    grep -A1 -F "entourage task handoff <project> <card ID> <<'EOF'" "$REPO/skills/$s/SKILL.md" |
+    grep -A1 -F "entourage task handoff <space> <card ID> <<'EOF'" "$REPO/skills/$s/SKILL.md" |
       grep -qx "step: ${s#sdlc-}" ||
       fail "$s does not show the command for handing off with step: ${s#sdlc-}"
   done
@@ -81,15 +81,15 @@ no_skill_says_then_stop() {
 # starts the work after approval is the card's, not a branch put together.
 task_new_prompt_gives_task_start_the_card() {
   local prompt=$REPO/prompts/task-new.md
-  grep -qF 'entourage task start {project} {card}' "$prompt" ||
-    fail "the task-new prompt does not give: entourage task start {project} {card}"
+  grep -qF 'entourage task start {space} {card}' "$prompt" ||
+    fail "the task-new prompt does not give: entourage task start {space} {card}"
   ! grep -q '<type>/' "$prompt" ||
     fail "the task-new prompt still has the agent put a branch together"
 }
 
 task_new_prompt_follows_the_block() {
   local prompt=$REPO/prompts/task-new.md want
-  for want in '`done`' '`needs-human`' '`failed`' 'next: start' '{card}' '{project}'; do
+  for want in '`done`' '`needs-human`' '`failed`' 'next: start' '{card}' '{space}'; do
     grep -qF -- "$want" "$prompt" || fail "the task-new prompt does not mention $want"
   done
 }
@@ -99,7 +99,7 @@ task_new_prompt_follows_the_block() {
 # nothing the agents read still calls it setup.
 breakdown_hands_on_to_start() {
   local skill=$REPO/skills/sdlc-breakdown/SKILL.md found
-  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'next: start' ||
+  grep -A3 -F "entourage task handoff <space> <card ID> <<'EOF'" "$skill" | grep -qx 'next: start' ||
     fail "sdlc-breakdown does not show its done hand-off with next: start"
   found=$(grep -rnF 'next: setup' "$REPO/skills" "$REPO/prompts") &&
     fail "the step after breakdown is still called setup: $found"
@@ -120,10 +120,10 @@ approval_starts_the_build_unless_held() {
   section=$(sed -n '/^### Start the build phase/,/^## /p' "$skill")
   [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build phase section"; return; }
   for want in 'the first sub-issue in order that is not already started, done or canceled' \
-      'start later:** give them the command, `entourage task start <project> <ID>`, and run nothing' \
+      'start later:** give them the command, `entourage task start <space> <ID>`, and run nothing' \
       'start now:** run that command yourself, once, after the hand-off above is recorded' \
       'every `agent` and `note` line' "If it stops, don't run it again." \
-      'it says `made the task at <folder>`' 'run `entourage task build <project> <ID>` there'; do
+      'it says `made the task at <folder>`' 'run `entourage task build <space> <ID>` there'; do
     case $section in *"$want"*) ;; *) fail "sdlc-breakdown's Start the build phase does not say: $want" ;; esac
   done
   ! grep -qF 'which the human runs' "$skill" || fail "sdlc-breakdown still says the human always runs task start"
@@ -162,9 +162,9 @@ breakdown_gives_the_type_and_title_without_a_key() {
   local skill=$REPO/skills/sdlc-breakdown/SKILL.md prompt=$REPO/prompts/task-new.md section want
   section=$(sed -n '/^### Start the build phase/,/^## /p' "$skill")
   [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build phase section"; return; }
-  for want in "entourage task start <project> <ID> --type <type> --title '<title>'" \
+  for want in "entourage task start <space> <ID> --type <type> --title '<title>'" \
       'no Linear key is saved' 'Linear rejected the key' 'first sub-issue' "'\\''" \
-      'whether you run it or give it' 'the plain `entourage task start <project> <ID>`'; do
+      'whether you run it or give it' 'the plain `entourage task start <space> <ID>`'; do
     case $section in
       *"$want"*) ;;
       *) fail "sdlc-breakdown's Start the build phase does not say: $want" ;;
@@ -183,7 +183,7 @@ task_build_prompt_drives_build_and_review() {
   for want in 'Start with the sdlc-build skill' '`review` is the sdlc-review skill' \
       '`build` is the sdlc-build skill' '`pr` is the sdlc-pr skill' 'next: merged' \
       '`done`' '`needs-human`' '`failed`' \
-      '{card}' '{project}' 'entourage task handoff {project} {card}' 'record my answer'; do
+      '{card}' '{space}' 'entourage task handoff {space} {card}' 'record my answer'; do
     grep -qF -- "$want" "$prompt" || fail "the task-build prompt does not mention $want"
   done
   # The run used to end at the review, before the pull request was a skill.
@@ -234,7 +234,7 @@ a_done_block_is_written_before_the_next_step() {
 handoffs_are_recorded_with_the_command() {
   local s
   case $(handoff_section sdlc-define) in
-    *"entourage task handoff <project> <card ID> <<'EOF'"*) ;;
+    *"entourage task handoff <space> <card ID> <<'EOF'"*) ;;
     *) fail "the handoff block section does not show the command to run" ;;
   esac
   # The quotes in <<'EOF' are what stop the shell running backticks and $()
@@ -243,8 +243,8 @@ handoffs_are_recorded_with_the_command() {
     ! grep -F 'entourage task handoff <' "$REPO/skills/$s/SKILL.md" | grep -qv "<<'EOF'\$" ||
       fail "$s shows the command without the quoted <<'EOF'"
   done
-  grep -qF 'entourage task handoff {project} {card}' "$REPO/prompts/task-new.md" ||
-    fail "the task-new prompt does not name the command, with the project and card filled in"
+  grep -qF 'entourage task handoff {space} {card}' "$REPO/prompts/task-new.md" ||
+    fail "the task-new prompt does not name the command, with the space and card filled in"
 }
 
 # Waiting on the human can only be told from work if the agent says when the
@@ -270,7 +270,7 @@ build_pushes_nothing() {
 # A build is done only when the tests pass, and review comes after it.
 build_is_done_only_when_the_tests_pass() {
   local skill=$REPO/skills/sdlc-build/SKILL.md
-  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'next: review' ||
+  grep -A3 -F "entourage task handoff <space> <card ID> <<'EOF'" "$skill" | grep -qx 'next: review' ||
     fail "sdlc-build does not show its done hand-off with next: review"
   grep -qF 'only when the tests pass' "$skill" ||
     fail "sdlc-build does not say it is done only when the tests pass"
@@ -441,7 +441,7 @@ review_pushes_nothing() {
 review_sends_what_is_not_met_back_to_build() {
   local skill=$REPO/skills/sdlc-review/SKILL.md next
   for next in pr build; do
-    grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx "next: $next" ||
+    grep -A3 -F "entourage task handoff <space> <card ID> <<'EOF'" "$skill" | grep -qx "next: $next" ||
       fail "sdlc-review does not show its done hand-off with next: $next"
   done
 }
@@ -453,9 +453,9 @@ review_asks_the_human_after_one_send_back() {
   local skill=$REPO/skills/sdlc-review/SKILL.md
   grep -qF 'already shows a hand-off from the review step with `next: build`' "$skill" ||
     fail "sdlc-review does not look in the log for a hand-off from the review step that sent the work back"
-  grep -qF 'entourage task log <project> <card ID>' "$skill" ||
+  grep -qF 'entourage task log <space> <card ID>' "$skill" ||
     fail "sdlc-review does not say how to read the card's log"
-  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'status: needs-human' ||
+  grep -A3 -F "entourage task handoff <space> <card ID> <<'EOF'" "$skill" | grep -qx 'status: needs-human' ||
     fail "sdlc-review does not show the needs-human hand-off it makes after a send-back"
 }
 
@@ -518,9 +518,9 @@ pr_follows_the_repos_rules_for_pull_requests() {
 # hands on to merged only once GitHub says every one has.
 pr_waits_for_the_human_to_merge() {
   local skill=$REPO/skills/sdlc-pr/SKILL.md
-  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'status: needs-human' ||
+  grep -A3 -F "entourage task handoff <space> <card ID> <<'EOF'" "$skill" | grep -qx 'status: needs-human' ||
     fail "sdlc-pr does not show its needs-human hand-off with the links"
-  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'next: merged' ||
+  grep -A3 -F "entourage task handoff <space> <card ID> <<'EOF'" "$skill" | grep -qx 'next: merged' ||
     fail "sdlc-pr does not show its done hand-off with next: merged"
   grep -qF 'gh pr view' "$skill" && grep -qF -- '--json state' "$skill" ||
     fail "sdlc-pr does not check each pull request with gh pr view --json state"
@@ -541,7 +541,7 @@ pr_watches_the_pull_requests() {
   wait=$(pr_wait_section)
   [ -n "$wait" ] || { fail "sdlc-pr has no section that waits for the merge"; return; }
   asked=$(printf '%s\n' "$wait" | grep -nx 'status: needs-human' | head -n1 | cut -d: -f1)
-  watched=$(printf '%s\n' "$wait" | grep -nF 'entourage task watch <project> <card ID>`' | head -n1 | cut -d: -f1)
+  watched=$(printf '%s\n' "$wait" | grep -nF 'entourage task watch <space> <card ID>`' | head -n1 | cut -d: -f1)
   if [ -z "$asked" ] || [ -z "$watched" ]; then
     fail "sdlc-pr's wait does not hand off needs-human and start entourage task watch"
   elif [ "$asked" -ge "$watched" ]; then
@@ -549,7 +549,7 @@ pr_watches_the_pull_requests() {
   fi
   case $wait in *'in the background'*) ;; *) fail "sdlc-pr does not run the watch in the background" ;; esac
   case $wait in
-    *'They say it has merged.'*'entourage task watch <project> <card ID> --once'*) ;;
+    *'They say it has merged.'*'entourage task watch <space> <card ID> --once'*) ;;
     *) fail "sdlc-pr does not check at once with --once when told it has merged" ;;
   esac
   case $wait in *'gh pr view'*) fail "sdlc-pr's wait still checks with gh pr view" ;; esac
@@ -568,7 +568,7 @@ pr_records_a_merge_the_watch_sees() {
     *) fail "sdlc-pr does not record answered, merged on GitHub, when the watch ends with 0" ;;
   esac
   case $ended in *'section 7'*) ;; *) fail "sdlc-pr does not hand off as section 7 says once the watch sees the merge" ;; esac
-  grep -A4 -F "entourage task handoff <project> <card ID> <<'EOF'" "$REPO/skills/sdlc-pr/SKILL.md" |
+  grep -A4 -F "entourage task handoff <space> <card ID> <<'EOF'" "$REPO/skills/sdlc-pr/SKILL.md" |
     grep -A2 -x 'status: done' | grep -qx 'next: merged' || fail "sdlc-pr's section 7 does not hand off done with merged next"
 }
 
@@ -609,7 +609,7 @@ pr_makes_a_change_asked_for_in_the_tab() {
   ! grep -qF 'not part of this step yet' "$skill" ||
     fail "sdlc-pr still says a change asked for in the tab is not made"
   # The wait names a change as one of its answers.
-  grep -A5 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" |
+  grep -A5 -F "entourage task handoff <space> <card ID> <<'EOF'" "$skill" |
     grep -E '^options: merged \|' | grep -q 'change' ||
     fail "sdlc-pr's wait for the merge does not name a change as an answer"
   # The section that makes a change, from its heading to the next one.
@@ -645,11 +645,11 @@ pr_finishes_the_task_after_the_merge() {
   section=$(pr_section 7)
   [ -n "$section" ] || fail "sdlc-pr has no section 7"
   done_at=$(printf '%s\n' "$section" | grep -nx 'next: merged' | head -n1 | cut -d: -f1)
-  finish_at=$(printf '%s\n' "$section" | grep -nF 'entourage task finish <project> <card ID>' | head -n1 | cut -d: -f1)
+  finish_at=$(printf '%s\n' "$section" | grep -nF 'entourage task finish <space> <card ID>' | head -n1 | cut -d: -f1)
   if [ -z "$done_at" ]; then
     fail "sdlc-pr's section 7 does not show its done hand-off with next: merged"
   elif [ -z "$finish_at" ]; then
-    fail "sdlc-pr's section 7 does not run entourage task finish <project> <card ID>"
+    fail "sdlc-pr's section 7 does not run entourage task finish <space> <card ID>"
   elif [ "$finish_at" -le "$done_at" ]; then
     fail "sdlc-pr's section 7 runs task finish before it records the merge"
   fi
@@ -660,7 +660,7 @@ pr_finishes_the_task_after_the_merge() {
   # The task used to be left as it was after the merge.
   ! grep -qF 'tab stay as they are' "$REPO/skills/sdlc-pr/SKILL.md" ||
     fail "sdlc-pr still says the task's worktrees and its tab stay as they are"
-  grep -qF 'entourage task finish {project} {card}' "$prompt" ||
+  grep -qF 'entourage task finish {space} {card}' "$prompt" ||
     fail "the task-build prompt does not say the task is finished at next: merged"
   ! grep -qF 'tab stay' "$prompt" || fail "the task-build prompt says the task's tab stays"
 }
@@ -750,10 +750,10 @@ pr_brings_a_conflicting_branch_up_to_date() {
     esac
   done
   case $section in *'git rebase'* | *'--force'* | *'git push'*) fail "sdlc-pr's section that brings a pull request up to date rebases, forces or pushes" ;; esac
-  printf '%s\n' "$section" | grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" |
+  printf '%s\n' "$section" | grep -A3 -F "entourage task handoff <space> <card ID> <<'EOF'" |
     grep -A1 -x 'status: done' | grep -qx 'next: review' ||
     fail "sdlc-pr's section that brings a pull request up to date does not hand off done with review next"
-  printf '%s\n' "$section" | grep -A4 -F "entourage task handoff <project> <card ID> <<'EOF'" |
+  printf '%s\n' "$section" | grep -A4 -F "entourage task handoff <space> <card ID> <<'EOF'" |
     grep -E '^summary: ' | grep 'files that conflicted' | grep -q 'what the fix changed' ||
     fail "sdlc-pr's done hand-off for a merge does not name the files that conflicted and what the fix changed"
 
@@ -788,10 +788,10 @@ pr_asks_only_when_a_conflict_cannot_be_settled() {
     *'Ask the human only when'*'cannot be made to pass'*'what a Done when item says'*) ;;
     *) fail "sdlc-pr does not name the two times it asks the human about a conflict" ;;
   esac
-  printf '%s\n' "$section" | grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" |
+  printf '%s\n' "$section" | grep -A3 -F "entourage task handoff <space> <card ID> <<'EOF'" |
     grep -qx 'status: needs-human' ||
     fail "sdlc-pr's section that brings a pull request up to date does not show its needs-human hand-off"
-  printf '%s\n' "$section" | grep -A4 -F "entourage task handoff <project> <card ID> <<'EOF'" |
+  printf '%s\n' "$section" | grep -A4 -F "entourage task handoff <space> <card ID> <<'EOF'" |
     grep -E '^question: ' | grep '<the pull request>' | grep -q '<the files in conflict>' ||
     fail "sdlc-pr's question about a conflict does not name the pull request and the files in conflict"
   for want in 'Until they answer, commit and push nothing' 'record the answer first' '`failed`'; do
@@ -875,7 +875,7 @@ pr_goes_on_when_the_card_cannot_be_moved() {
     *) fail "sdlc-pr's row for a move that fails does not say to flag it and wait for the merge: $row" ;;
   esac
   # The hand-off that ends the step has room for it.
-  grep -A5 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -E '^flags: ' | grep -q 'not moved' ||
+  grep -A5 -F "entourage task handoff <space> <card ID> <<'EOF'" "$skill" | grep -E '^flags: ' | grep -q 'not moved' ||
     fail "sdlc-pr's done hand-off does not say a card that was not moved goes in flags"
 }
 

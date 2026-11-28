@@ -21,7 +21,7 @@ listed() { awk 'NR <= 20 { print "    " $0 } END { if (NR > 20) print "    and "
 # Print the folder of a card's task, or stop when it has none on this
 # machine: tasks/<card>-<short name>, or tasks/<card> for a title with no
 # plain words, as `task build` finds it. Linear is not asked.
-#   $1 the project's folder   $2 the card, in upper case
+#   $1 the space's folder   $2 the card, in upper case
 task_folder() {
   local dir=$1 card=$2 low f found=()
   low=$(printf '%s' "$card" | tr '[:upper:]' '[:lower:]')
@@ -139,11 +139,11 @@ check_worktree() {
   fi
 }
 
-# Close a task's tab: the one named after the task, in the project's space.
+# Close a task's tab: the one named after the task, in its space.
 # It is the last thing `task finish` does, because run in that tab, closing
 # it ends the command. No `confirmed`, so Herdr asks first when it is the
 # space's last tab, since closing that one closes the space.
-#   $1 the project   $2 its folder   $3 the task's name
+#   $1 the space   $2 its folder   $3 the task's name
 close_task_tab() {
   local name=$1 dir=$2 task=$3 id
   if ! herdr_running; then
@@ -169,17 +169,17 @@ close_task_tab() {
 
 task_finish() {
   local name=${1:-} card=${2:-} dir tdir task
-  dir=$(project_dir "$name")
+  dir=$(space_dir "$name")
   [ -n "$card" ] ||
     die "which card? Usage: entourage task finish $name <card>, like: entourage task finish $name ABC-122"
   [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
-  [ "$#" -le 2 ] || die "usage: entourage task finish <project> <card>"
+  [ "$#" -le 2 ] || die "usage: entourage task finish <space> <card>"
   card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
   tdir=$(task_folder "$dir" "$card") || exit 1
   task=${tdir##*/}
 
   # What the task folder holds: a worktree of each repo, and with several
-  # repos the links to the project's doc. Anything else, hidden or not, would
+  # repos the links to the space's doc. Anything else, hidden or not, would
   # be lost with the folder.
   local f wts=() others=()
   for f in "$tdir"/* "$tdir"/.[!.]* "$tdir"/..?*; do

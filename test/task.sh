@@ -2,10 +2,10 @@
 
 # --- tasks: writing a card up -----------------------------------------------
 
-# The project "demo" on a machine that is set up: skills linked, an agent on PATH.
+# The space "demo" on a machine that is set up: skills linked, an agent on PATH.
 card_demo() {
   "$E" install >/dev/null
-  "$E" project new demo >/dev/null
+  "$E" space new demo >/dev/null
   stub claude
   : > "$TMP/herdr-calls.log"
 }
@@ -22,7 +22,7 @@ task_new_starts_an_agent() {
   for want in "Linear card ABC-122" sdlc-define sdlc-plan sdlc-breakdown "entourage task start demo ABC-122"; do
     case $call in *"$want"*) ;; *) fail "the first message does not mention '$want': $call" ;; esac
   done
-  case $call in *"{card}"* | *"{project}"*) fail "a placeholder was left in the first message: $call" ;; esac
+  case $call in *"{card}"* | *"{space}"* | *"{project}"*) fail "a placeholder was left in the first message: $call" ;; esac
   sed '$d' "$TMP/herdr-calls.log" | grep -qF "do space.new {\"name\":\"demo\",\"folder\":\"$P/demo\"}" ||
     fail "did not make the space before the tab: $(cat "$TMP/herdr-calls.log")"
 }
@@ -88,15 +88,15 @@ task_new_refuses_a_bad_card() {
   [ "$(tab_calls)" = 0 ] || fail "opened a tab for a refused card"
 }
 
-task_new_refuses_unknown_project() {
+task_new_refuses_unknown_space() {
   card_demo
-  "$E" task new nope ABC-122 >/dev/null 2>&1 && fail "accepted a project that does not exist"
-  [ ! -e "$P/nope" ] || fail "made a project folder"
+  "$E" task new nope ABC-122 >/dev/null 2>&1 && fail "accepted a space that does not exist"
+  [ ! -e "$P/nope" ] || fail "made a space folder"
   [ "$(tab_calls)" = 0 ] || fail "opened a tab"
 }
 
 task_new_needs_the_skills_linked() {
-  "$E" project new demo >/dev/null
+  "$E" space new demo >/dev/null
   stub claude
   "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" && fail "started an agent with no skills linked"
   grep -q 'entourage update' "$TMP/err" || fail "did not say how to link the skills: $(cat "$TMP/err")"
@@ -105,7 +105,7 @@ task_new_needs_the_skills_linked() {
 
 task_new_needs_a_harness() {
   "$E" install >/dev/null
-  "$E" project new demo >/dev/null
+  "$E" space new demo >/dev/null
   : > "$TMP/herdr-calls.log"
   "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" && fail "exited zero with no harness on PATH"
   grep -q 'ENTOURAGE_HARNESS' "$TMP/err" || fail "did not name the setting: $(cat "$TMP/err")"
@@ -166,14 +166,14 @@ task_new_escapes_the_folder() {
   esac
 }
 
-# The agent starts in the project's folder, so Claude Code has to trust it by
-# then. `project new` does that; `task new` checks again.
+# The agent starts in the space's folder, so Claude Code has to trust it by
+# then. `space new` does that; `task new` checks again.
 
-task_new_trusts_a_project_made_before() {
+task_new_trusts_a_space_made_before() {
   card_demo
   claude_state
   "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
-  is_trusted "$P/demo" || fail "the project's folder is not trusted: $(cat "$HOME/.claude.json")"
+  is_trusted "$P/demo" || fail "the space's folder is not trusted: $(cat "$HOME/.claude.json")"
   [ "$(tab_calls)" = 1 ] || fail "no tab was opened"
   no_trust_litter
 }
@@ -201,7 +201,7 @@ EOF
 task_new_leaves_trusted_claude_state_alone() {
   claude_state
   card_demo
-  is_trusted "$P/demo" || fail "project new did not trust the folder"
+  is_trusted "$P/demo" || fail "space new did not trust the folder"
   local before out
   before=$(ls -i "$HOME/.claude.json")
   out=$("$E" task new demo ABC-122) || fail "task new exited non-zero"
@@ -214,9 +214,9 @@ task_new_leaves_trusted_claude_state_alone() {
   esac
 }
 
-# A project name that is a link leads to a folder entourage did not make,
+# A space name that is a link leads to a folder entourage did not make,
 # perhaps a repo. entourage answers only for folders it made.
-task_new_does_not_trust_a_linked_project() {
+task_new_does_not_trust_a_linked_space() {
   card_demo
   mv "$P/demo" "$TMP/elsewhere"
   ln -s "$TMP/elsewhere" "$P/demo"
@@ -240,9 +240,9 @@ task_new_starts_when_trust_cannot_be_written() {
 
 # --- tasks: starting the work -----------------------------------------------
 
-task_start_refuses_unknown_project() {
-  "$E" task start nope ABC-1 >/dev/null 2>&1 && fail "accepted a project that does not exist"
-  [ ! -e "$P/nope" ] || fail "made a project folder"
+task_start_refuses_unknown_space() {
+  "$E" task start nope ABC-1 >/dev/null 2>&1 && fail "accepted a space that does not exist"
+  [ ! -e "$P/nope" ] || fail "made a space folder"
 }
 
 task_usage_on_unknown_subcommand() {
@@ -263,14 +263,14 @@ branch_of() { git -C "$1" rev-parse --abbrev-ref HEAD; }
 head_of() { git -C "$1" rev-parse "${2:-HEAD}"; }
 has_branch() { git -C "$1" show-ref --verify --quiet "refs/heads/$2"; }
 
-# The project "demo" with a real repo for each name given, and a Linear that
+# The space "demo" with a real repo for each name given, and a Linear that
 # has the card ABC-1, titled X, of type feat: its task is on feat/abc-1-x.
 task_demo() {
   local r
-  "$E" project new demo >/dev/null
+  "$E" space new demo >/dev/null
   for r in "$@"; do
     make_git_repo "$HOME/Dev/$r"
-    "$E" project add demo "$HOME/Dev/$r" >/dev/null
+    "$E" space add demo "$HOME/Dev/$r" >/dev/null
   done
   API=$HOME/Dev/api T=$P/demo/tasks
   linear_has_card ABC-1 X feat
@@ -289,7 +289,7 @@ task_start_makes_a_worktree() {
 # --- tasks: the card a task is started from ---------------------------------
 
 # task start must stop before it makes anything, and say what to do: its
-# message holds $1. The rest are task start's arguments after the project.
+# message holds $1. The rest are task start's arguments after the space.
 start_refused() {
   local want=$1 out
   shift
@@ -677,7 +677,7 @@ task_start_without_origin_uses_local_default() {
 
 task_start_refuses_no_repos() {
   task_demo
-  "$E" task start demo ABC-1 >/dev/null 2>&1 && fail "accepted a project with no repos"
+  "$E" task start demo ABC-1 >/dev/null 2>&1 && fail "accepted a space with no repos"
   [ ! -e "$T" ] || fail "made a tasks folder"
 }
 
@@ -738,8 +738,8 @@ task_start_several_repos() {
   "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
   [ "$(branch_of "$T/abc-1-x/api")" = feat/abc-1-x ] || fail "api worktree not on feat/abc-1-x"
   [ "$(branch_of "$T/abc-1-x/web")" = feat/abc-1-x ] || fail "web worktree not on feat/abc-1-x"
-  is_link_to "$T/abc-1-x/CLAUDE.md" ../../PROJECT.md || fail "CLAUDE.md not linked to the project doc"
-  is_link_to "$T/abc-1-x/AGENTS.md" ../../PROJECT.md || fail "AGENTS.md not linked to the project doc"
+  is_link_to "$T/abc-1-x/CLAUDE.md" ../../PROJECT.md || fail "CLAUDE.md not linked to the space doc"
+  is_link_to "$T/abc-1-x/AGENTS.md" ../../PROJECT.md || fail "AGENTS.md not linked to the space doc"
   [ -f "$T/abc-1-x/CLAUDE.md" ] || fail "the CLAUDE.md link does not resolve"
 }
 
@@ -806,9 +806,9 @@ task_start_needs_herdr_running() {
 }
 
 task_start_repo_path_with_a_space() {
-  "$E" project new demo >/dev/null
+  "$E" space new demo >/dev/null
   make_git_repo "$HOME/Dev/my api"
-  "$E" project add demo "$HOME/Dev/my api" >/dev/null
+  "$E" space add demo "$HOME/Dev/my api" >/dev/null
   linear_has_card ABC-1 X feat
   "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
   [ "$(branch_of "$P/demo/tasks/abc-1-x/my api")" = feat/abc-1-x ] || fail "no worktree at a path with a space"
@@ -834,7 +834,7 @@ EOF
 task_start_refuses_a_repo_with_no_commits() {
   task_demo api
   git init -q -b main "$HOME/Dev/web"
-  "$E" project add demo "$HOME/Dev/web" >/dev/null
+  "$E" space add demo "$HOME/Dev/web" >/dev/null
   "$E" task start demo ABC-1 >/dev/null 2>&1 && fail "accepted a repo with no commits"
   [ ! -e "$T" ] || fail "left a tasks folder behind"
   has_branch "$API" feat/abc-1-x && fail "left the branch behind in api"
@@ -1113,13 +1113,13 @@ CARD_CASES="task_new_refuses_a_card_linear_does_not_have task_new_starts_a_card_
   task_new_ignores_the_old_agent_setting
   task_new_starts_an_agent task_new_sends_one_line_of_json task_new_takes_a_lowercase_card
   task_new_makes_no_task_folder task_new_selects_an_open_space task_new_refuses_a_branch
-  task_new_refuses_a_bad_card task_new_refuses_unknown_project task_new_needs_the_skills_linked
+  task_new_refuses_a_bad_card task_new_refuses_unknown_space task_new_needs_the_skills_linked
   task_new_needs_a_harness task_new_honors_the_harness_setting task_new_needs_the_write_up_profile_linked
   task_new_needs_herdr_running
   task_new_says_when_the_tab_fails task_new_escapes_the_folder
-  task_new_trusts_a_project_made_before task_new_trusts_before_the_tab_opens
+  task_new_trusts_a_space_made_before task_new_trusts_before_the_tab_opens
   task_new_leaves_trusted_claude_state_alone task_new_starts_when_trust_cannot_be_written
-  task_new_does_not_trust_a_linked_project"
+  task_new_does_not_trust_a_linked_space"
 
 # --- tasks: setup -----------------------------------------------------------
 
@@ -1306,7 +1306,7 @@ task_start_says_how_to_start_the_agent_without_hc() {
   case $out in *"starting in the tab"*) fail "said the agent is starting: $out" ;; esac
 }
 
-# A worktree takes the trust of its repo's own checkout, never of the project
+# A worktree takes the trust of its repo's own checkout, never of the space
 # folder above it. task start only reads Claude Code's file, and says when the
 # agent will be asked.
 task_start_notes_a_repo_claude_code_has_not_trusted() {
@@ -1324,8 +1324,8 @@ task_start_says_nothing_of_a_trusted_repo() {
   case $out in *"whether to trust"*) fail "spoke of trust for a repo Claude Code trusts: $out" ;; esac
 }
 
-# With several repos the tab is in the task folder, inside the project folder
-# that project new trusts.
+# With several repos the tab is in the task folder, inside the space folder
+# that space new trusts.
 task_start_says_nothing_of_trust_for_several_repos() {
   claude_state; task_demo api web
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
@@ -1368,12 +1368,12 @@ task_start_starts_when_the_store_cannot_be_written() {
   case $out in *"could not record"*) ;; *) fail "did not say the start was not recorded: $out" ;; esac
 }
 
-# The project "demo" as task start leaves it for the card ABC-1: skills
+# The space "demo" as task start leaves it for the card ABC-1: skills
 # linked, the task's folder with a worktree's folder in it, and an agent on
 # PATH that notes where it ran and what it was told.
 build_demo() {
   "$E" install >/dev/null
-  "$E" project new demo >/dev/null
+  "$E" space new demo >/dev/null
   agent_stub claude
   WT=$P/demo/tasks/abc-1-x/api
   mkdir -p "$WT"
@@ -1413,10 +1413,10 @@ task_build_starts_the_agent() {
   [ "$(agent_arg 5)" = --effort=xhigh ] || fail "the fifth argument is '$(agent_arg 5)'"
   msg=$(cat "$TMP/agent-message")
   [ "$(agent_arg 6)" = "$msg" ] || fail "the first message is not the last argument"
-  for want in "Linear card ABC-1" "entourage project \`demo\`" sdlc-build sdlc-review sdlc-pr "entourage task handoff demo ABC-1"; do
+  for want in "Linear card ABC-1" "entourage space \`demo\`" sdlc-build sdlc-review sdlc-pr "entourage task handoff demo ABC-1"; do
     case $msg in *"$want"*) ;; *) fail "the first message does not mention '$want': $msg" ;; esac
   done
-  case $msg in *"{card}"* | *"{project}"*) fail "a placeholder was left in the first message: $msg" ;; esac
+  case $msg in *"{card}"* | *"{space}"* | *"{project}"*) fail "a placeholder was left in the first message: $msg" ;; esac
   # The task folder of several repos, and that of a card whose title had no
   # plain words, are the card's too.
   mkdir -p "$P/demo/tasks/abc-1"
@@ -1548,7 +1548,7 @@ task_start_one_target_with_a_group() {
   [ "$(branch_of "$T/abc-1-x/api")" = feat/abc-1-x ] || fail "no worktree for the named repo"
   [ ! -e "$T/abc-1-x/web" ] || fail "made a worktree for a repo that was not named"
   has_branch "$HOME/Dev/web" feat/abc-1-x && fail "made a branch in a repo that was not named"
-  [ ! -e "$T/abc-1-x/CLAUDE.md" ] && [ ! -L "$T/abc-1-x/CLAUDE.md" ] || fail "linked the project doc beside one repo"
+  [ ! -e "$T/abc-1-x/CLAUDE.md" ] && [ ! -L "$T/abc-1-x/CLAUDE.md" ] || fail "linked the space doc beside one repo"
   [ "$(hc_calls)" = "send t9 just setup athlete && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
   [ "$(last_call)" = "do tab.new {\"name\":\"abc-1-x\",\"folder\":\"$T/abc-1-x/api\"}" ] || fail "the tab is not in the worktree: $(last_call)"
   case $out in *"setup     api athlete (running in the tab)"*) ;; *) fail "did not report the group: $out" ;; esac
@@ -1568,7 +1568,7 @@ task_start_several_targets() {
   [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'web' && just setup coach) && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
   [ -d "$T/abc-1-x/api" ] && [ -d "$T/abc-1-x/web" ] || fail "missing a named repo's worktree"
   [ ! -e "$T/abc-1-x/docs" ] || fail "made a worktree for a repo that was not named"
-  is_link_to "$T/abc-1-x/CLAUDE.md" ../../PROJECT.md || fail "no project doc link for a task of several repos"
+  is_link_to "$T/abc-1-x/CLAUDE.md" ../../PROJECT.md || fail "no space doc link for a task of several repos"
   [ "$(last_call)" = "do tab.new {\"name\":\"abc-1-x\",\"folder\":\"$T/abc-1-x\"}" ] || fail "the tab is not in the task folder: $(last_call)"
 }
 
@@ -1636,7 +1636,7 @@ task_start_refuses_a_repo_named_twice() {
 task_start_lists_repos_for_an_unknown_target() {
   task_demo api web
   "$E" task start demo ABC-1 nope >/dev/null 2>"$TMP/err" && fail "accepted an unknown repo"
-  grep -q api "$TMP/err" && grep -q web "$TMP/err" || fail "did not list the project's repos: $(cat "$TMP/err")"
+  grep -q api "$TMP/err" && grep -q web "$TMP/err" || fail "did not list the space's repos: $(cat "$TMP/err")"
 }
 
 TARGET_CASES="task_start_refuses_bad_groups_in_any_locale task_start_does_not_fetch_an_unnamed_repo
@@ -1668,7 +1668,7 @@ merge_on_origin() {
   rm -rf "$clone"
 }
 
-# Herdr shows the project's space with the card's write-up tab and the task's
+# Herdr shows the space with the card's write-up tab and the task's
 # tab, tbtask. A space with another folder has a tab of the same name, and so
 # does a closed space in "recent": neither is the task's.
 herdr_shows_the_task() {
@@ -1697,7 +1697,7 @@ EOF
 tab_closes() { grep -c '^do tab\.close ' "$TMP/herdr-calls.log" 2>/dev/null || true; }
 worktrees_of() { git -C "$1" worktree list | wc -l | tr -d ' '; }
 
-# The project demo with the repos named, and the task for ABC-1 started on them.
+# The space demo with the repos named, and the task for ABC-1 started on them.
 finish_demo() {
   task_demo "$@"
   "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
@@ -1742,7 +1742,7 @@ task_finish_removes_a_task_of_two_repos() {
   [ "$(worktrees_of "$API")" = 1 ] && [ "$(worktrees_of "$web")" = 1 ] || fail "git still lists a worktree"
   has_branch "$API" feat/abc-1-x && fail "the branch is still there in api"
   has_branch "$web" feat/abc-1-x && fail "the branch is still there in web"
-  [ -f "$P/demo/PROJECT.md" ] || fail "the project doc the links pointed to is gone"
+  [ -f "$P/demo/PROJECT.md" ] || fail "the space doc the links pointed to is gone"
   [ "$(last_call)" = 'do tab.close {"id":"tbtask"}' ] || fail "did not close the task's tab last: $(last_call)"
 }
 
@@ -1915,7 +1915,7 @@ task_finish_with_no_task() {
 API_PR=https://github.com/acme/api/pull/7
 WEB_PR=https://github.com/acme/web/pull/8
 
-# The project demo with the repos named, the task for ABC-1 started on them,
+# The space demo with the repos named, the task for ABC-1 started on them,
 # and stand-ins for gh and sleep.
 watch_demo() {
   finish_demo "$@"
@@ -2153,7 +2153,7 @@ CASES="$WATCH_CASES $FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_
   task_start_opens_a_tab_one_repo task_start_opens_a_tab_several_repos task_start_selects_an_open_space
   task_start_needs_herdr_running task_start_repo_path_with_a_space task_start_keeps_the_task_when_the_tab_fails
   task_start_several_repos task_start_one_repo_has_no_links task_start_undoes_a_failed_run
-  task_start_refuses_unknown_project task_usage_on_unknown_subcommand
+  task_start_refuses_unknown_space task_usage_on_unknown_subcommand
   task_start_makes_a_worktree task_start_starts_from_the_latest_default_branch
   task_start_works_offline task_start_without_origin_uses_local_default task_start_refuses_no_repos
   task_start_refuses_missing_repo task_start_refuses_existing_task task_start_refuses_existing_branch

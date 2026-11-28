@@ -18,7 +18,7 @@ The human merges. Never run `gh pr merge`, not even with `--auto`, and never tur
 3. If the card has no Plan, it was not approved to build. Push nothing, and hand off as `failed`, saying so.
 4. If the Breakdown cut the card into several slices, each slice is a sub-issue that is built, reviewed and put up as a pull request on its own. Push nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Open nothing unless the Review passed the work. The `sdlc-review` skill writes the Review on the card, as a collapsed section after the Breakdown, and marks each Done when item **Met.**, **Not met.** or **For the human.** If the card has no Review, an item in it is **Not met.**, or it says the tests fail, the work has not passed: push nothing, and hand off as `failed`, saying which. An item **For the human.** does not hold the pull request back. It goes in the description, as what is left to the human.
-6. Check where you are, as the build step did. The work is in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, push nothing and hand off as `failed`, saying where you are.
+6. Check where you are, as the build step did. The work is in the task's worktrees, which `entourage task start` made under the space's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, push nothing and hand off as `failed`, saying where you are.
 7. Run `git status` in each worktree. The review step leaves nothing uncommitted, and nothing uncommitted goes into a pull request. If a worktree has changes, push nothing, and hand off as `failed`, naming the worktree and its changed files.
 
 ## 1. Find what the work changed
@@ -47,7 +47,7 @@ Read the guidance in each worktree with commits: its `CLAUDE.md`, `AGENTS.md`, `
 
 ## 4. Push the branch and open the pull request
 
-**Back from section 8.** When this step runs again after section 8 brought a pull request up to date and the review step passed the work again, the pull requests are open already: `entourage task log <project> <card ID>` shows the last `pr` hand-off as `done`, with `review` next. Push only a branch that moved. In each worktree with commits, run `git fetch origin`, then `git log --oneline origin/<branch>..HEAD`: when it shows nothing, GitHub has every commit already, so push nothing in that worktree and leave its pull request as it is, open or merged. A branch that moved goes through the list below, but its pull request keeps the title and the description it has, **Changes asked for:** lines and all. Read the description with `gh pr view <url> --json body`, add a line at its end under **Brought up to date:**, putting that heading in the first time, and give it to `gh pr edit` in item 5. The line says what the hand-off of section 8 said in its summary: the merge commit, the files that conflicted and what the fix changed.
+**Back from section 8.** When this step runs again after section 8 brought a pull request up to date and the review step passed the work again, the pull requests are open already: `entourage task log <space> <card ID>` shows the last `pr` hand-off as `done`, with `review` next. Push only a branch that moved. In each worktree with commits, run `git fetch origin`, then `git log --oneline origin/<branch>..HEAD`: when it shows nothing, GitHub has every commit already, so push nothing in that worktree and leave its pull request as it is, open or merged. A branch that moved goes through the list below, but its pull request keeps the title and the description it has, **Changes asked for:** lines and all. Read the description with `gh pr view <url> --json body`, add a line at its end under **Brought up to date:**, putting that heading in the first time, and give it to `gh pr edit` in item 5. The line says what the hand-off of section 8 said in its summary: the merge commit, the files that conflicted and what the fix changed.
 
 For each worktree with commits, and no other:
 
@@ -74,7 +74,7 @@ If the command exits non-zero, the card was not moved, and what it printed says 
 With every pull request open, hand off as `needs-human` with their links:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: pr
 status: needs-human
 summary: <the pull requests opened, one for each repo the work changed, what is left to the human in them, and why the card was not moved to In Review, if it was not>
@@ -83,12 +83,12 @@ options: merged | a change you want made | stop here
 EOF
 ```
 
-Then start `entourage task watch <project> <card ID>` in the background, the way your tools run a long command without waiting for it to end, such as `run_in_background` in Claude Code. You are told when it ends, and can answer the human meanwhile. It asks GitHub about each pull request for the card on a schedule: every minute for the first 10 minutes after the newest was opened, every 5 minutes for the hour after that, then every 30 minutes. Each check prints a line for each pull request, `merged`, `open` or `closed` and its URL, and it ends only once every one has merged or one is closed. It costs nothing while it sleeps. Start it once: an answer from the human, or a change made as section 6 says, leaves it running. A watch that has ended, as it does with 4, is started again when you come back here from section 4 once the pull request is brought up to date. It counts from when the pull request was opened, so it goes on where it was. When it ends:
+Then start `entourage task watch <space> <card ID>` in the background, the way your tools run a long command without waiting for it to end, such as `run_in_background` in Claude Code. You are told when it ends, and can answer the human meanwhile. It asks GitHub about each pull request for the card on a schedule: every minute for the first 10 minutes after the newest was opened, every 5 minutes for the hour after that, then every 30 minutes. Each check prints a line for each pull request, `merged`, `open` or `closed` and its URL, and it ends only once every one has merged or one is closed. It costs nothing while it sleeps. Start it once: an answer from the human, or a change made as section 6 says, leaves it running. A watch that has ended, as it does with 4, is started again when you come back here from section 4 once the pull request is brought up to date. It counts from when the pull request was opened, so it goes on where it was. When it ends:
 
 - **It ends with 0: every pull request for the card has merged.** Its last lines say `merged` for each. The human typed nothing, but the merge is their answer, so record it as one. That way `entourage task log` shows how long the pull requests waited on them, as it does for an answer typed in the tab:
 
   ```
-  entourage task handoff <project> <card ID> <<'EOF'
+  entourage task handoff <space> <card ID> <<'EOF'
   step: pr
   status: answered
   answer: merged on GitHub, seen by the watch
@@ -99,7 +99,7 @@ Then start `entourage task watch <project> <card ID>` in the background, the way
 - **It ends with 3: a pull request was closed without merging.** Its last lines name it, with `closed`. Record that first, as the answer:
 
   ```
-  entourage task handoff <project> <card ID> <<'EOF'
+  entourage task handoff <space> <card ID> <<'EOF'
   step: pr
   status: answered
   answer: closed on GitHub, <its link>
@@ -110,7 +110,7 @@ Then start `entourage task watch <project> <card ID>` in the background, the way
 - **It ends with 4: a pull request is in conflict with its default branch.** Its last lines name it, with `conflict`: GitHub cannot merge it as it is. A closed one would have ended it with 3 instead, since the human is asked about that first. Record the conflict first, as the answer:
 
   ```
-  entourage task handoff <project> <card ID> <<'EOF'
+  entourage task handoff <space> <card ID> <<'EOF'
   step: pr
   status: answered
   answer: in conflict on GitHub, <its link>
@@ -122,7 +122,7 @@ Then start `entourage task watch <project> <card ID>` in the background, the way
 
 When the human answers in the tab, record the answer first, as the handoff block section says. Then:
 
-- **They say it has merged.** Check at once with `entourage task watch <project> <card ID> --once`, which checks once and does not wait: it exits with 0 when every pull request for the card has merged, 2 while one is still open, and 3 when one was closed. With 0, stop the watch in the background, and hand off as section 7 says. With 2, hand off as `needs-human` again, naming the one that has not merged, and leave the watch in the background running. With 3, ask whether to stop, as for a watch that ends with 3. With 4, one is in conflict: stop the watch in the background, and bring it up to date as section 8, "Bring a pull request up to date", says.
+- **They say it has merged.** Check at once with `entourage task watch <space> <card ID> --once`, which checks once and does not wait: it exits with 0 when every pull request for the card has merged, 2 while one is still open, and 3 when one was closed. With 0, stop the watch in the background, and hand off as section 7 says. With 2, hand off as `needs-human` again, naming the one that has not merged, and leave the watch in the background running. With 3, ask whether to stop, as for a watch that ends with 3. With 4, one is in conflict: stop the watch in the background, and bring it up to date as section 8, "Bring a pull request up to date", says.
 - **They ask for a change.** Make it as section 6 says, then wait again. The watch in the background goes on: don't start another.
 - **They say to stop.** Stop the watch in the background, and hand off as `failed`, with the pull requests that are still open in `reason`. Leave them open, as they are.
 
@@ -146,7 +146,7 @@ Then, for each change asked for:
 Then hand off as `needs-human` again, with the links, and wait as section 5 says. The watch in the background is still running, and a pull request just opened for the change is in its next check:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: pr
 status: needs-human
 summary: <the change made, the commit in each pull request that makes it, and that the tests pass>
@@ -160,7 +160,7 @@ EOF
 When every pull request for the card has merged, as the watch saw it or `--once` showed it, record the hand-off. The step is not finished until it is recorded:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: pr
 status: done
 next: merged
@@ -174,7 +174,7 @@ Put your own words in place of each hint in angle brackets, and leave the `flags
 Then finish the task. Run this right after the hand-off is recorded. It is the run's last command:
 
 ```
-entourage task finish <project> <card ID>
+entourage task finish <space> <card ID>
 ```
 
 It removes the task's worktrees, deletes the task's branch in each repo, removes the task's folder and then closes the task's tab. That is the tab this session runs in when `entourage task build` started it. Closing the tab is the last thing it does, and it ends the session. So record the hand-off first, and run nothing after it. The branch on GitHub is left alone: the repo's own settings delete it or keep it.
@@ -198,7 +198,7 @@ In the worktree of each repo whose pull request is in conflict, on the task's br
 Ask the human only when you cannot settle the conflict: when the tests cannot be made to pass, or when a resolution would change what a Done when item says, such as when the default branch now does what an item asks for in another way, or has taken away something the work builds on. Then leave the merge in the worktree as it is, and hand off as `needs-human`, naming the pull request and the files in conflict:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: pr
 status: needs-human
 summary: <why it cannot be settled: the tests that fail and what you tried, or the Done when item a resolution would change, and how>
@@ -212,7 +212,7 @@ Until they answer, commit and push nothing. When they answer, record the answer 
 Once the merge is committed and the tests pass, record the hand-off:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: pr
 status: done
 next: review
@@ -229,7 +229,7 @@ Every step of the lifecycle ends the same way, so whoever is driving it, a perso
 Record a hand-off every time this step ends or pauses: when the step is finished, when you need an answer, and when something has gone wrong. Record it even when you go straight on to another step, because the record is what shows this one ended. Run `entourage task handoff` with the block on stdin, one value per line:
 
 ```
-entourage task handoff <project> <card ID> <<'EOF'
+entourage task handoff <space> <card ID> <<'EOF'
 step: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
@@ -242,7 +242,7 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<space>` is the entourage space this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
@@ -251,7 +251,7 @@ EOF
 | `answered` | The human has replied to a `needs-human` hand-off | `step`, `status`, `answer` |
 | `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `step`, `status`, `reason` |
 
-- **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage project, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a project or install anything to get it to run.
+- **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage space, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a space or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
 - **Wherever this skill says to ask, tell or stop, use the block.** An ask is `needs-human`. Something to tell goes in `flags`. A stop because something is missing or went wrong is `failed`.
 - **`needs-human` is a pause, not an ending.** Wait for the answer. When it comes, record it before anything else, as a hand-off with `status: answered` and what they said in a few words. That is how the time spent waiting on them is told from your own work. Then carry on with this step. The step is over only at `done` or `failed`.

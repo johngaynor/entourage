@@ -5,7 +5,7 @@
 have_just() { command -v just >/dev/null 2>&1; }
 
 # Print the justfile at a folder's own root, or return 1 when it has none.
-# `just` would also look in the folders above; a recipe from another project's
+# `just` would also look in the folders above; a recipe from another repo's
 # justfile must never be run in a repo, so only the root counts.
 root_justfile() {
   local dir=$1 name
