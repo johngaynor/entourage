@@ -572,7 +572,108 @@ task_new_prefers_an_exported_agent_to_the_env_file() {
   esac
 }
 
-CARD_CASES="task_new_takes_the_agent_from_the_env_file task_new_prefers_an_exported_agent_to_the_env_file
+# --- task new checks the card with Linear -----------------------------------
+
+# What Linear answers when it has the card, and when it has none.
+HAS_CARD='{"data":{"issues":{"nodes":[{"identifier":"ABC-122"}]}}}'
+NO_CARD='{"data":{"issues":{"nodes":[]}}}'
+
+# A mistyped card ID stops it before anything is opened, so no agent is left
+# looking for a card that is not there.
+task_new_refuses_a_card_linear_does_not_have() {
+  card_demo; saved_key; stub_linear; linear_answers "$NO_CARD"
+  out=$("$E" task new demo ABC-999 2>&1) && fail "exited zero for a card Linear does not have"
+  case $out in *"Linear has no card ABC-999"*) ;; *) fail "did not say Linear has no such card: $out" ;; esac
+  [ "$(tab_calls)" = 0 ] || fail "opened a tab: $(cat "$TMP/herdr-calls.log")"
+  ! grep -q '^do space\.' "$TMP/herdr-calls.log" || fail "showed the space first: $(cat "$TMP/herdr-calls.log")"
+}
+
+# The card is looked up by its team's key and its number, as Linear keeps it.
+task_new_starts_a_card_linear_has() {
+  card_demo; saved_key; stub_linear; linear_answers "$HAS_CARD"
+  "$E" task new demo abc-122 >/dev/null || fail "task new exited non-zero"
+  [ "$(tab_calls)" = 1 ] || fail "expected one tab, got $(tab_calls)"
+  [ "$(curl_count)" = 1 ] || fail "asked Linear $(curl_count) times, not once"
+  case $(curl_calls) in
+    *'"team":"ABC"'*'"number":122'*) ;;
+    *) fail "did not ask for team ABC and number 122: $(curl_calls)" ;;
+  esac
+  # The stand-in answers the same whatever is asked, so the question itself is
+  # checked: one card, of that team, with exactly that number.
+  case $(curl_calls) in
+    *'filter: {team: {key: {eq: $team}}, number: {eq: $number}}'*) ;;
+    *) fail "did not filter on the team's key and the number: $(curl_calls)" ;;
+  esac
+}
+
+# With no key saved, Linear is not asked, and the card starts as before: no
+# note, even on a machine without curl.
+task_new_asks_linear_nothing_without_a_key() {
+  card_demo; stub_linear; linear_answers "$NO_CARD"
+  out=$("$E" task new demo ABC-122 2>&1) || fail "task new exited non-zero: $out"
+  [ "$(tab_calls)" = 1 ] || fail "expected one tab, got $(tab_calls)"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear with no key saved: $(curl_calls)"
+  case $out in *"could not check"*) fail "printed a note with no key saved: $out" ;; esac
+  hide_curl
+  out=$("$E" task new demo ABC-122 2>&1) || fail "task new exited non-zero without curl: $out"
+  case $out in *"could not check"*) fail "printed a note with no key saved and no curl: $out" ;; esac
+}
+
+# An answer with no list of cards in it is not Linear saying it has none. Only
+# something answering in Linear's place sends one, and the card starts.
+task_new_starts_anyway_when_the_answer_lists_no_cards() {
+  card_demo; saved_key; stub_linear
+  for answer in '{"data":{}}' '{"data":{"issues":null}}' '{"data":{"issues":{"nodes":null}}}' '{"data":{"issues":{"nodes":{}}}}'; do
+    linear_answers "$answer"; : > "$TMP/herdr-calls.log"
+    out=$("$E" task new demo ABC-122 2>&1) || fail "stopped on the answer $answer: $out"
+    [ "$(tab_calls)" = 1 ] || fail "opened no tab on the answer $answer"
+    case $out in *"could not check ABC-122"*) ;; *) fail "did not say the card was not checked on $answer: $out" ;; esac
+  done
+}
+
+task_new_starts_anyway_without_curl() {
+  card_demo; saved_key; hide_curl
+  out=$("$E" task new demo ABC-122 2>&1) || fail "task new exited non-zero: $out"
+  [ "$(tab_calls)" = 1 ] || fail "expected one tab, got $(tab_calls)"
+  case $out in *"could not check ABC-122 with Linear: curl is not installed"*) ;; *) fail "did not say curl is missing: $out" ;; esac
+}
+
+task_new_starts_anyway_without_jq() {
+  # The stand-in curl goes first on PATH, before jq is hidden.
+  card_demo; saved_key; stub_linear; hide_jq
+  out=$("$E" task new demo ABC-122 2>&1) || fail "task new exited non-zero: $out"
+  [ "$(tab_calls)" = 1 ] || fail "expected one tab, got $(tab_calls)"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear with no jq to read the answer: $(curl_calls)"
+  case $out in *"could not check ABC-122 with Linear: jq is not installed"*) ;; *) fail "did not say jq is missing: $out" ;; esac
+}
+
+# Only a definite no stops it. When Linear cannot be asked, the card starts
+# with a note: the network is no reason to keep an agent from starting.
+task_new_starts_anyway_when_linear_is_out_of_reach() {
+  card_demo; saved_key; stub_linear; echo 6 > "$TMP/linear/exit"
+  out=$("$E" task new demo ABC-122 2>&1) || fail "task new exited non-zero: $out"
+  [ "$(tab_calls)" = 1 ] || fail "expected one tab, got $(tab_calls)"
+  case $out in *"could not check ABC-122"*) ;; *) fail "did not say the card was not checked: $out" ;; esac
+  # The card has started, so advice to run it again would open a second agent.
+  case $out in *"run this again"*) fail "said to run it again, though the card started: $out" ;; esac
+  case $out in *..*) fail "the note has a doubled full stop: $out" ;; esac
+}
+
+task_new_starts_anyway_with_a_key_linear_rejects() {
+  card_demo; saved_key; stub_linear
+  linear_answers '{"errors":[{"message":"Authentication required, not authenticated","extensions":{"type":"authentication error"}}]}'
+  linear_status 401
+  out=$("$E" task new demo ABC-122 2>&1) || fail "task new exited non-zero: $out"
+  [ "$(tab_calls)" = 1 ] || fail "expected one tab, got $(tab_calls)"
+  case $out in *"could not check ABC-122"*rejected*) ;; *) fail "did not say why the card was not checked: $out" ;; esac
+  case $out in *"$KEY"*) fail "printed the key: $out" ;; esac
+}
+
+CARD_CASES="task_new_refuses_a_card_linear_does_not_have task_new_starts_a_card_linear_has
+  task_new_asks_linear_nothing_without_a_key task_new_starts_anyway_when_linear_is_out_of_reach
+  task_new_starts_anyway_with_a_key_linear_rejects task_new_starts_anyway_when_the_answer_lists_no_cards
+  task_new_starts_anyway_without_curl task_new_starts_anyway_without_jq
+  task_new_takes_the_agent_from_the_env_file task_new_prefers_an_exported_agent_to_the_env_file
   task_new_starts_an_agent task_new_sends_one_line_of_json task_new_takes_a_lowercase_card
   task_new_makes_no_task_folder task_new_selects_an_open_space task_new_refuses_a_branch
   task_new_refuses_a_bad_card task_new_refuses_unknown_project task_new_needs_the_skills_linked

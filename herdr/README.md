@@ -211,6 +211,12 @@ entourage task new <project> <card>
   Herdr not running, no agent on your `PATH`, or the skills not linked into
   `~/.claude/skills` stops it before anything is opened. Run
   `entourage update` to link the skills.
+- **With a Linear key saved, it checks that Linear has the card**, so a
+  mistyped ID stops it before an agent starts. It looks the card up by its
+  team's key and number, so it does not check that the card is one of the
+  project's teams. Only a definite no stops it: with no key saved, Linear is
+  not asked, and when Linear cannot be asked (the network, a rejected key, no
+  `curl` or `jq`), the card starts as before, with a note saying why.
 
 ### The Cards panel
 

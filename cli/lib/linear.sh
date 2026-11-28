@@ -189,6 +189,44 @@ linear_open_cards() {
   printf '%s' "$list" | jq -c 'del(.missing)'
 }
 
+# Find a card by its team's key and its number, as Linear keeps them: ABC-122
+# is team ABC, number 122.
+CARD_QUERY='query($team: String!, $number: Float!) {
+  issues(first: 1, filter: {team: {key: {eq: $team}}, number: {eq: $number}}) { nodes { identifier } }
+}'
+
+# Whether Linear has a card, for `task new` to check before it starts one.
+#   linear_card_known <card ID, in upper case>
+# It returns how that went, and prints nothing on stdout:
+#   0  Linear has the card
+#   1  Linear has no such card, that the saved key can see
+#   2  no key is saved, so nothing was asked
+#   3  Linear could not be asked; why is on stderr
+# Only 1 is a no. The rest leave the card to start, so that a missing key,
+# the network or a rejected key never keeps an agent from starting.
+linear_card_known() {
+  local card=$1 key=${LINEAR_API_KEY:-} tool vars data found
+  [ -n "$key" ] || return 2
+  for tool in curl jq; do
+    command -v "$tool" >/dev/null 2>&1 || { printf '%s is not installed\n' "$tool" >&2; return 3; }
+  done
+  [[ $key =~ $KEY_RE ]] || { printf 'LINEAR_API_KEY does not hold a Linear API key\n' >&2; return 3; }
+  vars=$(jq -cn --arg team "${card%-*}" --arg number "${card##*-}" \
+    '{team: $team, number: ($number | tonumber)}' 2>/dev/null) ||
+    { printf '%s is not a card ID\n' "$card" >&2; return 3; }
+  # linear_ask stops with its own message, on stderr, when it cannot ask.
+  data=$(linear_ask "$key" "$CARD_QUERY" "$vars") || return 3
+  # Judged by what jq prints: some versions exit zero on an empty answer. Only
+  # a real list counts: jq gives a missing one a length of 0 too, and that
+  # must not read as Linear saying it has no such card.
+  found=$(printf '%s' "$data" | jq -r '.issues.nodes | arrays | length' 2>/dev/null) || found=
+  case $found in
+    0) return 1 ;;
+    '' | *[!0-9]*) printf "Linear's answer was not one entourage can read\n" >&2; return 3 ;;
+    *) return 0 ;;
+  esac
+}
+
 # Save the human's Linear API key as LINEAR_API_KEY in entourage's env file,
 # once Linear has said whose it is. The key is asked for or read from stdin,
 # never taken as an argument, so that it stays out of the shell's history.
