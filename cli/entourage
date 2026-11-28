@@ -27,7 +27,7 @@ Usage:
                                            build, reviewer or verifier
   entourage task ls <project> [--json]     list the open cards of the project's Linear teams, by status
   entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
-  entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
+  entourage task start <project> <card> [--type <type> --title <title>] [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab
                                            where the agent builds the card
   entourage task build <project> <card>    start the agent that builds the card, in its task's tab
@@ -82,12 +82,19 @@ on a mistyped ID; when Linear cannot be asked, it starts the card anyway.
 Linear for the card and names the branch from it, <type>/<card-id>-<short-name>
 (https://conventionalbranch.org): the type is the card's label in the Type
 group, and the short name is the first four words of its title, leaving out
-a, an and the, like feat/abc-122-export-orders-as-csv. It needs your Linear
-key, and stops before it makes anything when Linear has no such card, the
-card has no type, or Linear cannot be asked. It makes a folder in the
-project's tasks/ folder with a worktree of each repo on that branch, and
-opens a tab for it. Then it types `entourage task build <project> <card>`
-into the tab, which starts the agent on the card, with no one typing there.
+a, an and the, like feat/abc-122-export-orders-as-csv. It stops before it
+makes anything when Linear has no such card, the card has no type, no key is
+saved, or Linear cannot be asked. Without a key Linear accepts, give the
+card's type and title after it, as the command the write-up phase runs or
+gives you then does: `--type feat --title 'Export orders as CSV'` names the
+branch Linear's would. They are used only when no key is saved or Linear cannot be
+asked (a rejected key, the network, no curl or jq), with a note saying why.
+With a key Linear accepts, Linear's type and title win, with a note naming
+each given one that differs. Both are given or neither, and a type that is
+not a branch type stops it. It makes a folder in the project's tasks/ folder
+with a worktree of each repo on that branch, and opens a tab for it. Then it
+types `entourage task build <project> <card>` into the tab, which starts the
+agent on the card, with no one typing there.
 Setup is off for now: with ENTOURAGE_SETUP=1, a repo with a justfile that has
 a `setup` recipe gets `just setup` run in that tab first, so the checkout is
 ready to work in before the agent starts. When Claude Code has not trusted the
