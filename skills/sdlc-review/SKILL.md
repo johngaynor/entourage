@@ -14,7 +14,7 @@ The review step changes no code. Push nothing and open no pull request. What fal
 ## Before you check anything
 
 1. Get the card. If you weren't given a card ID, ask for one.
-2. Read the card with the Linear tools: the original description, the Specification, the Plan, the Breakdown, the Review if an earlier round wrote one, and the comments.
+2. Read the card with `entourage linear read <card ID>`: the original description, the Specification, the Plan, the Breakdown, the Review if an earlier round wrote one, and the comments.
 3. If the card has no Plan, it was not approved to build, so there is nothing to review. Change nothing, and hand off as `failed`, saying so.
 4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a Plan of its own, built on its own. Review the sub-issue, not this card. Change nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Check where you are. The work is in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, change nothing and hand off as `failed`, saying where you are.
@@ -163,6 +163,7 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Hand off as `failed`. Don't review from memory of the card or from its title |
+| `entourage linear read` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card with the Linear tools instead, and say so in `flags` when you hand off |
 | A repo the Plan changes has no worktree in the task | Ask the human. The task may have been started with targets that left it out |
 | The Plan's Tests line names a test that isn't there | The item is not met. Say which test is missing. Don't write it: that is the build step's work |
 | A test fails only now and then | Run it again. If it fails again, the item is not met. If it passes, say in `flags` that it failed once |
