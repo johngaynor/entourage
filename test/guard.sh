@@ -83,12 +83,19 @@ guard_refuses_task_handoff() {
   [ "$(handoff_rows)" = 1 ] || fail "the store has $(handoff_rows) hand-offs, not the one it started with"
 }
 guard_refuses_linear_key() { guard_machine; refused linear key <<< "lin_api_Other0123456789"; }
+# The card skills' writes to Linear: a card's type, and a section on stdin.
+guard_refuses_linear_type() { guard_machine; refused linear type ABC-122 feat; }
+guard_refuses_linear_section() {
+  guard_machine
+  refused linear section ABC-122 Plan <<< "**Approach:** Build it."
+  refused linear section ABC-122 Plan --replace <<< "**Approach:** Build it."
+}
 
 # The guard lists what may run, so a command it does not know is refused,
 # such as one added after it.
 guard_refuses_a_command_it_does_not_know() {
   guard_machine
-  refused linear section ABC-122
+  refused linear nonsense ABC-122
   refused task nonsense demo
   refused project nonsense
   refused nonsense
@@ -307,7 +314,8 @@ guard_quotes_the_command_it_gives() {
 CASES="guard_refuses_install guard_refuses_update guard_refuses_project_new
 guard_refuses_project_add guard_refuses_project_open guard_refuses_setting_a_projects_teams
 guard_refuses_task_new guard_refuses_task_start guard_refuses_task_build
-guard_refuses_task_handoff guard_refuses_linear_key guard_refuses_a_command_it_does_not_know
+guard_refuses_task_handoff guard_refuses_linear_key guard_refuses_linear_type guard_refuses_linear_section
+guard_refuses_a_command_it_does_not_know
 guard_knows_a_worktree_git_made
 guard_runs_the_reads_and_changes_nothing guard_opens_the_store_read_only
 guard_runs_project_new_when_asked guard_runs_task_start_when_asked guard_records_a_handoff_when_asked
