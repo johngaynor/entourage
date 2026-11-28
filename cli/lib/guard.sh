@@ -31,7 +31,8 @@ is_worktree_copy() {
 # Whether a command line only reads. The list names what may run, not what
 # may not, so a command added later is refused until it is added here as a
 # read. Each of these leaves the machine as it was, the hand-off store
-# included; `task ls` asks Linear, and only reads.
+# included; `task ls` asks Linear, and `task watch` asks GitHub, and both
+# only read.
 is_read() {
   case ${1:-help} in
     help | -h | --help | status) return 0 ;;
@@ -45,7 +46,7 @@ is_read() {
       ;;
     task)
       case ${2:-} in
-        ls | list | log) return 0 ;;
+        ls | list | log | watch) return 0 ;;
         *) return 1 ;;
       esac
       ;;
@@ -73,7 +74,7 @@ guard_worktree() {
   [ "${ENTOURAGE_LIVE:-}" != 1 ] || return 0
   GUARDED=1
   ! is_read "$@" || return 0
-  die "this is the copy of entourage in the worktree $REPO. It runs only the commands that read (help, status, project ls, project team <name>, task ls and task log), so \`$(shell_words "$@")\` was not run: it could change this machine's Herdr, projects and tasks, hand-offs, Linear key or cards, or Claude Code's skills and trust file.
+  die "this is the copy of entourage in the worktree $REPO. It runs only the commands that read (help, status, project ls, project team <name>, task ls, task log and task watch), so \`$(shell_words "$@")\` was not run: it could change this machine's Herdr, projects and tasks, hand-offs, Linear key or cards, or Claude Code's skills and trust file.
   - For the card's own steps, such as recording a hand-off, run plain \`entourage\`: the copy this machine runs, not this one.
   - To try a command that changes the machine, write a test case for it, in test/.
   - To run it on this machine for real, only when that is wanted:

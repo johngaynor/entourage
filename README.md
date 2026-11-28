@@ -13,7 +13,7 @@ Early setup. Six skills are in, and they have had only a few runs on real cards:
 | `sdlc-breakdown` | Decides whether the card is one piece or several slices, then asks you to approve it |
 | `sdlc-build` | Builds an approved card in its task: makes the change the Plan describes, runs the tests and commits, pushing nothing |
 | `sdlc-review` | Reviews the build against the card's Done when, writes what it found on the card, and sends what is not met back to build |
-| `sdlc-pr` | Pushes a reviewed card's branch, opens its pull requests, waits for you to merge them and records the merge. It never merges |
+| `sdlc-pr` | Pushes a reviewed card's branch, opens its pull requests, watches GitHub while you merge them and records the merge once it sees it. It never merges |
 
 They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
@@ -194,15 +194,32 @@ repo's own rules and pull request template. Each one links the card and says,
 for each Done when item, how the review showed it and what is left to you.
 
 Then it asks you to merge them, as `needs-human` with their links. Merge each
-one on GitHub yourself, then tell the agent in the tab that they have merged.
-It checks each with `gh pr view`, and once every one has merged it hands off
-`done` with `merged` next, which ends the card: `task log` shows the card as
-merged, and recording it moves the card to Done in Linear, as `task start`
-moved it to In Progress. Each move picks the team's own status of that kind,
-goes only forward, never touches a card that is done or canceled, and needs
-your Linear key to have Write permission. A move that cannot be made is a
-note saying why, and the step goes on. If one has not merged yet, it names it
-and asks again. No agent merges a pull request.
+one on GitHub yourself; you don't have to tell the agent. It watches them
+with `entourage task watch`, run in the background: it asks GitHub every
+minute for the first 10 minutes after the newest was opened, every 5 minutes
+for the hour after that, then every 30 minutes, and the agent is woken only
+when that is settled. Once every one has merged, the agent records the merge
+as your answer, so `task log` shows how long the pull requests waited on
+you, and hands off `done` with `merged` next, which ends the card: `task log`
+shows the card as merged, and recording it moves the card to Done in Linear,
+as `task start` moved it to In Progress. Each move picks the team's own
+status of that kind, goes only forward, never touches a card that is done or
+canceled, and needs your Linear key to have Write permission. A move that
+cannot be made is a note saying why, and the step goes on. Telling the agent
+in the tab that they have merged makes it check at once, with
+`task watch --once`; if one has not merged yet, it names it and asks again.
+When one is closed without merging, it asks you whether to stop. No agent
+merges a pull request.
+
+```sh
+entourage task watch my-project ABC-122 [--once]
+```
+
+`task watch` asks GitHub, with `gh`, for the pull request of each of the
+task's worktrees, skipping one whose branch has none, and prints a line for
+each: `merged`, `open` or `closed`, and its URL. It ends once every one has
+merged (exit 0) or one is closed without merging (exit 3). With `--once` it
+checks once, and exits 2 while one is still open. It changes nothing.
 
 To have something changed instead of merging, say what in the tab. The agent
 makes the change on the task's branch, with its test, runs the whole test
@@ -241,10 +258,10 @@ that the work was done in, deletes its branch and updates the clone; see
 A git worktree of the repo, such as the one `task start` makes for one of
 entourage's own cards, holds a copy of the CLI that is a change being built.
 Its `./cli/entourage` runs only the commands that read: `help`, `status`,
-`project ls`, `project team <name>`, `task ls` and `task log`. Any other
-command stops before it does anything, says that it is a worktree's copy, and
-gives the command that runs it for real: `ENTOURAGE_LIVE=1 ./cli/entourage …`,
-for that one run. The installed `entourage` is never stopped, whatever folder
+`project ls`, `project team <name>`, `task ls`, `task log` and `task watch`.
+Any other command stops before it does anything, says that it is a
+worktree's copy, and gives the command that runs it for real:
+`ENTOURAGE_LIVE=1 ./cli/entourage …`, for that one run. The installed `entourage` is never stopped, whatever folder
 it is run from, so an agent in the worktree records its hand-offs with it.
 
 ## Releasing

@@ -138,7 +138,8 @@ task ls demo --json
 task log demo
 task log demo --json
 task log demo ABC-122
-task log demo ABC-122 --json'
+task log demo ABC-122 --json
+task watch demo ABC-122 --once'
 
 # Run every read, and print what each printed and how it exited. How long a
 # card has stood where it is counts on from now, so it is left out.
@@ -158,6 +159,10 @@ all_reads() {
 guard_runs_the_reads_and_changes_nothing() {
   guard_machine
   linear_answers "$TEAM_CARDS"
+  # A task for ABC-122 whose pull request is open, for `task watch`.
+  git -C "$HOME/Dev/api" worktree add -q -b feat/abc-122-insert-task-here "$P/demo/tasks/abc-122-insert-task-here/api"
+  stub_gh
+  gh_answers api "$(pr_answer OPEN https://github.com/acme/api/pull/7 60)"
   local usual worktree before
   usual=$(all_reads)
   as_worktree
@@ -168,6 +173,7 @@ guard_runs_the_reads_and_changes_nothing() {
   [ "$worktree" = "$usual" ] ||
     fail "a worktree's copy read otherwise: $(diff <(printf '%s\n' "$usual") <(printf '%s\n' "$worktree"))"
   case $usual in *'ABC-2  Second card'*'build done, then review'*'Built the export.'*) ;; *) fail "the reads did not show the cards and the hand-off: $usual" ;; esac
+  case $usual in *'open https://github.com/acme/api/pull/7'$'\n''[exit 2]'*) ;; *) fail "the watch did not show the open pull request: $usual" ;; esac
   [ ! -s "$TMP/herdr-calls.log" ] || fail "a read called Herdr: $(cat "$TMP/herdr-calls.log")"
 }
 

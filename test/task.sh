@@ -1571,6 +1571,171 @@ task_finish_with_no_task() {
   [ -d "$T/abc-12-y/api" ] || fail "touched another card's task"
 }
 
+# --- tasks: watching the pull requests --------------------------------------
+
+API_PR=https://github.com/acme/api/pull/7
+WEB_PR=https://github.com/acme/web/pull/8
+
+# The project demo with the repos named, the task for ABC-1 started on them,
+# and stand-ins for gh and sleep.
+watch_demo() {
+  finish_demo "$@"
+  stub_gh
+  stub_sleep
+}
+
+# Run the watch with the arguments given after the card, leaving what it
+# printed in WATCH_OUT, what it said on stderr in WATCH_ERR, and its exit
+# code in WATCH_CODE.
+watch() {
+  WATCH_CODE=0
+  WATCH_OUT=$("$E" task watch demo ABC-1 "$@" 2>"$TMP/watch-err") || WATCH_CODE=$?
+  WATCH_ERR=$(cat "$TMP/watch-err")
+}
+
+# Between checks it sleeps by the age of the pull request: a minute while it
+# is under 10 minutes old, 5 minutes while it is under 70, then half an hour.
+# Each check asks gh once, in the worktree, for its branch's pull request.
+task_watch_sleeps_on_the_schedule() {
+  watch_demo api
+  local pair ago want
+  for pair in 300:60 1800:300 7200:1800; do
+    ago=${pair%%:*} want=${pair#*:}
+    gh_reset
+    gh_answers api "$(pr_answer OPEN "$API_PR" "$ago")" "$(pr_answer MERGED "$API_PR" "$ago")"
+    watch
+    [ "$WATCH_CODE" = 0 ] || fail "opened ${ago}s ago, the watch exited $WATCH_CODE: $WATCH_OUT $WATCH_ERR"
+    [ "$(sleeps)" = "$want" ] || fail "opened ${ago}s ago, it slept '$(sleeps)', not $want"
+    [ "$(gh_count)" = 2 ] || fail "opened ${ago}s ago, gh was asked $(gh_count) times in two checks: $(gh_calls)"
+  done
+  [ "$(gh_calls | sort -u)" = "api pr list --head feat/abc-1-x --state all --json url,state,createdAt" ] ||
+    fail "did not ask gh for the branch's pull request in the worktree: $(gh_calls)"
+}
+
+# --once checks once and never sleeps: 2 while a pull request is open, 0 once
+# every one has merged.
+task_watch_once_checks_once() {
+  watch_demo api
+  gh_answers api "$(pr_answer OPEN "$API_PR" 60)"
+  watch --once
+  [ "$WATCH_CODE" = 2 ] || fail "exited $WATCH_CODE, not 2, with the pull request open: $WATCH_OUT $WATCH_ERR"
+  [ "$WATCH_OUT" = "open $API_PR" ] || fail "did not print the open pull request: $WATCH_OUT"
+  [ "$(gh_count)" = 1 ] || fail "gh was asked $(gh_count) times: $(gh_calls)"
+  [ -z "$(sleeps)" ] || fail "slept: $(sleeps)"
+  gh_reset
+  gh_answers api "$(pr_answer MERGED "$API_PR" 60)"
+  watch --once
+  [ "$WATCH_CODE" = 0 ] || fail "exited $WATCH_CODE, not 0, with the pull request merged: $WATCH_OUT $WATCH_ERR"
+  [ "$WATCH_OUT" = "merged $API_PR" ] || fail "did not print the merged pull request: $WATCH_OUT"
+}
+
+# With two repos, the second merging a check after the first, it ends only
+# once both have, with a line for each. The schedule counts from the newer.
+task_watch_ends_when_every_pull_request_has_merged() {
+  watch_demo api web
+  gh_answers api "$(pr_answer MERGED "$API_PR" 7200)"
+  gh_answers web "$(pr_answer OPEN "$WEB_PR" 300)" "$(pr_answer MERGED "$WEB_PR" 300)"
+  watch
+  [ "$WATCH_CODE" = 0 ] || fail "exited $WATCH_CODE, not 0, with both merged: $WATCH_OUT $WATCH_ERR"
+  [ "$WATCH_OUT" = "merged $API_PR
+open $WEB_PR
+merged $API_PR
+merged $WEB_PR" ] || fail "did not print each check: $WATCH_OUT"
+  [ "$(gh_count)" = 4 ] || fail "gh was asked $(gh_count) times in two checks of two repos: $(gh_calls)"
+  [ "$(sleeps)" = 60 ] || fail "slept '$(sleeps)', not 60 from the newer pull request"
+}
+
+# A pull request closed without merging ends it with 3, though another is
+# still open.
+task_watch_ends_when_a_pull_request_is_closed() {
+  watch_demo api web
+  gh_answers api "$(pr_answer OPEN "$API_PR" 60)"
+  gh_answers web "$(pr_answer OPEN "$WEB_PR" 60)" "$(pr_answer CLOSED "$WEB_PR" 60)"
+  watch
+  [ "$WATCH_CODE" = 3 ] || fail "exited $WATCH_CODE, not 3, with one closed: $WATCH_OUT $WATCH_ERR"
+  case $WATCH_OUT in *"open $API_PR"$'\n'"closed $WEB_PR") ;; *) fail "did not end with the closed one: $WATCH_OUT" ;; esac
+  [ "$(sleeps)" = 60 ] || fail "slept '$(sleeps)', not once"
+}
+
+# When gh fails, it says so and asks again at the next check. With --once
+# there is no next check, so whether it merged is not known.
+task_watch_tries_again_when_gh_fails() {
+  watch_demo api
+  gh_answers api "$(pr_answer MERGED "$API_PR" 60)"
+  gh_fails_at api 1
+  watch
+  [ "$WATCH_CODE" = 0 ] || fail "exited $WATCH_CODE, not 0, once gh answered: $WATCH_OUT $WATCH_ERR"
+  [ "$WATCH_OUT" = "merged $API_PR" ] || fail "printed: $WATCH_OUT"
+  case $WATCH_ERR in *"could not ask GitHub"*api*"error connecting to api.github.com"*"Trying again"*) ;; *) fail "did not say gh failed: $WATCH_ERR" ;; esac
+  [ "$(sleeps)" = 60 ] || fail "slept '$(sleeps)', not once"
+  gh_reset
+  gh_fails_at api 1
+  watch --once
+  [ "$WATCH_CODE" = 1 ] || fail "with --once, exited $WATCH_CODE, not 1, when gh failed: $WATCH_OUT $WATCH_ERR"
+  case $WATCH_ERR in *"could not ask GitHub"*"not known"*) ;; *) fail "with --once, did not say gh failed: $WATCH_ERR" ;; esac
+}
+
+# A repo whose branch has no pull request is skipped: the work did not change
+# it. Of a branch's pull requests, the newest is the one that counts.
+task_watch_reads_each_branchs_newest_pull_request() {
+  watch_demo api web
+  gh_answers api "$(jq -cn --arg old "${API_PR%/*}/3" --arg new "$API_PR" \
+    '[{url: $old, state: "CLOSED", createdAt: "2026-01-01T00:00:00Z"},
+      {url: $new, state: "MERGED", createdAt: "2026-01-02T00:00:00Z"}]')"
+  watch
+  [ "$WATCH_CODE" = 0 ] || fail "exited $WATCH_CODE, not 0: $WATCH_OUT $WATCH_ERR"
+  [ "$WATCH_OUT" = "merged $API_PR" ] || fail "did not take the newest pull request alone: $WATCH_OUT"
+  [ "$(gh_count)" = 2 ] || fail "did not ask about both repos: $(gh_calls)"
+}
+
+# A task with no pull request at all, and a card with no task, are errors.
+task_watch_needs_a_pull_request() {
+  watch_demo api
+  watch
+  [ "$WATCH_CODE" = 1 ] || fail "exited $WATCH_CODE, not 1, with no pull request: $WATCH_OUT $WATCH_ERR"
+  case $WATCH_ERR in *"no pull request"*feat/abc-1-x*) ;; *) fail "did not say there is no pull request: $WATCH_ERR" ;; esac
+  [ -z "$(sleeps)" ] || fail "slept: $(sleeps)"
+  local out
+  out=$("$E" task watch demo ABC-9 2>&1) && fail "exited zero for a card with no task"
+  case $out in *"ABC-9 has no task"*) ;; *) fail "did not say ABC-9 has no task: $out" ;; esac
+  out=$("$E" task watch demo ABC-1 --twice 2>&1) && fail "exited zero for an unknown option"
+  case $out in *"unknown option"*) ;; *) fail "did not refuse --twice: $out" ;; esac
+}
+
+# Stopped while it sleeps, it stops at once, and takes its sleep with it.
+task_watch_stops_while_it_sleeps() {
+  watch_demo api
+  gh_answers api "$(pr_answer OPEN "$API_PR" 60)"
+  # The real sleep, for a minute: long enough to be stopped in.
+  rm -f "$TMP/bin/sleep"
+  "$E" task watch demo ABC-1 > "$TMP/watch-out" 2>&1 &
+  local pid=$! spid='' n=0
+  until spid=$(pgrep -P "$pid" -x sleep) || [ "$n" -ge 100 ]; do /bin/sleep 0.1; n=$((n + 1)); done
+  if [ -z "$spid" ]; then
+    fail "never started its sleep: $(cat "$TMP/watch-out")"
+    kill -9 "$pid" 2>/dev/null
+    return
+  fi
+  kill "$pid"
+  n=0
+  while kill -0 "$pid" 2>/dev/null && [ "$n" -lt 30 ]; do /bin/sleep 0.1; n=$((n + 1)); done
+  if kill -0 "$pid" 2>/dev/null; then
+    fail "still running 3 seconds after it was stopped"
+    kill -9 "$pid" 2>/dev/null
+  fi
+  wait "$pid" 2>/dev/null
+  /bin/sleep 0.2
+  if kill -0 "$spid" 2>/dev/null; then
+    fail "left its sleep running"
+    kill "$spid" 2>/dev/null
+  fi
+}
+
+WATCH_CASES="task_watch_sleeps_on_the_schedule task_watch_once_checks_once
+  task_watch_ends_when_every_pull_request_has_merged task_watch_ends_when_a_pull_request_is_closed
+  task_watch_tries_again_when_gh_fails task_watch_reads_each_branchs_newest_pull_request
+  task_watch_needs_a_pull_request task_watch_stops_while_it_sleeps"
+
 FINISH_CASES="task_finish_removes_the_task task_finish_removes_a_task_of_two_repos
   task_finish_removes_a_branch_with_no_commits task_finish_refuses_uncommitted_changes
   task_finish_refuses_unmerged_commits task_finish_refuses_ignored_files
@@ -1578,7 +1743,7 @@ FINISH_CASES="task_finish_removes_the_task task_finish_removes_a_task_of_two_rep
   task_finish_refuses_a_locked_or_moved_worktree task_finish_refusal_changes_nothing
   task_finish_from_its_own_tab task_finish_with_no_task"
 
-CASES="$FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES
+CASES="$WATCH_CASES $FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES
   task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
   task_start_keeps_the_task_when_the_space_fails task_start_branch_has_no_upstream
   task_start_refusal_keeps_the_first_task task_start_refusal_keeps_an_existing_branch

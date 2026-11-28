@@ -280,10 +280,14 @@ item that is not. Once it has sent the work back, it asks you instead,
 as `needs-human`, whether to build again. So does the pull request after
 that, which the `sdlc-pr` skill runs: it hands off as `pr`. With the pull
 requests open it waits as `needs-human`, with their links, while you merge
-them. A change you ask for in the tab instead goes on the task's branch and
-into the same pull requests, and it waits as `needs-human` again. Once GitHub
-says every pull request for the card has merged it hands off `done` with
-`merged` next. Recording that hand-off moves the card in Linear to its team's
+them, and watches them on GitHub with `entourage task watch`, run in the
+background, so you don't have to tell it they have merged. A change you ask
+for in the tab instead goes on the task's branch and into the same pull
+requests, and it waits as `needs-human` again. Once GitHub says every pull
+request for the card has merged, it records that as your answer, `answered`,
+so the log shows how long the pull requests waited on you, and hands off
+`done` with `merged` next. When one is closed without merging, it records
+that the same way and asks you whether to stop. Recording that hand-off moves the card in Linear to its team's
 first completed status (Done), whatever recorded it: your answer, or a watch
 on the pull requests. A card that is done or canceled already stays as it is,
 and a pull request closed without merging moves nothing. What happened to the
@@ -421,8 +425,16 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   with `sdlc-build`, then review the build with `sdlc-review`, and back to the
   build when the review sends it back. When the review finds every item met,
   `sdlc-pr` pushes the branch and opens the pull requests, and waits for you
-  to merge them and tell the agent so. The run ends when it hands off with
-  `merged` next. No agent merges a pull request. `task build` refuses to run
+  to merge them, watching them on GitHub with `entourage task watch
+  <project> <card>` in the background. The watch asks GitHub every minute
+  for the first 10 minutes after the newest pull request was opened, every 5
+  minutes for the hour after that, then every 30 minutes, printing a line for
+  each pull request (`merged`, `open` or `closed`, and its URL), and ends once
+  every one has merged (exit 0) or one is closed without merging (exit 3). It
+  changes nothing, and wakes the agent only when it ends. Telling the agent in
+  the tab that they have merged makes it check at once, with `--once`, which
+  checks once and exits 2 while one is still open. The run ends when it hands
+  off with `merged` next. No agent merges a pull request. `task build` refuses to run
   outside the card's own task folder, with no agent on your `PATH`, or with
   the skills not linked. If the agent stops, run the same command again in
   the tab.

@@ -317,3 +317,68 @@ hide_curl() {
   rm -f "$TMP/nocurl/curl" "$TMP/bin/curl"
   export PATH=$TMP/bin:$TMP/nocurl
 }
+
+# --- GitHub -----------------------------------------------------------------
+
+# A stand-in for `gh`, for tests of the watch on a card's pull requests. It
+# answers `gh pr list` in a worktree from the files the case writes for that
+# worktree's repo, by its folder's name, one answer per check: the repo's Nth
+# call gets $TMP/gh/<repo>/N.json, or the last answer there is, and a repo
+# with no answers gets []. A task's worktrees are all on one branch, so the
+# folder, not the branch, tells them apart. With $TMP/gh/<repo>/N.exit that
+# call fails with that code, as gh does when it cannot reach GitHub. Each call
+# goes on a line of gh-calls.log: the repo, then the arguments.
+stub_gh() {
+  mkdir -p "$TMP/gh"
+  cat > "$TMP/bin/gh" <<EOF
+#!/usr/bin/env bash
+repo=\${PWD##*/}
+d="$TMP/gh/\$repo"
+printf '%s %s\n' "\$repo" "\$*" >> "$TMP/gh-calls.log"
+mkdir -p "\$d"
+n=\$(( \$(cat "\$d/count" 2>/dev/null || echo 0) + 1 ))
+echo "\$n" > "\$d/count"
+if [ -f "\$d/\$n.exit" ]; then
+  echo "error connecting to api.github.com" >&2
+  exit "\$(cat "\$d/\$n.exit")"
+fi
+while [ ! -f "\$d/\$n.json" ] && [ "\$n" -gt 1 ]; do n=\$((n - 1)); done
+if [ -f "\$d/\$n.json" ]; then cat "\$d/\$n.json"; else echo '[]'; fi
+EOF
+  chmod +x "$TMP/bin/gh"
+}
+
+# What GitHub answers for the repo $1: one argument for each check, in order.
+gh_answers() {
+  local repo=$1 n=0 answer
+  shift
+  mkdir -p "$TMP/gh/$repo"
+  for answer in "$@"; do n=$((n + 1)); printf '%s\n' "$answer" > "$TMP/gh/$repo/$n.json"; done
+}
+
+# The Nth check of the repo $1 fails: gh_fails_at <repo> <N>.
+gh_fails_at() { mkdir -p "$TMP/gh/$1"; echo 1 > "$TMP/gh/$1/$2.exit"; }
+
+# Forget every call to gh and to sleep, and every answer given so far, for a
+# second watch in the same case.
+gh_reset() { rm -rf "$TMP/gh" "$TMP/gh-calls.log" "$TMP/sleep-calls.log"; mkdir -p "$TMP/gh"; }
+
+# `gh pr list`'s answer for one pull request: state $1 (OPEN, MERGED or
+# CLOSED), URL $2, opened $3 seconds ago.
+pr_answer() {
+  jq -cn --arg state "$1" --arg url "$2" --argjson ago "$3" \
+    '[{url: $url, state: $state, createdAt: ((now | floor) - $ago | todate)}]'
+}
+
+# Every call made to gh, one line each, and how many there were.
+gh_calls() { cat "$TMP/gh-calls.log" 2>/dev/null; }
+gh_count() { gh_calls | grep -c '' || true; }
+
+# A stand-in for `sleep` that returns at once, logging the seconds it was
+# given, one call to a line.
+stub_sleep() {
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s"\n' "$TMP/sleep-calls.log" > "$TMP/bin/sleep"
+  chmod +x "$TMP/bin/sleep"
+}
+# The seconds each sleep was given, in order, on one line.
+sleeps() { cat "$TMP/sleep-calls.log" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
