@@ -82,6 +82,28 @@ breakdown_hands_on_to_start() {
   return 0
 }
 
+# Recording the approval moves the card, and its slices, to the team's
+# not-started status. The hand-off is recorded either way, so when the command
+# notes that a card was not moved, sdlc-breakdown tells the human which, and
+# why, in its message, rather than recording the hand-off again.
+breakdown_tells_the_human_when_the_approval_did_not_move_a_card() {
+  local skill=$REPO/skills/sdlc-breakdown/SKILL.md section
+  section=$(awk '/^## / { if (on) exit } /^## Hand off$/ { on = 1 } on' "$skill")
+  [ -n "$section" ] || { fail "sdlc-breakdown has no Hand off section"; return; }
+  case $section in
+    *'moves the card'*'first not-started status'*'sub-issues'*) ;;
+    *) fail "sdlc-breakdown's Hand off does not say that recording the approval moves the card and its sub-issues to the team's first not-started status" ;;
+  esac
+  case $section in
+    *'not moved'*'tell the human'*'which card'*'why'*) ;;
+    *) fail "sdlc-breakdown's Hand off does not say to tell the human which card was not moved, and why" ;;
+  esac
+  case $section in
+    *"don't record it again"*) ;;
+    *) fail "sdlc-breakdown's Hand off does not say the hand-off is recorded even when a card was not moved" ;;
+  esac
+}
+
 # The build's agent starts from prompts/task-build.md, which drives build,
 # review and the pull request as task-new.md drives the write-up, and ends the
 # run when the pull request has merged.
@@ -783,4 +805,5 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   no_skill_names_a_person a_routed_change_returns_to_breakdown
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
-  task_build_prompt_drives_build_and_review breakdown_hands_on_to_start"
+  task_build_prompt_drives_build_and_review breakdown_hands_on_to_start
+  breakdown_tells_the_human_when_the_approval_did_not_move_a_card"
