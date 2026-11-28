@@ -161,18 +161,11 @@ project_new_leaves_broken_claude_state() {
 }
 
 # jq 1.6, which Debian 12 and Ubuntu 22.04 ship, exits zero for an empty file
-# even when it is asked to judge its answer. The stand-in here does the same.
+# even when it is asked to judge its answer. The stand-in (old_jq, in
+# helpers.sh) does the same.
 project_new_is_not_fooled_by_an_old_jq() {
-  local real out
-  real=$(command -v jq)
-  cat > "$TMP/bin/jq" <<EOF
-#!/usr/bin/env bash
-"$real" "\$@"
-code=\$?
-[ "\$code" = 4 ] && exit 0
-exit "\$code"
-EOF
-  chmod +x "$TMP/bin/jq"
+  local out
+  old_jq
   : > "$HOME/.claude.json"
   out=$("$E" project new demo) || fail "new exited non-zero"
   [ ! -s "$HOME/.claude.json" ] || fail "the empty state file changed: $(cat "$HOME/.claude.json")"
@@ -584,6 +577,33 @@ project_team_reads_a_hand_edited_file() {
   [ "$out" = "$(printf 'ABC\nLAB')" ] || fail "printed: $out"
 }
 
+# The mark some editors put at the start of a file is not part of the first
+# key, in a UTF-8 locale or not.
+project_team_reads_a_teams_file_that_starts_with_a_bom() {
+  "$E" project new demo >/dev/null
+  printf '\357\273\277ABC\nlab\n' > "$P/demo/teams"
+  for locale in C C.UTF-8; do
+    out=$(LC_ALL=$locale "$E" project team demo 2>"$TMP/err") ||
+      fail "printing the teams exited non-zero in the $locale locale: $(cat "$TMP/err")"
+    [ "$out" = "$(printf 'ABC\nLAB')" ] || fail "in the $locale locale printed: $out"
+  done
+}
+
+# A teams file entourage cannot read stops it in a sentence. It is not taken
+# for a project with no team.
+project_team_says_when_the_teams_file_cannot_be_read() {
+  "$E" project new demo >/dev/null
+  "$E" project team demo PHY >/dev/null
+  chmod 000 "$P/demo/teams"
+  # As root the file can still be read, so there is nothing to test.
+  if [ -r "$P/demo/teams" ]; then chmod 600 "$P/demo/teams"; return; fi
+  out=$("$E" project team demo 2>&1) && fail "exited zero with a teams file it cannot read"
+  chmod 600 "$P/demo/teams"
+  case $out in *"cannot read $P/demo/teams"*) ;; *) fail "did not say it cannot read the file: $out" ;; esac
+  case $out in *"no Linear team"*) fail "said the project has no team: $out" ;; esac
+  case $out in *"line "[0-9]*) fail "gave bash's own message: $out" ;; esac
+}
+
 project_team_without_one_says_how_to_set_it() {
   "$E" project new demo >/dev/null
   out=$("$E" project team demo 2>&1) && fail "exited zero for a project with no team"
@@ -625,4 +645,5 @@ CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a
   project_team_prints_the_team project_team_without_one_says_how_to_set_it
   project_team_takes_several_teams project_team_prints_every_team project_team_lists_a_team_once
   project_team_keeps_the_old_teams_when_a_key_is_bad project_team_reads_a_hand_edited_file
+  project_team_reads_a_teams_file_that_starts_with_a_bom project_team_says_when_the_teams_file_cannot_be_read
   project_team_refuses_what_is_not_a_team_key project_team_unknown_project"

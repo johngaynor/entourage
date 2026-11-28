@@ -1,9 +1,10 @@
-# Tests for what the skills and the task-new prompt must say the same way.
+# Tests for what the skills and the prompts must say the same way.
 # No agent runs here: these only read the text. Sourced by test/run.sh.
 
 # The skills for the steps of a card's lifecycle, each named sdlc-<step>: the
-# three that write it up, then the one that builds it.
-CARD_SKILL_NAMES='sdlc-define sdlc-plan sdlc-breakdown sdlc-build'
+# three that write it up, then the one that builds it and the one that reviews
+# the build.
+CARD_SKILL_NAMES='sdlc-define sdlc-plan sdlc-breakdown sdlc-build sdlc-review'
 
 # Print a skill's "The handoff block" section: its heading and everything up
 # to the next second-level heading.
@@ -66,6 +67,18 @@ task_new_prompt_follows_the_block() {
   local prompt=$REPO/prompts/task-new.md want
   for want in '`done`' '`needs-human`' '`failed`' 'next: setup' '{card}' '{project}'; do
     grep -qF -- "$want" "$prompt" || fail "the task-new prompt does not mention $want"
+  done
+}
+
+# The build's agent starts from prompts/task-build.md, which drives build and
+# review as task-new.md drives the write-up, and ends the run where the pull
+# request would begin.
+task_build_prompt_drives_build_and_review() {
+  local prompt=$REPO/prompts/task-build.md want
+  for want in 'Start with the sdlc-build skill' '`review` is the sdlc-review skill' \
+      '`build` is the sdlc-build skill' 'next: pr' '`done`' '`needs-human`' '`failed`' \
+      '{card}' '{project}' 'entourage task handoff {project} {card}' 'record my answer'; do
+    grep -qF -- "$want" "$prompt" || fail "the task-build prompt does not mention $want"
   done
 }
 
@@ -243,14 +256,73 @@ each_skill_falls_back_without_a_key() {
   done
 }
 
+# When the review sends the work back, build takes it as a later round: only
+# what the Review names, on top of the commits already there.
+build_takes_a_later_round_from_the_review() {
+  local skill=$REPO/skills/sdlc-build/SKILL.md
+  grep -qF 'later round' "$skill" || fail "sdlc-build does not say how it takes a later round"
+  grep -qF 'on top of the commits already there' "$skill" ||
+    fail "sdlc-build does not build a later round on top of the commits already there"
+  grep -qF 'is the work, not a reason to ask' "$skill" ||
+    fail "sdlc-build would ask about a test the Review names as failing"
+  ! grep -qF 'Review is not a skill yet' "$skill" ||
+    fail "sdlc-build still says review is not a skill"
+}
+
+# The review checks the build before anything is pushed. It changes no code:
+# what falls short goes back to build, and pushing and the pull request come
+# after it.
+review_pushes_nothing() {
+  local skill=$REPO/skills/sdlc-review/SKILL.md
+  grep -qF 'Push nothing and open no pull request' "$skill" ||
+    fail "sdlc-review does not say to push nothing and open no pull request"
+  grep -qF 'changes no code' "$skill" || fail "sdlc-review does not say it changes no code"
+}
+
+# A review that finds every Done when item met hands on to the pull request.
+# One that finds an item not met, or the tests failing, sends the work back to
+# build.
+review_sends_what_is_not_met_back_to_build() {
+  local skill=$REPO/skills/sdlc-review/SKILL.md next
+  for next in pr build; do
+    grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx "next: $next" ||
+      fail "sdlc-review does not show its done hand-off with next: $next"
+  done
+}
+
+# Build and review must not send the work back and forth with no one watching.
+# After one send-back, the review asks the human instead.
+review_asks_the_human_after_one_send_back() {
+  local skill=$REPO/skills/sdlc-review/SKILL.md
+  grep -qF 'already shows a review with `next: build`' "$skill" ||
+    fail "sdlc-review does not look in the log for a review that sent the work back"
+  grep -qF 'entourage task log <project> <card ID>' "$skill" ||
+    fail "sdlc-review does not say how to read the card's log"
+  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'status: needs-human' ||
+    fail "sdlc-review does not show the needs-human hand-off it makes after a send-back"
+}
+
+# What the review found goes on the card, so the build it sends back to, and
+# the pull request after it, can read it from a fresh session.
+review_writes_what_it_found_on_the_card() {
+  local skill=$REPO/skills/sdlc-review/SKILL.md
+  grep -qx '>>> ## Review' "$skill" || fail "sdlc-review does not show its collapsed Review section"
+  grep -qF 'after the Breakdown' "$skill" || fail "sdlc-review does not say where the Review goes"
+  grep -qF 'revise it in place' "$skill" || fail "sdlc-review does not revise its Review on a later round"
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_writes_its_section_with_the_command no_skill_writes_a_section_itself
   each_skill_revises_its_section_with_replace each_skill_falls_back_without_a_key
   build_pushes_nothing build_is_done_only_when_the_tests_pass
   build_stops_on_a_card_with_no_plan build_installs_what_the_tests_need_first
+  build_takes_a_later_round_from_the_review
+  review_pushes_nothing review_sends_what_is_not_met_back_to_build
+  review_asks_the_human_after_one_send_back review_writes_what_it_found_on_the_card
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop
   no_skill_names_a_person a_routed_change_returns_to_breakdown
   a_done_block_is_written_before_the_next_step
-  task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card"
+  task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
+  task_build_prompt_drives_build_and_review"

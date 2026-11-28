@@ -4,7 +4,7 @@ A collection of agent skills for the software development lifecycle (SDLC).
 
 ## Status
 
-Early setup. Four skills are in, and they have had only a few runs on real cards:
+Early setup. Five skills are in, and they have had only a few runs on real cards:
 
 | Skill | What it does |
 |---|---|
@@ -12,6 +12,7 @@ Early setup. Four skills are in, and they have had only a few runs on real cards
 | `sdlc-plan` | Reads the card and the code, and writes the Plan |
 | `sdlc-breakdown` | Decides whether the card is one piece or several slices, then asks you to approve it |
 | `sdlc-build` | Builds an approved card in its task: makes the change the Plan describes, runs the tests and commits, pushing nothing |
+| `sdlc-review` | Reviews the build against the card's Done when, writes what it found on the card, and sends what is not met back to build |
 
 They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
@@ -107,7 +108,8 @@ entourage task log my-project
 
 `task start` starts the work, once you have approved the card. It takes the
 card too, makes a branch and a git worktree of it in every repo of the
-project, and opens a tab for it. The write-up gives you the command:
+project, opens a tab for it, and starts the agent there that builds the card.
+The write-up gives you the command:
 
 ```sh
 entourage task start my-project ABC-122
@@ -144,24 +146,43 @@ out. With `ENTOURAGE_SETUP=1`, a repo that has a `justfile` with a `setup`
 recipe gets `just setup` run in the task's tab, so the checkout is ready to
 work in. See [what a repo provides](herdr/README.md#what-a-repo-provides).
 
+Then `task start` types this into the task's tab, after `just setup` when
+setup runs, so the agent starts once the checkout is ready and you type
+nothing there:
+
+```sh
+entourage task build my-project ABC-122
+```
+
+`task build` starts the agent, `claude` unless `ENTOURAGE_AGENT` names
+another, with a first message that has it build the card with the
+`sdlc-build` skill and then review the build with the `sdlc-review` skill. If
+the agent stops, run the same command again in the tab. It runs only in the
+card's own task folder. When the task has one repo and Claude Code has not
+trusted that repo yet, `task start` says so: Claude Code asks once in the tab,
+and not again for that repo. `task log` shows when the work was started.
+
 See [herdr/README.md](herdr/README.md#tasks) for the details.
 
-To build the card, start an agent in the task's tab, such as `claude`, and
-ask it to build the card with the `sdlc-build` skill:
+The build reads the card's Plan, makes the change in the task's worktrees,
+runs the tests and commits on the task's branch. Since setup is off, it first
+installs into each worktree what the tests need, the way that repo's own docs
+say. It installs only: it starts no app, server or database, and asks you when
+the tests need one running. It pushes nothing and opens no pull request, so
+the commits wait for you there. Like the write-up, it records how it ended,
+and `task log` shows it: `done` only when the tests pass, `needs-human` with a
+question, or `failed` with the reason. A card with no Plan is not built.
 
-```
-/sdlc-build ABC-122
-```
+Then the review runs the tests itself, checks each Done when item against the
+test the Plan names for it, and writes what it found on the card as a Review.
+It changes no code, pushes nothing and opens no pull request. When every item
+is met, it hands off `done` with `pr` next, and the reviewed commits wait for
+you on the task's branch. When an item is not met or a test fails, it hands
+off with `build` next, and `sdlc-build` builds only what the Review names.
+After one send-back, it asks you whether to build again or stop.
 
-It reads the card's Plan, makes the change in the task's worktrees, runs the
-tests and commits on the task's branch. Since setup is off, it first installs
-into each worktree what the tests need, the way that repo's own docs say. It
-installs only: it starts no app, server or database, and asks you when the
-tests need one running. It pushes nothing and opens no pull request, so the
-commits wait for you there. Like the write-up, it records how
-it ended, and `task log` shows it: `done` only when the tests pass,
-`needs-human` with a question, or `failed` with the reason. A card with no
-Plan is not built.
+Each skill also runs on its own in any agent, as `/sdlc-build ABC-122` or
+`/sdlc-review ABC-122`.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
 from the clone instead. Run the CLI's tests with `npm test`. The cases run

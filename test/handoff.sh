@@ -405,14 +405,13 @@ summary: Done.
 answer: approve' "'answer:'"
 }
 
-# The build step hands off as build, with review next when it is done. The
-# block in $1 must be recorded and printed back, and `task log` must then show
-# each of the lines after it.
-build_logged() {
+# The block in $1 must be recorded and printed back, and `task log` must then
+# show each of the lines after it.
+step_logged() {
   local block=$1 out want
   shift
   demo
-  out=$(hand "$block") || fail "task handoff refused a build block: $out"
+  out=$(hand "$block") || fail "task handoff refused the block: $out"
   [ "$out" = "$block" ] || fail "did not print the block back: $out"
   out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
   for want in "$@"; do
@@ -420,8 +419,9 @@ build_logged() {
   done
 }
 
+# The build step hands off as build, with review next when it is done.
 handoff_records_a_finished_build() {
-  build_logged 'phase: build
+  step_logged 'phase: build
 status: done
 next: review
 summary: Built the CSV export and its tests. The tests pass.' \
@@ -429,7 +429,7 @@ summary: Built the CSV export and its tests. The tests pass.' \
 }
 
 handoff_records_a_build_that_needs_the_human() {
-  build_logged 'phase: build
+  step_logged 'phase: build
 status: needs-human
 question: The Plan names a helper that does not exist. Write it, or reuse the invoice export?
 options: reuse the invoice export | write the helper' \
@@ -438,10 +438,45 @@ options: reuse the invoice export | write the helper' \
 }
 
 handoff_records_a_failed_build() {
-  build_logged 'phase: build
+  step_logged 'phase: build
 status: failed
 reason: The card has no Plan, so nothing was built.' \
     'build      failed' '    reason: The card has no Plan, so nothing was built.'
+}
+
+# The review hands off as review. When every Done when item is met, the pull
+# request is next; when one is not, the build is.
+handoff_records_a_review_that_passes() {
+  step_logged 'phase: review
+status: done
+next: pr
+summary: All three Done when items are met, each by its test. The tests pass.' \
+    'review     done, then pr' '    summary: All three Done when items are met, each by its test. The tests pass.'
+}
+
+handoff_records_a_review_that_sends_the_work_back() {
+  step_logged 'phase: review
+status: done
+next: build
+summary: Item 2 is not met: no test checks that the file has one row per order.' \
+    'review     done, then build' \
+    '    summary: Item 2 is not met: no test checks that the file has one row per order.'
+}
+
+handoff_records_a_review_that_needs_the_human() {
+  step_logged 'phase: review
+status: needs-human
+question: Item 2 is still not met after one send-back. Build again, or stop?
+options: build again | stop' \
+    'review     needs-human' \
+    '    question: Item 2 is still not met after one send-back. Build again, or stop?'
+}
+
+handoff_records_a_failed_review() {
+  step_logged 'phase: review
+status: failed
+reason: No worktree has commits ahead of main, so nothing was built.' \
+    'review     failed' '    reason: No worktree has commits ahead of main, so nothing was built.'
 }
 
 # A store as the version before answers made it: no column for them, one row.
@@ -523,6 +558,29 @@ log_shows_how_long_each_step_took() {
   log_has 'define +done, then plan +20s$'
   log_has 'plan +done, then breakdown +1h 02m$'
   case $out in *'waiting on the human for'*) fail "says it is waiting, though the last row is not a question: $out" ;; esac
+}
+
+# Each review has its own time, after the build before it, and so does the
+# wait on the human once the work has been sent back.
+log_shows_how_long_each_review_took() {
+  demo; make_store
+  put 2026-01-01T10:00:00Z build done review
+  put 2026-01-01T10:03:20Z review failed
+  put 2026-01-01T10:10:00Z build done review
+  put 2026-01-01T10:12:30Z review done build
+  put 2026-01-01T10:30:30Z build done review
+  put 2026-01-01T10:32:15Z review needs-human
+  put 2026-01-01T10:39:15Z review answered '' 'build again'
+  put 2026-01-01T10:39:25Z review done build
+  put 2026-01-01T10:54:25Z build done review
+  put 2026-01-01T10:56:25Z review done pr
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  log_has 'review +failed +3m 20s$'
+  log_has 'review +done, then build +2m 30s$'
+  log_has 'review +needs-human +1m 45s$'
+  log_has 'review +answered +waited 7m 00s$'
+  log_has 'review +done, then build +10s$'
+  log_has 'review +done, then pr +2m 00s$'
 }
 
 # Rows from before answers were recorded: the step after a question cannot be
@@ -647,6 +705,30 @@ a_start_row_shows_no_time() {
   j_is .run 2
 }
 
+# `task start` records a start row. It shows as started, with no time, as a
+# write-up's start does, but it begins no new run: the write-up's steps stay
+# in the run beside the build's, and the build is timed from it.
+a_task_start_row_keeps_the_run() {
+  demo; make_store
+  put 2026-01-01T10:00:00Z new done define
+  put 2026-01-01T10:00:50Z define done plan
+  put 2026-01-01T10:02:34Z plan done breakdown
+  put 2026-01-01T10:05:00Z breakdown done setup
+  put 2026-01-01T11:00:00Z start done build
+  out=$("$E" task log demo ABC-122 --json)
+  j_is '.steps[4].kind' start; j_is '.steps[4].label' started; j_is '.steps[4].seconds' null
+  j_is '.steps[4].run' 1; j_is .run 1; j_is .state started
+  out=$("$E" task log demo) || fail "task log exited non-zero"
+  log_has '^ABC-122 +started +for '
+  put 2026-01-01T11:20:00Z build done review
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  log_has 'start +done, then build$'
+  log_has 'build +done, then review +20m 00s$'
+  log_has 'define +done, then plan +50s$'
+  out=$("$E" task log demo ABC-122 --json)
+  j_is '.steps[5].run' 1; j_is .run 1
+}
+
 log_json_fails_as_the_plain_log_does() {
   demo
   mkdir -p "$HOME/.config/entourage"
@@ -766,13 +848,16 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_refuses_a_project_in_the_wrong_case handoff_records_an_answer
   handoff_checks_an_answer handoff_records_a_finished_build
   handoff_records_a_build_that_needs_the_human handoff_records_a_failed_build
+  handoff_records_a_review_that_passes handoff_records_a_review_that_sends_the_work_back
+  handoff_records_a_review_that_needs_the_human handoff_records_a_failed_review
   an_older_store_gains_the_answer_column
   log_reads_an_older_store_without_changing_it
   hand_offs_at_once_into_an_older_store_are_all_recorded
-  log_shows_how_long_each_step_took log_marks_a_step_that_includes_waiting
+  log_shows_how_long_each_step_took log_shows_how_long_each_review_took
+  log_marks_a_step_that_includes_waiting
   log_shows_a_question_still_waiting
   log_json_is_the_same_view_on_one_line log_json_with_nothing_recorded
   log_json_says_when_a_question_is_still_waiting log_json_keeps_awkward_text
-  a_start_row_shows_no_time log_json_fails_as_the_plain_log_does
+  a_start_row_shows_no_time a_task_start_row_keeps_the_run log_json_fails_as_the_plain_log_does
   log_lists_the_projects_cards_newest_first log_list_with_nothing_recorded
   log_list_fails_when_the_store_cannot_be_read"

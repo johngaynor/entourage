@@ -139,8 +139,8 @@ entourage task ls <project> [--json]
 - **It lists the open cards of the project's Linear teams**, under their
   statuses, in the order Linear shows the statuses. Open means not done, not
   cancelled and not a duplicate, so a card in progress or in review is listed.
-  Each card is its ID and its title. A status with no cards is listed with a
-  count of 0.
+  Each card is its ID and its title, and under each status the card changed
+  last comes first. A status with no cards is listed with a count of 0.
 - **It asks Linear itself, with no agent running.** That needs two things, each
   set once:
 
@@ -159,8 +159,8 @@ entourage task ls <project> [--json]
 - **When it cannot list, it says which thing is wrong:** no key saved, a key
   Linear rejects, Linear out of reach, something between this machine and
   Linear answering for it (a proxy's or a firewall's page), a project with no
-  team, a line of the `teams` file that is not a team key, or a team key Linear
-  does not have.
+  team, a `teams` file it cannot read, a line of that file that is not a team
+  key, or a team key Linear does not have.
 - **The `teams` file can be edited by hand.** Keys may be in lower case, a `#`
   starts a comment, and blank lines and spaces are skipped. A line that is
   still not a team key is named in the message.
@@ -178,8 +178,10 @@ entourage task ls <project> [--json]
   teams, and each status with its `name`, its `type` (`triage`, `backlog`,
   `unstarted` or `started`) and its `cards`, each with an `id`, a `title` and a
   `url`. When it fails it prints nothing on stdout.
-- **Two teams' cards share a group when the status has the same name**, such as
-  Backlog. A status only one team has is a group of its own.
+- **Two teams' cards share a group when their statuses have the same name and
+  the same type**, such as a Backlog of type `backlog` in each. A status only
+  one team has is a group of its own, and so is one whose name another team
+  gives to a status of another type.
 - **It needs `curl` and `jq`**, and says which is missing.
 
 ### Writing the card up
@@ -266,8 +268,13 @@ the card up.
 Each step of a write-up ends by handing off: which step it was, how it ended
 (`done`, `needs-human` or `failed`) and what comes next. So does the build,
 which the `sdlc-build` skill runs in a started task: it hands off as `build`,
-`done` only when the tests pass, with `review` next. Nothing runs a review
-yet, so the build's commits wait on the task's branch for you. The agent records
+`done` only when the tests pass, with `review` next. So does the review after
+it, which the `sdlc-review` skill runs: it hands off as `review`, `done` with
+`pr` next when every Done when item is met, or with `build` next, naming each
+item that is not. Once it has sent the work back, it asks you instead,
+as `needs-human`, whether to build again. Nothing pushes or opens a pull
+request yet, so the reviewed commits wait on the task's branch for you. The
+agent records
 each hand-off itself, with the block on stdin:
 
 ```sh
@@ -292,6 +299,11 @@ entourage task log <project> [<card>]
   commands.
 - **`task new` records the start,** so the time each step took can be read
   from the hand-offs alone.
+- **`task start` records a start too,** as `start` in the log, with `build`
+  next, so the build's first step is timed from it and not from your
+  approval. Like a write-up's start it shows as started, with no time, but it
+  begins no new run: the Steps panel shows the write-up and the build of a
+  card together.
 - **It records your answers too.** When you reply to a question, the agent
   records a hand-off with `status: answered` and what you said in a few
   words. `task log` shows how long each step took, and the time a question
@@ -376,6 +388,24 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
 - **Where the tab starts:** in the worktree when the task has one repo; in
   the task folder when it has several. That folder has `CLAUDE.md` and
   `AGENTS.md` links to the project's `PROJECT.md`.
+- **The agent starts in the tab.** Once the tab is open, `task start` types
+  `entourage task build <project> <card>` into its shell, after setup when
+  setup runs, so the agent starts on the card with no one typing there, and
+  not before setup has finished. `task build` starts the agent
+  (`ENTOURAGE_AGENT`, or `claude`) in the folder it is run in, with the first
+  message in [prompts/task-build.md](../prompts/task-build.md): build the card
+  with `sdlc-build`, then review the build with `sdlc-review`, and back to the
+  build when the review sends it back. The run ends when the review hands off
+  with `pr` next. `task build` refuses to run outside the card's own task
+  folder, with no agent on your `PATH`, or with the skills not linked. If the
+  agent stops, run the same command again in the tab.
+- **Claude Code asks once to trust a repo it does not know.** With one repo,
+  the tab starts in its worktree, and a worktree takes the trust of its repo's
+  own checkout, not of the project folder above it. When Claude Code's file
+  (`~/.claude.json`) has not trusted the repo yet, `task start` says that
+  Claude Code will ask once in the tab. entourage never answers that question
+  for a repo. With several repos the tab is in the task folder, inside the
+  project folder that `project new` trusted, so there is nothing to ask.
 - **Setup is off for now**, while the local environment each task gets is
   worked out. The output says it was not run. Set `ENTOURAGE_SETUP=1` (see
   [entourage's variables](#entourages-variables)) to turn it on. The next
@@ -389,7 +419,8 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   named in the output.
 - **Setup never fails the task.** The task and its tab are there either way.
   Without `just`, the output says setup was skipped. If the line could not be
-  typed into the tab, the output gives you the line to run yourself.
+  typed into the tab, the output gives you the line to run yourself: setup,
+  then the agent's command.
 - **Nothing is made unless everything can be.** A task or branch of that name
   that already exists, a missing repo, or Herdr not running stops it first,
   and a worktree that fails partway is undone.
@@ -439,7 +470,7 @@ shell, or written as a `NAME=value` line in entourage's env file,
 | Variable | What it sets |
 |---|---|
 | `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
-| `ENTOURAGE_AGENT` | The agent `task new` starts. `claude` when it is not set. |
+| `ENTOURAGE_AGENT` | The agent `task new` and `task build` start. `claude` when it is not set. |
 | `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
 | `ENTOURAGE_SETUP` | `1` makes `task start` run each repo's `setup` recipe. Off when it is not set, for now. |
 | `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |
@@ -466,10 +497,13 @@ shell, or written as a `NAME=value` line in entourage's env file,
 - **Keep the file to yourself.** It holds your Linear key. `linear key` makes
   it readable only by you; if you make it by hand, run
   `chmod 600 ~/.config/entourage/.env`. A file entourage cannot read stops every
-  command, with a message saying so, rather than being skipped.
-- **A linked env file is left alone.** If `.env` is a link, for example into a
-  dotfiles repo, `linear key` saves nothing and says so, so that the key does
-  not land in that repo. Add the `LINEAR_API_KEY` line yourself.
+  command, with a message saying so, rather than being skipped, and so does
+  anything at `.env` that is not a file, such as a folder.
+- **A linked env file, or one in a git repo, is left alone.** If `.env` is a
+  link, for example into a dotfiles repo, or entourage's folder is inside a git
+  repo, as it is when GNU Stow links the whole folder into one, `linear key`
+  saves nothing and says so, so that the key does not land in that repo. Add
+  the `LINEAR_API_KEY` line yourself, once the repo ignores the file.
 
 ## Changing things
 

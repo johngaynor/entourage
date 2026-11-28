@@ -39,7 +39,7 @@ linear_tools() {
 # ways this fails are told apart, because what the human does next differs:
 # check the network, or replace the key.
 linear_ask() {
-  local key=$1 query=$2 vars=${3:-} body out code=0 status said
+  local key=$1 query=$2 vars=${3:-} body out code=0 status said rejected
   [ -n "$vars" ] || vars='{}'
   body=$(jq -cn --arg q "$query" --argjson v "$vars" '{query: $q, variables: $v}') ||
     die "could not put a question to Linear together."
@@ -59,14 +59,22 @@ linear_ask() {
   # curl ends what it prints with the HTTP status, on a line of its own.
   status=${out##*$'\n'}
   out=${out%$'\n'*}
-  # A key Linear does not know: a 401, or Linear's own word for it at any
-  # status. A 403 counts only when it is Linear's own answer: a page from a
-  # proxy or a firewall says nothing about the key, and a new key would not
-  # get past it.
-  if [ "$status" = 401 ] ||
-    { [ "$status" = 403 ] && printf '%s' "$out" | jq -e 'type == "object" and has("errors")' >/dev/null 2>&1; } ||
+  # A key Linear does not know: a 401, whatever comes with it.
+  rejected="Linear rejected the key. Make a new one in $KEY_PLACE, then save it with: entourage linear key"
+  [ "$status" != 401 ] || die "$rejected"
+  # Linear's API always answers with JSON, so an empty answer did not come
+  # from it. It is stopped here, before jq judges it: jq 1.6 exits zero for
+  # -e when it is given no JSON at all, so the tests below would pass on it.
+  case $out in
+    *[![:space:]]*) ;;
+    *) die "Linear's answer was empty, with HTTP status $status. Something between this machine and Linear may be answering for it: check the network, then run this again." ;;
+  esac
+  # Linear's own word for a key it does not know, at any status. A 403 counts
+  # only when it is Linear's own answer: a page from a proxy or a firewall
+  # says nothing about the key, and a new key would not get past it.
+  if { [ "$status" = 403 ] && printf '%s' "$out" | jq -e 'type == "object" and has("errors")' >/dev/null 2>&1; } ||
     [ "$(printf '%s' "$out" | jq -r '[.errors[]?.extensions | ((.type // "") + " " + (.code // "")) | test("authentication"; "i")] | any' 2>/dev/null)" = true ]; then
-    die "Linear rejected the key. Make a new one in $KEY_PLACE, then save it with: entourage linear key"
+    die "$rejected"
   fi
   said=$(printf '%s' "$out" | jq -r '.errors[0].message // empty' 2>/dev/null) || said=
   [ -z "$said" ] || die "Linear answered with an error: ${said//"$key"/<the key>}"
@@ -98,15 +106,19 @@ LINEAR_PAGE=100
 LINEAR_PAGES=50
 
 # The teams Linear knows of those asked for, their open statuses, and one page
-# of their open cards, most recently changed first.
+# of their open cards, with when each was last changed. Linear pages through
+# the cards in the order it is asked for, each page starting where the last
+# ended. That order is when each card was made, which nothing changes: in the
+# order they were last changed, a card edited while the pages are fetched
+# would move onto a page already fetched, and never be listed.
 LIST_QUERY='query($teams: [String!], $types: [String!], $first: Int, $after: String) {
   teams(filter: {key: {in: $teams}}) { nodes { key } }
   workflowStates(first: 250, filter: {team: {key: {in: $teams}}, type: {in: $types}}) {
     nodes { name type position team { key } }
   }
-  issues(first: $first, after: $after, orderBy: updatedAt,
+  issues(first: $first, after: $after, orderBy: createdAt,
       filter: {team: {key: {in: $teams}}, state: {type: {in: $types}}}) {
-    nodes { identifier title url state { name type position } }
+    nodes { identifier title url updatedAt state { name type position } }
     pageInfo { hasNextPage endCursor }
   }
 }'
@@ -115,8 +127,9 @@ LIST_QUERY='query($teams: [String!], $types: [String!], $first: Int, $after: Str
 # the list: every open status, in Linear's order, with its cards. Teams often
 # share a status name; a status of one name and kind is one group, whichever
 # teams have it. $project, $teams and $types are given by the caller.
-#   - A card can come on two pages, when it moves while they are fetched. The
-#     first copy is kept, in the order Linear gave them.
+#   - Under each status the card changed last comes first. Cards changed at
+#     the same moment keep the order Linear gave them in.
+#   - Should a card come on two pages, the first copy is kept.
 #   - The statuses are the ones the first page names, and any a card is in
 #     that it did not, such as one made while the pages were fetched, so that
 #     no card is dropped for want of a group.
@@ -124,7 +137,8 @@ LIST_QUERY='query($teams: [String!], $types: [String!], $first: Int, $after: Str
 LIST_SHAPE='
   ($types | to_entries | map({key: .value, value: .key}) | from_entries) as $rank
   | .[0] as $first
-  | ([.[].issues.nodes[]] | to_entries | unique_by(.value.identifier) | sort_by(.key) | map(.value)) as $cards
+  | ([.[].issues.nodes[]] | to_entries | unique_by(.value.identifier)
+      | sort_by([.value.updatedAt, -.key]) | reverse | map(.value)) as $cards
   | {
       missing: ($teams - [$first.teams.nodes[].key]),
       project: $project,
@@ -260,20 +274,44 @@ linear_card_known() {
   esac
 }
 
+# Print the top folder of the git repo a folder is in, through any links on
+# the way, or fail when it is in none. A folder not made yet is looked for
+# from the nearest folder above it that is, where mkdir -p would make it.
+#   git_repo_around <folder>
+git_repo_around() {
+  local dir=$1
+  while [ ! -d "$dir" ]; do dir=$(dirname "$dir"); done
+  dir=$(cd -P "$dir" 2>/dev/null && pwd) || return 1
+  while [ ! -e "$dir/.git" ]; do
+    [ "$dir" != / ] || return 1
+    dir=$(dirname "$dir")
+  done
+  printf '%s\n' "$dir"
+}
+
 # Save the human's Linear API key as LINEAR_API_KEY in entourage's env file,
 # once Linear has said whose it is. The key is asked for or read from stdin,
 # never taken as an argument, so that it stays out of the shell's history.
 linear_key() {
-  # Every line the loader in cli/entourage would read as the key.
-  local key='' data who tmp tty_was key_line='^[[:space:]]*(export[[:space:]]+)?LINEAR_API_KEY[[:space:]]*='
+  # Every line the loader in cli/entourage would read as the key, one that
+  # starts with the mark some editors put at the start of a file included.
+  local key='' data who tmp tty_was repo
+  local key_line=$'^(\357\273\277)?[[:space:]]*(export[[:space:]]+)?LINEAR_API_KEY[[:space:]]*='
   [ "$#" -eq 0 ] ||
     die "usage: entourage linear key (it asks for the key, or reads it from stdin; the key is never an argument)"
   # A linked env file is often kept in a dotfiles repo. Replacing the link
   # would cut it loose, and writing through it would put the key in that
   # repo, so it is left alone, as trust.sh leaves a linked Claude Code file.
   # This comes before the key is asked for, so nobody pastes one for nothing.
+  # (Anything else there that is not a file has stopped cli/entourage already.)
   [ ! -L "$ENV_FILE" ] ||
     die "$ENV_FILE is a link, so entourage left it alone and saved no key. Add the line LINEAR_API_KEY=<your key> to the file it links to yourself, or put a plain file in its place and run this again."
+  # The same goes for a plain file in a git repo, where the key could be
+  # committed and pushed. GNU Stow, for one, links a whole folder into a
+  # dotfiles repo when it can, so entourage's folder may lead into one.
+  if repo=$(git_repo_around "$ENT_HOME"); then
+    die "$ENT_HOME is in the git repo at $repo, where a saved key could be committed and pushed, so entourage saved no key. Add the line LINEAR_API_KEY=<your key> to $ENV_FILE yourself if that repo ignores the file, or move $ENT_HOME out of the repo and run this again."
+  fi
   linear_tools
   if [ -t 0 ]; then
     printf 'Linear API key (it is not shown as you type or paste it): ' >&2
@@ -297,8 +335,9 @@ linear_key() {
     die "that is not a Linear API key. A key is lin_api_ and then letters and digits. Make one in $KEY_PLACE."
   data=$(linear_ask "$key" 'query { viewer { id name } }') || die "the key was not saved."
   # Linear always says who a good key belongs to. An answer that names nobody
-  # did not come from Linear, so it checked nothing.
-  printf '%s' "$data" | jq -e '.viewer.id | strings' >/dev/null 2>&1 ||
+  # did not come from Linear, so it checked nothing. What jq prints decides,
+  # not how it exits: jq 1.6 exits zero for -e when it is given no JSON.
+  [ -n "$(printf '%s' "$data" | jq -r '.viewer.id | strings' 2>/dev/null)" ] ||
     die "Linear's answer did not say whose key it is, so the key was not saved. Something between this machine and Linear may be answering for it."
   who=$(printf '%s' "$data" | jq -r '.viewer.name // empty' 2>/dev/null) || who=
 
@@ -310,12 +349,14 @@ linear_key() {
   tmp=$ENV_FILE.entourage.$$
   # grep -a: a file with a NUL or another odd byte in it is still text here.
   # Without it grep calls the file binary and prints a note in place of its
-  # lines. grep exits 1 when no line is left, which is fine; 2 is an error,
-  # and must not leave a file with only the key in it.
+  # lines. LC_ALL=C: macOS grep in a UTF-8 locale does not match that mark
+  # in such a file, so its key line would be kept. grep exits 1 when no line
+  # is left, which is fine; 2 is an error, and must not leave a file with
+  # only the key in it.
   if (umask 077
       {
         if [ -f "$ENV_FILE" ]; then
-          grep -a -v -E "$key_line" "$ENV_FILE"
+          LC_ALL=C grep -a -v -E "$key_line" "$ENV_FILE"
           [ "$?" -le 1 ]
         fi &&
         printf 'LINEAR_API_KEY=%s\n' "$key"
