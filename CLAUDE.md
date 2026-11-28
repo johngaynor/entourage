@@ -8,9 +8,10 @@ machine running from a clone gets whatever `git pull` brings.
 
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
 are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
-`linear`, `runner`, `release`). The `handoff` tests use the real `sqlite3`,
-the `linear` and `task` tests the real `jq`, and the `release` tests the real
-`git` and `jq`; they have to be in `/usr/bin` or `/bin`. No test reaches Linear: a
+`linear`, `runner`, `release`, `guard`). The `handoff` tests use the real
+`sqlite3`, the `linear` and `task` tests the real `jq`, the `release` tests the
+real `git` and `jq`, and the `guard` tests all three; they have to be in
+`/usr/bin` or `/bin`. No test reaches Linear: a
 stand-in `curl` answers from canned files. Cases run side by side, each in a
 process of its own, so a case must not depend on another case or on anything
 outside its own throwaway folder. To run one case at a time, set
@@ -20,6 +21,30 @@ The CLI is `cli/entourage`, which sets the paths and sources the files in
 `cli/lib/`. A new file in `cli/lib/` must be added to the list in
 `cli/entourage`; a new test case must be added to `CASES` in its test file; a
 new test area must be added to `AREAS` in `test/run.sh`.
+
+## Working in a worktree
+
+A task's worktree of this repo holds a second copy of the CLI, the change
+being built. Which copy to run for what:
+
+- **Plain `entourage` for the card's own steps**, such as recording a
+  hand-off, `task log` and `task ls`. It is the copy this machine runs, the
+  main checkout or the npm install, and it is never stopped, whatever folder
+  it is run from.
+- **`./cli/entourage` to try the change.** It runs the worktree's code against
+  the real machine, so it runs only the commands that read: `help`, `status`,
+  `project ls`, `project team <name>` with no teams, `task ls` and `task log`.
+  Any other command stops before it does anything and says so, and the
+  hand-off store is opened read-only.
+- **A test case to try a command that changes the machine.** Each case has a
+  throwaway home and stand-ins for Herdr and Linear.
+- **`ENTOURAGE_LIVE=1 ./cli/entourage …` only when the human asks for it.** It
+  runs the worktree's copy on the real machine, as the main checkout's would,
+  for that one run. The env file cannot set it.
+
+The guard is `cli/lib/guard.sh`. It lists the commands a worktree's copy may
+run, so a new command is refused there until it is added to that list, and
+it is added only if it changes nothing.
 
 ## Versions and releases
 
