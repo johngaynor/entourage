@@ -207,7 +207,10 @@ Each skill also runs on its own in any agent, as `/sdlc-build ABC-122`,
 To work on entourage itself, clone the repo and run `cli/entourage install`
 from the clone instead. Run the CLI's tests with `npm test`. The cases run
 side by side, one per processor; `ENTOURAGE_TEST_JOBS=1 npm test` runs them
-one at a time.
+one at a time. Once a pull request merges, `scripts/after-merge <name>`, run
+from the clone, removes the Claude Code worktree under `.claude/worktrees/`
+that the work was done in, deletes its branch and updates the clone; see
+[CLAUDE.md](CLAUDE.md#after-a-pull-request-merges).
 
 ## Releasing
 
