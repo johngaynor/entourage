@@ -92,6 +92,12 @@ into the default branch of each repo the work changed, saying how the review
 showed each Done when item. You merge it, then tell the agent in the tab that
 it has merged: it checks GitHub, and records the merge once every pull
 request for the card has merged. No agent merges a pull request.
+entourage moves the card in Linear at two points: once `task start` has
+opened the tab, to the team's first started status (In Progress), and once
+the merge is recorded, to its first completed one (Done). A status is picked
+by its kind and its place in the team's order, not by its name; a card only
+moves forward, one that is done or canceled is never moved, the key needs
+Write permission, and a move that cannot be made is a note, never a failure.
 Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122`, `/sdlc-pr ABC-122`.
 `task finish` ends a task once its work has merged: it removes the task's

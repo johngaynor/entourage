@@ -213,6 +213,14 @@ task_handoff() {
   for key in $HANDOFF_KEYS; do
     [ -z "${!key}" ] || printf '%s: %s\n' "$key" "${!key}"
   done
+  # Every pull request for the card has merged, so its work is finished, and
+  # the card shows it in Linear. Whatever records the merge, a human's answer
+  # or a watch on the pull requests, moves it here. The hand-off is recorded
+  # by now, so a card that cannot be moved is a note, never a failure. It goes
+  # to stderr, so that stdout is the block as it was recorded.
+  if [ "$status" = done ] && [ "$next" = merged ]; then
+    linear_move_note "$card" completed >&2 || true
+  fi
 }
 
 # --- the log ----------------------------------------------------------------

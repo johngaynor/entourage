@@ -197,8 +197,12 @@ Then it asks you to merge them, as `needs-human` with their links. Merge each
 one on GitHub yourself, then tell the agent in the tab that they have merged.
 It checks each with `gh pr view`, and once every one has merged it hands off
 `done` with `merged` next, which ends the card: `task log` shows the card as
-merged. If one has not merged yet, it names it and asks again. No agent merges
-a pull request.
+merged, and recording it moves the card to Done in Linear, as `task start`
+moved it to In Progress. Each move picks the team's own status of that kind,
+goes only forward, never touches a card that is done or canceled, and needs
+your Linear key to have Write permission. A move that cannot be made is a
+note saying why, and the step goes on. If one has not merged yet, it names it
+and asks again. No agent merges a pull request.
 
 To have something changed instead of merging, say what in the tab. The agent
 makes the change on the task's branch, with its test, runs the whole test

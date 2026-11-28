@@ -297,10 +297,12 @@ task_start_names_the_branch_from_the_card() {
   case $out in *"feat/$task"*) ;; *) fail "did not say which branch: $out" ;; esac
 }
 
-# The branch's type is the card's, whichever of them it is.
+# The branch's type is the card's, whichever of them it is. After each card
+# comes the move's question, about a card in progress already.
 task_start_takes_the_cards_type() {
   task_demo api
-  linear_answers "$(card_answer ABC-1 X feat)" "$(card_answer ABC-2 X fix)" "$(card_answer ABC-3 X chore)"
+  linear_answers "$(card_answer ABC-1 X feat)" "$(move_answer ABC-1 'In Progress')" \
+    "$(card_answer ABC-2 X fix)" "$(move_answer ABC-2 'In Progress')" "$(card_answer ABC-3 X chore)"
   local n=0 type
   for type in feat fix chore; do
     n=$((n + 1))
@@ -389,6 +391,80 @@ task_start_asks_linear_before_it_makes_a_branch() {
   "$E" task start demo ABC-1 >/dev/null 2>&1 && fail "task start exited zero"
   [ -z "$(git -C "$API" branch --list 'feat/*')" ] || fail "made a branch: $(git -C "$API" branch --list)"
 }
+
+# --- tasks: the card moves to its team's first started status ---------------
+
+# Make each call to Linear note, in tabs-at-call.log, how many tabs Herdr had
+# been asked for by then.
+tabs_at_each_call() {
+  mv "$TMP/bin/curl" "$TMP/bin/curl-stub"
+  cat > "$TMP/bin/curl" <<EOF
+#!/usr/bin/env bash
+n=\$(grep -c '^do tab\.new ' "$TMP/herdr-calls.log" 2>/dev/null) || true
+echo "\${n:-0}" >> "$TMP/tabs-at-call.log"
+exec "$TMP/bin/curl-stub" "\$@"
+EOF
+  chmod +x "$TMP/bin/curl"
+}
+
+# Once the task is made and its tab open, the card moves to the started
+# status that comes first in its team's order, not the first Linear lists.
+task_start_moves_the_card_to_started() {
+  task_demo api
+  tabs_at_each_call
+  linear_answers "$(card_answer ABC-1 X feat)" "$(move_answer ABC-1 Todo)" "$(moved_answer 'In Progress')"
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero: $out"
+  [ -d "$T/abc-1-x/api" ] || fail "no worktree"
+  [ "$(curl_count)" = 3 ] || fail "asked Linear $(curl_count) times, not 3: $(curl_calls)"
+  case $(changes_sent) in
+    *'"id":"id-ABC-1"'*'"stateId":"s-progress"'*) ;;
+    *) fail "did not move the card to In Progress: $(changes_sent)" ;;
+  esac
+  [ "$(tr '\n' ' ' < "$TMP/tabs-at-call.log")" = '0 1 1 ' ] ||
+    fail "the card was not moved after its tab was opened: $(tr '\n' ' ' < "$TMP/tabs-at-call.log")"
+  case $out in *"card      ABC-1 moved to In Progress in Linear (it was Todo)"*) ;; *) fail "did not say the card moved: $out" ;; esac
+}
+
+# The status is picked by its kind and its place, whatever the team calls it.
+task_start_moves_the_card_in_a_team_of_other_names() {
+  task_demo api
+  linear_answers "$(card_answer ABC-1 X feat)" "$(move_answer ABC-1 Waiting "$OTHER_STATUSES")" \
+    "$(moved_answer Doing "$OTHER_STATUSES")"
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero: $out"
+  case $(changes_sent) in *'"stateId":"o-doing"'*) ;; *) fail "did not move the card to Doing: $(changes_sent)" ;; esac
+  case $out in *"ABC-1 moved to Doing in Linear (it was Waiting)"*) ;; *) fail "did not say the card moved: $out" ;; esac
+}
+
+# A card further along, in review or done, is never moved back.
+task_start_moves_no_card_back() {
+  task_demo api
+  linear_answers "$(card_answer ABC-1 X feat)" "$(move_answer ABC-1 'In Review')" \
+    "$(card_answer ABC-2 Y feat)" "$(move_answer ABC-2 Done)"
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero for a card in review: $out"
+  case $out in *"ABC-1 stays in In Review, which is past In Progress"*) ;; *) fail "did not say why the card in review stays: $out" ;; esac
+  out=$("$E" task start demo ABC-2) || fail "task start exited non-zero for a card that is done: $out"
+  case $out in *"ABC-2 stays in Done, which is closed"*) ;; *) fail "did not say why the card that is done stays: $out" ;; esac
+  [ "$(curl_count)" = 4 ] || fail "asked Linear $(curl_count) times, not 4: $(curl_calls)"
+  [ -z "$(changes_sent)" ] || fail "asked Linear to change a card: $(changes_sent)"
+}
+
+# The task is made before the card moves, so a move that fails is a note.
+task_start_goes_on_when_the_card_cannot_be_moved() {
+  task_demo api
+  linear_gone_from 2
+  out=$("$E" task start demo ABC-1 2>&1) || fail "task start exited non-zero when the move could not be made: $out"
+  [ -d "$T/abc-1-x/api" ] || fail "no worktree"
+  [ "$(last_call)" = "do tab.new {\"name\":\"abc-1-x\",\"folder\":\"$T/abc-1-x/api\"}" ] || fail "did not open the tab: $(last_call)"
+  case $out in
+    *"note      ABC-1 was not moved in Linear: could not reach Linear (curl: (6) Could not resolve host: api.linear.app)"$'\n'*) ;;
+    *) fail "did not say the card was not moved, and why: $out" ;;
+  esac
+  case $out in *"run this again"*) fail "said to run task start again: $out" ;; esac
+  case $out in *"Opened task 'abc-1-x'"*) ;; *) fail "did not say the task was opened: $out" ;; esac
+}
+
+CARD_MOVE_CASES="task_start_moves_the_card_to_started task_start_moves_the_card_in_a_team_of_other_names
+  task_start_moves_no_card_back task_start_goes_on_when_the_card_cannot_be_moved"
 
 CARD_START_CASES="task_start_names_the_branch_from_the_card task_start_takes_the_cards_type
   task_start_with_a_title_of_no_plain_words task_start_takes_a_lowercase_card
@@ -1502,7 +1578,7 @@ FINISH_CASES="task_finish_removes_the_task task_finish_removes_a_task_of_two_rep
   task_finish_refuses_a_locked_or_moved_worktree task_finish_refusal_changes_nothing
   task_finish_from_its_own_tab task_finish_with_no_task"
 
-CASES="$FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES
+CASES="$FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES
   task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
   task_start_keeps_the_task_when_the_space_fails task_start_branch_has_no_upstream
   task_start_refusal_keeps_the_first_task task_start_refusal_keeps_an_existing_branch
