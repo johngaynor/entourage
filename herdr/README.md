@@ -253,8 +253,13 @@ the card up.
 Each step of a write-up ends by handing off: which step it was, how it ended
 (`done`, `needs-human` or `failed`) and what comes next. So does the build,
 which the `sdlc-build` skill runs in a started task: it hands off as `build`,
-`done` only when the tests pass, with `review` next. Nothing runs a review
-yet, so the build's commits wait on the task's branch for you. The agent records
+`done` only when the tests pass, with `review` next. So does the review after
+it, which the `sdlc-review` skill runs: it hands off as `review`, `done` with
+`pr` next when every Done when item is met, or with `build` next, naming each
+item that is not. Once it has sent the work back, it asks you instead,
+as `needs-human`, whether to build again. Nothing pushes or opens a pull
+request yet, so the reviewed commits wait on the task's branch for you. The
+agent records
 each hand-off itself, with the block on stdin:
 
 ```sh
