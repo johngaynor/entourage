@@ -139,8 +139,8 @@ entourage task ls <project> [--json]
 - **It lists the open cards of the project's Linear teams**, under their
   statuses, in the order Linear shows the statuses. Open means not done, not
   cancelled and not a duplicate, so a card in progress or in review is listed.
-  Each card is its ID and its title. A status with no cards is listed with a
-  count of 0.
+  Each card is its ID and its title, and under each status the card changed
+  last comes first. A status with no cards is listed with a count of 0.
 - **It asks Linear itself, with no agent running.** That needs two things, each
   set once:
 
@@ -159,8 +159,8 @@ entourage task ls <project> [--json]
 - **When it cannot list, it says which thing is wrong:** no key saved, a key
   Linear rejects, Linear out of reach, something between this machine and
   Linear answering for it (a proxy's or a firewall's page), a project with no
-  team, a line of the `teams` file that is not a team key, or a team key Linear
-  does not have.
+  team, a `teams` file it cannot read, a line of that file that is not a team
+  key, or a team key Linear does not have.
 - **The `teams` file can be edited by hand.** Keys may be in lower case, a `#`
   starts a comment, and blank lines and spaces are skipped. A line that is
   still not a team key is named in the message.
@@ -178,8 +178,10 @@ entourage task ls <project> [--json]
   teams, and each status with its `name`, its `type` (`triage`, `backlog`,
   `unstarted` or `started`) and its `cards`, each with an `id`, a `title` and a
   `url`. When it fails it prints nothing on stdout.
-- **Two teams' cards share a group when the status has the same name**, such as
-  Backlog. A status only one team has is a group of its own.
+- **Two teams' cards share a group when their statuses have the same name and
+  the same type**, such as a Backlog of type `backlog` in each. A status only
+  one team has is a group of its own, and so is one whose name another team
+  gives to a status of another type.
 - **It needs `curl` and `jq`**, and says which is missing.
 
 ### Writing the card up
@@ -482,10 +484,13 @@ shell, or written as a `NAME=value` line in entourage's env file,
 - **Keep the file to yourself.** It holds your Linear key. `linear key` makes
   it readable only by you; if you make it by hand, run
   `chmod 600 ~/.config/entourage/.env`. A file entourage cannot read stops every
-  command, with a message saying so, rather than being skipped.
-- **A linked env file is left alone.** If `.env` is a link, for example into a
-  dotfiles repo, `linear key` saves nothing and says so, so that the key does
-  not land in that repo. Add the `LINEAR_API_KEY` line yourself.
+  command, with a message saying so, rather than being skipped, and so does
+  anything at `.env` that is not a file, such as a folder.
+- **A linked env file, or one in a git repo, is left alone.** If `.env` is a
+  link, for example into a dotfiles repo, or entourage's folder is inside a git
+  repo, as it is when GNU Stow links the whole folder into one, `linear key`
+  saves nothing and says so, so that the key does not land in that repo. Add
+  the `LINEAR_API_KEY` line yourself, once the repo ignores the file.
 
 ## Changing things
 

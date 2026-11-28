@@ -119,6 +119,22 @@ hide_jq() {
   export PATH=$TMP/bin:$TMP/nojq
 }
 
+# A stand-in for jq 1.6, which Debian 12 and Ubuntu 22.04 ship. With -e it
+# exits zero when it is given no JSON at all, where later versions exit 4.
+# This one exits zero wherever the real jq exits 4, which covers that.
+old_jq() {
+  local real
+  real=$(command -v jq)
+  cat > "$TMP/bin/jq" <<EOF
+#!/usr/bin/env bash
+"$real" "\$@"
+code=\$?
+[ "\$code" = 4 ] && exit 0
+exit "\$code"
+EOF
+  chmod +x "$TMP/bin/jq"
+}
+
 # Fail if a run left a temp file or a lock beside the state file. $1 is the
 # folder the state file is in, when it is not HOME.
 no_trust_litter() {
