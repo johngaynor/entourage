@@ -14,10 +14,13 @@ SQLITE=${ENTOURAGE_SQLITE:-sqlite3}
 
 # The lines a block can have, in the order they are printed.
 HANDOFF_KEYS='phase status next summary flags question options answer reason'
-# The steps a block can name as its phase or as what comes next. setup and pr
-# are only names for now: nothing hands off as either of them yet. A review
-# that finds the work done hands on to pr.
-HANDOFF_STEPS='define plan breakdown setup build review pr'
+# The steps a block can name as its phase or as what comes next. setup is only
+# a name for now: nothing hands off as it yet. A review that finds the work
+# done hands on to pr, the step that pushes the task's branch, opens its pull
+# requests and waits for the human to merge them. merged is where a card ends:
+# pr hands on to it once every pull request has merged. It is only ever what
+# comes next, never a phase, since nothing runs after it.
+HANDOFF_STEPS='define plan breakdown setup build review pr merged'
 # A block is a summary. A line longer than this is not one, and a very long
 # line is slow to check and too big to hand to sqlite3 as an argument.
 HANDOFF_LINE_MAX=2000
@@ -34,7 +37,8 @@ EOF
 status is done (needs next and summary, may have flags), needs-human (needs
 question and options, may have summary), answered (needs answer: what the
 human replied to a needs-human hand-off) or failed (needs reason). phase and
-next are one of: $HANDOFF_STEPS. Every value goes on one line."
+next are one of: $HANDOFF_STEPS. merged is where a card ends, so
+it is only ever next. Every value goes on one line."
 
 have_sqlite() { command -v "$SQLITE" >/dev/null 2>&1; }
 
@@ -170,6 +174,8 @@ task_handoff() {
 
   [ -n "$phase" ] || die "the block has no 'phase:' line, the step that is handing off."
   in_list "$phase" "$HANDOFF_STEPS" || die "'$phase' is not a step. The steps are: $HANDOFF_STEPS."
+  [ "$phase" != merged ] ||
+    die "'merged' is where a card ends, so it can only come next. The step that hands on to it is pr."
   [ -n "$status" ] || die "the block has no 'status:' line. Use done, needs-human, answered or failed."
   local need allow
   case $status in
@@ -213,6 +219,8 @@ task_handoff() {
 # starts a run, so it has no time, however long ago the run before it ended.
 # A `start` row, from `task start`, shows as a `new` row does but starts no
 # run: the time before it was the human's, and the build is timed from it.
+# A card whose row is done with merged next stands at merged: its pull
+# requests have merged, and nothing comes after.
 
 # SQL for a number of seconds as text: 50s, 1m 44s, 1h 02m, 3d 04h. @ stands
 # for the column that holds the seconds.
@@ -268,6 +276,7 @@ log_view() {
       select *,
         case when status = 'needs-human' then 'waiting on the human'
           when phase in ('new', 'start') then 'started'
+          when status = 'done' and next = 'merged' then 'merged'
           else label || substr(what, length(status) + 1) end as state
       from labeled)" \
     "$3" "$(sql_str "$1")" "$cards" \

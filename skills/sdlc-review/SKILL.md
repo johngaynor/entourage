@@ -91,7 +91,7 @@ flags: <each item for the human, with how to check it; any commit that breaks th
 EOF
 ```
 
-Pushing and the pull request are not a skill yet, so the reviewed commits wait on the task's branch for the human.
+The step that follows is the `sdlc-pr` skill, which pushes the reviewed commits and opens the pull request.
 
 When a Done when item is not met, or the tests fail, the work goes back to build. First run `entourage task log <project> <card ID>`. If it already shows a review with `next: build` for this card, build has been sent back once already: go to the next block instead. Otherwise send it back:
 

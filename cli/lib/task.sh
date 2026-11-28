@@ -17,8 +17,9 @@ CARD_SKILLS='sdlc-define sdlc-plan sdlc-breakdown'
 # The agent's first message. {card} and {project} are filled in.
 CARD_PROMPT=$REPO/prompts/task-new.md
 # The skills the agent builds a card with, in the order it uses them: the
-# build, then the review, which sends what it finds not met back to the build.
-BUILD_SKILLS='sdlc-build sdlc-review'
+# build, then the review, which sends what it finds not met back to the build,
+# then the pull request, which waits for the human to merge it.
+BUILD_SKILLS='sdlc-build sdlc-review sdlc-pr'
 # The build agent's first message. {card} and {project} are filled in.
 BUILD_PROMPT=$REPO/prompts/task-build.md
 # The agent a new task's tab runs: one word, a command on PATH.
@@ -427,8 +428,8 @@ task_start() {
 
 # Start the build agent on a card, in its task: `task start` types this into
 # the task's tab, after setup when setup runs. The first message has the agent
-# build the card and review the build. Run it again in the tab to start a new
-# agent when the first one has stopped.
+# build the card, review the build and open its pull request. Run it again in
+# the tab to start a new agent when the first one has stopped.
 task_build() {
   local name=${1:-} card=${2:-} dir here low skill prompt
   dir=$(project_dir "$name")

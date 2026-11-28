@@ -479,6 +479,46 @@ reason: No worktree has commits ahead of main, so nothing was built.' \
     'review     failed' '    reason: No worktree has commits ahead of main, so nothing was built.'
 }
 
+# The pull request hands off as pr. It waits on the human to merge it, and
+# once every pull request for the card has merged, merged is next: where the
+# card ends.
+handoff_records_a_pull_request_waiting_to_merge() {
+  step_logged 'phase: pr
+status: needs-human
+question: Merge https://github.com/acme/shop/pull/7, then tell me when it has merged.
+options: merged | stop here' \
+    'pr         needs-human' \
+    '    question: Merge https://github.com/acme/shop/pull/7, then tell me when it has merged.'
+}
+
+handoff_records_a_merge() {
+  step_logged 'phase: pr
+status: done
+next: merged
+summary: https://github.com/acme/shop/pull/7 has merged into main.' \
+    'pr         done, then merged' '    summary: https://github.com/acme/shop/pull/7 has merged into main.'
+}
+
+handoff_records_a_pull_request_that_cannot_be_opened() {
+  step_logged 'phase: pr
+status: failed
+reason: gh is not signed in, so nothing was pushed. Run: gh auth login' \
+    'pr         failed' '    reason: gh is not signed in, so nothing was pushed. Run: gh auth login'
+}
+
+# merged is where a card ends. A step can hand on to it, but nothing hands
+# off as it.
+handoff_refuses_merged_as_a_phase() {
+  demo
+  refused 'phase: merged
+status: done
+next: pr
+summary: Merged.' 'merged'
+  refused 'phase: merged
+status: failed
+reason: Not merged.' 'merged'
+}
+
 # A store as the version before answers made it: no column for them, one row.
 older_store() {
   mkdir -p "$HOME/.config/entourage"
@@ -581,6 +621,38 @@ log_shows_how_long_each_review_took() {
   log_has 'review +answered +waited 7m 00s$'
   log_has 'review +done, then build +10s$'
   log_has 'review +done, then pr +2m 00s$'
+}
+
+# The pull request is a step with a time of its own, after the review. The
+# time it waits for the human to merge it is a wait, counted in no step, and
+# so is the wait after a "merged" that came too soon. Once it has merged, the
+# card stands at merged, in its own view, in the list and in their JSON.
+log_shows_a_pull_request_through_to_its_merge() {
+  demo; make_store
+  put 2026-01-01T10:00:00Z start done build
+  put 2026-01-01T10:20:00Z build done review
+  put 2026-01-01T10:25:00Z review done pr
+  put 2026-01-01T10:26:30Z pr needs-human
+  put 2026-01-01T10:46:30Z pr answered '' merged
+  put 2026-01-01T10:46:45Z pr needs-human
+  put 2026-01-01T11:16:45Z pr answered '' merged
+  put 2026-01-01T11:17:00Z pr done merged
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  log_has 'review +done, then pr +5m 00s$'
+  log_has 'pr +needs-human +1m 30s$'
+  log_has 'pr +answered +waited 20m 00s$'
+  log_has 'pr +needs-human +15s$'
+  log_has 'pr +answered +waited 30m 00s$'
+  log_has 'pr +done, then merged +15s$'
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+  j_is .state merged; j_is .waiting null
+  j_is '.steps[4].kind' wait; j_is '.steps[4].took' 'waited 20m 00s'
+  j_is '.steps[7].label' 'pr done'; j_is '.steps[7].next' merged; j_is '.steps[7].took' 15s
+  out=$("$E" task log demo) || fail "task log with no card exited non-zero"
+  log_has '^ABC-122 +merged +for '
+  out=$("$E" task log demo --json) || fail "task log --json with no card exited non-zero"
+  j_is '[.cards[] | select(.card == "ABC-122") | .state] | join(" ")' merged
+  j_is '[.cards[] | select(.card == "ABC-122") | .next] | join(" ")' merged
 }
 
 # Rows from before answers were recorded: the step after a question cannot be
@@ -850,10 +922,13 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_build_that_needs_the_human handoff_records_a_failed_build
   handoff_records_a_review_that_passes handoff_records_a_review_that_sends_the_work_back
   handoff_records_a_review_that_needs_the_human handoff_records_a_failed_review
+  handoff_records_a_pull_request_waiting_to_merge handoff_records_a_merge
+  handoff_records_a_pull_request_that_cannot_be_opened handoff_refuses_merged_as_a_phase
   an_older_store_gains_the_answer_column
   log_reads_an_older_store_without_changing_it
   hand_offs_at_once_into_an_older_store_are_all_recorded
   log_shows_how_long_each_step_took log_shows_how_long_each_review_took
+  log_shows_a_pull_request_through_to_its_merge
   log_marks_a_step_that_includes_waiting
   log_shows_a_question_still_waiting
   log_json_is_the_same_view_on_one_line log_json_with_nothing_recorded

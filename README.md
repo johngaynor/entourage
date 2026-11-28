@@ -4,7 +4,7 @@ A collection of agent skills for the software development lifecycle (SDLC).
 
 ## Status
 
-Early setup. Five skills are in, and they have had only a few runs on real cards:
+Early setup. Six skills are in, and they have had only a few runs on real cards:
 
 | Skill | What it does |
 |---|---|
@@ -13,6 +13,7 @@ Early setup. Five skills are in, and they have had only a few runs on real cards
 | `sdlc-breakdown` | Decides whether the card is one piece or several slices, then asks you to approve it |
 | `sdlc-build` | Builds an approved card in its task: makes the change the Plan describes, runs the tests and commits, pushing nothing |
 | `sdlc-review` | Reviews the build against the card's Done when, writes what it found on the card, and sends what is not met back to build |
+| `sdlc-pr` | Pushes a reviewed card's branch, opens its pull requests, waits for you to merge them and records the merge. It never merges |
 
 They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
@@ -100,7 +101,7 @@ entourage task log my-project ABC-122
 ```
 
 Leave the card out to see every card in the project that has hand-offs,
-newest first, with where each stands, such as waiting on you:
+newest first, with where each stands, such as waiting on you, or merged:
 
 ```sh
 entourage task log my-project
@@ -156,8 +157,9 @@ entourage task build my-project ABC-122
 
 `task build` starts the agent, `claude` unless `ENTOURAGE_AGENT` names
 another, with a first message that has it build the card with the
-`sdlc-build` skill and then review the build with the `sdlc-review` skill. If
-the agent stops, run the same command again in the tab. It runs only in the
+`sdlc-build` skill, review the build with the `sdlc-review` skill, and then
+put it up as a pull request with the `sdlc-pr` skill. If the agent stops, run
+the same command again in the tab. It runs only in the
 card's own task folder. When the task has one repo and Claude Code has not
 trusted that repo yet, `task start` says so: Claude Code asks once in the tab,
 and not again for that repo. `task log` shows when the work was started.
@@ -168,21 +170,39 @@ The build reads the card's Plan, makes the change in the task's worktrees,
 runs the tests and commits on the task's branch. Since setup is off, it first
 installs into each worktree what the tests need, the way that repo's own docs
 say. It installs only: it starts no app, server or database, and asks you when
-the tests need one running. It pushes nothing and opens no pull request, so
-the commits wait for you there. Like the write-up, it records how it ended,
+the tests need one running. It pushes nothing and opens no pull request: that
+comes after the review. Like the write-up, it records how it ended,
 and `task log` shows it: `done` only when the tests pass, `needs-human` with a
 question, or `failed` with the reason. A card with no Plan is not built.
 
 Then the review runs the tests itself, checks each Done when item against the
 test the Plan names for it, and writes what it found on the card as a Review.
 It changes no code, pushes nothing and opens no pull request. When every item
-is met, it hands off `done` with `pr` next, and the reviewed commits wait for
-you on the task's branch. When an item is not met or a test fails, it hands
+is met, it hands off `done` with `pr` next, and the pull request comes next.
+When an item is not met or a test fails, it hands
 off with `build` next, and `sdlc-build` builds only what the Review names.
 After one send-back, it asks you whether to build again or stop.
 
-Each skill also runs on its own in any agent, as `/sdlc-build ABC-122` or
-`/sdlc-review ABC-122`.
+Then the pull request. `sdlc-pr` reads the Review on the card and opens
+nothing unless every item in it is met or left to you. Before it pushes
+anything, it checks that `gh` is signed in and that each repo the work changed
+has an `origin` GitHub knows; when one is not, it hands off `failed` with the
+reason and what to run, and pushes nothing. Then, in each repo whose branch
+has commits ahead of its default branch, and no other, it pushes the task's
+branch, never forced, and opens a pull request into the default branch, by the
+repo's own rules and pull request template. Each one links the card and says,
+for each Done when item, how the review showed it and what is left to you.
+
+Then it asks you to merge them, as `needs-human` with their links. Merge each
+one on GitHub yourself, then tell the agent in the tab that they have merged.
+It checks each with `gh pr view`, and once every one has merged it hands off
+`done` with `merged` next, which ends the card: `task log` shows the card as
+merged. If one has not merged yet, it names it and asks again. No agent merges
+a pull request. A change you ask for in the tab is not made yet: the agent
+says so and asks again.
+
+Each skill also runs on its own in any agent, as `/sdlc-build ABC-122`,
+`/sdlc-review ABC-122` or `/sdlc-pr ABC-122`.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
 from the clone instead. Run the CLI's tests with `npm test`. The cases run
