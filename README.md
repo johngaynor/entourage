@@ -40,13 +40,43 @@ and the two agent profiles in [agents/](agents/), which it links into
 `~/.claude/agents`; see [herdr/README.md](herdr/README.md) for the full
 walkthrough.
 
-A profile is a Claude Code agent definition: the tools a session has and the
-model it runs on. When the agent is `claude`, `task new` starts it with
-`entourage-write-up`, and `task build` with `entourage-build`, so each runs on
-Opus with only the tools its steps use, whatever your own sessions have. Each also gets Linear's MCP
+A profile is a Claude Code agent definition: the tools a session has. When
+the agent is `claude`, `task new` starts it with `entourage-write-up`, and
+`task build` with `entourage-build`, so each has only the tools its steps
+use, whatever your own sessions have. Each also gets Linear's MCP
 server alone, from [agents/linear-mcp.json](agents/linear-mcp.json), not the
 servers of your own sessions. Claude Code asks once to sign in to Linear as
 `linear-server` on a machine where it is not signed in under that name.
+
+Each profile runs on the model and effort you pick for it, kept in
+`~/.config/entourage/settings.json`. `entourage install` makes the file, with
+every profile on Opus at `xhigh` effort, and neither `install` nor `update`
+changes it once it is there:
+
+```sh
+entourage profile ls                     # each profile's model and effort
+entourage profile set build effort high  # change one
+entourage profile set write-up model sonnet
+```
+
+| Profile | Runs |
+|---|---|
+| `write-up` | the agent `task new` starts |
+| `build` | the agent `task build` starts |
+| `reviewer`, `verifier` | the `entourage-reviewer` and `entourage-verifier` subagents, for work on entourage itself |
+
+A model is one of claude's aliases (`fable`, `opus`, `sonnet`, `haiku`) or a
+full model name like `claude-opus-5-5`, and an effort is `low`, `medium`,
+`high`, `xhigh` or `max`. `profile set` refuses anything else and leaves the
+file as it was. `task new` and `task build` start `claude` with `--model=` and
+`--effort=`, which beat the profile's own model and your own Claude Code
+settings; only `CLAUDE_CODE_EFFORT_LEVEL` beats the effort. A profile or value
+the file leaves out is Opus at `xhigh`. A file that is not valid settings stops
+`task new` and `task build` before an agent starts, saying what in it is
+wrong, and `entourage status` says so too. The file is read with `jq`. In
+Herdr, the Agents button at the right end of the tab bar shows and changes
+the same values; see
+[herdr/README.md](herdr/README.md#agent-settings).
 
 ## Projects
 
@@ -95,8 +125,9 @@ It asks Linear itself, with no agent running. See
 [herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
 
 `task new` writes the card up. It opens a tab in the project's Herdr space and
-starts an agent there, with the `entourage-write-up` profile, which runs the
-three skills on the card and then asks you to approve it:
+starts an agent there, with the `entourage-write-up` profile on the
+write-up's model and effort, which runs the three skills on the card and then
+asks you to approve it:
 
 ```sh
 entourage task new my-project ABC-122
@@ -171,7 +202,8 @@ entourage task build my-project ABC-122
 ```
 
 `task build` starts the agent, `claude` unless `ENTOURAGE_AGENT` names
-another, with the `entourage-build` profile and a first message that has it
+another, with the `entourage-build` profile on the build's model and effort,
+and a first message that has it
 build the card with the
 `sdlc-build` skill, review the build with the `sdlc-review` skill, and then
 put it up as a pull request with the `sdlc-pr` skill. If the agent stops, run
@@ -179,7 +211,7 @@ the same command again in the tab. It runs only in the
 card's own task folder. When a profile is not linked, `task new` and
 `task build` stop before they start anything, and say to run
 `entourage update`. Another agent, named by `ENTOURAGE_AGENT`, starts as it
-always has, with no profile. When the task has one repo and Claude Code has not
+always has, with no profile, model or effort. When the task has one repo and Claude Code has not
 trusted that repo yet, `task start` says so: Claude Code asks once in the tab,
 and not again for that repo. `task log` shows when the work was started.
 
@@ -276,10 +308,15 @@ Each skill also runs on its own in any agent, as `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122` or `/sdlc-pr ABC-122`.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
-from the clone instead. A session in the clone, or in any worktree of it, can
-start the `reviewer` and `verifier` subagents in
-[.claude/agents/](.claude/agents/) by name, to review a change or check what a
-review found; see [CLAUDE.md](CLAUDE.md#reviewing-a-change). Run the CLI's tests with `npm test`. The cases run
+from the clone instead. A clone also writes the `entourage-reviewer` and
+`entourage-verifier` subagents from [.claude/profiles/](.claude/profiles/)
+into `~/.claude/agents`, with the model and effort the settings file names for
+the reviewer and the verifier, so a session can start them by name to review
+a change or check what a review found; see
+[CLAUDE.md](CLAUDE.md#reviewing-a-change). It writes them again at each
+`update`, and at each `profile set` for one of them, and replaces or removes
+only a file it wrote: one of your own of the same name is left alone, and
+`entourage status` lists each as written, stale, missing or skipped. Run the CLI's tests with `npm test`. The cases run
 side by side, one per processor; `ENTOURAGE_TEST_JOBS=1 npm test` runs them
 one at a time. Once a pull request merges, `scripts/after-merge <name>`, run
 from the clone, removes the Claude Code worktree under `.claude/worktrees/`
@@ -289,7 +326,8 @@ that the work was done in, deletes its branch and updates the clone; see
 A git worktree of the repo, such as the one `task start` makes for one of
 entourage's own cards, holds a copy of the CLI that is a change being built.
 Its `./cli/entourage` runs only the commands that read: `help`, `status`,
-`project ls`, `project team <name>`, `task ls`, `task log` and `task watch`.
+`project ls`, `project team <name>`, `profile ls`, `task ls`, `task log` and
+`task watch`.
 Any other command stops before it does anything, says that it is a
 worktree's copy, and gives the command that runs it for real:
 `ENTOURAGE_LIVE=1 ./cli/entourage …`, for that one run. The installed `entourage` is never stopped, whatever folder

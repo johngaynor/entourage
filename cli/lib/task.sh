@@ -28,27 +28,34 @@ BUILD_PROMPT=$REPO/prompts/task-build.md
 AGENT=${ENTOURAGE_AGENT:-claude}
 # The profiles claude starts with: Claude Code agent definitions in agents/,
 # linked into Claude Code's agents folder. Each gives the session only the
-# tools its steps use, and its own model. The write-up's is for `task new`,
-# the build's for `task build`, whose one session also reviews the build.
-CARD_PROFILE=entourage-write-up
-BUILD_PROFILE=entourage-build
+# tools its steps use. The write-up's is for `task new`, the build's for
+# `task build`, whose one session also reviews the build. Each runs on the
+# model and effort the settings file names for it, under the name after it
+# (settings.sh).
+CARD_PROFILE=entourage-write-up CARD_SETTINGS=write-up
+BUILD_PROFILE=entourage-build BUILD_SETTINGS=build
 # The MCP servers a profile's session has, and no others: Linear's own, under
 # the name the profiles' tools are given with.
 PROFILE_MCP=$REPO/agents/linear-mcp.json
 
 # The flags that start claude with a profile, in PROFILE_ARGS, or stop when
-# the profile is not linked. Another agent is started as it is, with none.
-# Each flag holds its value after an =, because --mcp-config takes several
-# values and would take the first message as one of them.
-#   $1 the profile
+# the profile is not linked or the settings file is not valid settings.
+# Another agent is started as it is, with none, and the settings file is not
+# read. Each flag holds its value after an =, because --mcp-config takes
+# several values and would take the first message as one of them. --model=
+# and --effort= beat the profile's own model and the human's own Claude Code
+# settings; only CLAUDE_CODE_EFFORT_LEVEL beats --effort=.
+#   $1 the profile   $2 its name in the settings file
 PROFILE_ARGS=()
 profile_args() {
-  local profile=$1
+  local profile=$1 settings=$2
   PROFILE_ARGS=()
   [ "${AGENT##*/}" = claude ] || return 0
   [ -f "$AGENTS_HOME/$profile.md" ] ||
     die "the $profile agent profile is not in $AGENTS_HOME, so the agent could not start with it. Run: entourage update"
-  PROFILE_ARGS=("--agent=$profile" --strict-mcp-config "--mcp-config=$PROFILE_MCP")
+  settings_check
+  PROFILE_ARGS=("--agent=$profile" --strict-mcp-config "--mcp-config=$PROFILE_MCP"
+    "--model=$(profile_model "$settings")" "--effort=$(profile_effort "$settings")")
 }
 
 # Stop if Linear has no such card, before an agent is started on it: a
@@ -90,7 +97,7 @@ task_new() {
     [ -f "$SKILLS_HOME/$skill/SKILL.md" ] ||
       die "the $skill skill is not in $SKILLS_HOME, so the agent could not use it. Run: entourage update"
   done
-  profile_args "$CARD_PROFILE"
+  profile_args "$CARD_PROFILE" "$CARD_SETTINGS"
   [ -f "$CARD_PROMPT" ] || die "the agent's first message is missing from $CARD_PROMPT"
   prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$CARD_PROMPT")
   check_card "$card"
@@ -489,7 +496,7 @@ task_build() {
     [ -f "$SKILLS_HOME/$skill/SKILL.md" ] ||
       die "the $skill skill is not in $SKILLS_HOME, so the agent could not use it. Run: entourage update"
   done
-  profile_args "$BUILD_PROFILE"
+  profile_args "$BUILD_PROFILE" "$BUILD_SETTINGS"
   [ -f "$BUILD_PROMPT" ] || die "the agent's first message is missing from $BUILD_PROMPT"
   prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$BUILD_PROMPT")
   # The first message goes last, after the profile's flags.

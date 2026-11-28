@@ -5,6 +5,8 @@ cmd_install() {
   CHANGED=0 SKIPPED=0
   say "Linking mods and layouts into $APP_HOME, skills into $SKILLS_HOME, and agent profiles into $AGENTS_HOME"
   link_all
+  settings_init
+  write_review_profiles
 
   # npm already put the command on PATH; a clone has to do it itself.
   if is_clone; then
@@ -54,6 +56,8 @@ cmd_update() {
   say "Linking mods and layouts into $APP_HOME, skills into $SKILLS_HOME, and agent profiles into $AGENTS_HOME"
   link_all
   prune
+  settings_init
+  write_review_profiles
 
   say "Refreshing Herdr"
   if [ "$before" != "$after" ] || [ "$CHANGED" -gt 0 ] || [ "$pull" = 0 ]; then
@@ -69,13 +73,31 @@ cmd_status() {
   say "Skills: $SKILLS_HOME"
   say "Agents: $AGENTS_HOME"
   have_herdr || say "  Herdr is not installed ($HERDR_INSTALL)"
-  local src dst s problems=0
+  local src dst s problems=0 settings_problems=0 unread=''
   while IFS=$'\t' read -r src dst; do
     s=$(state_of "$src" "$dst")
     [ "$s" = linked ] || problems=$((problems + 1))
     printf '  %-10s %s\n' "$s" "$(label "$dst")"
   done < <(wanted)
-  [ "$problems" = 0 ] || say "$problems not linked. Run: entourage update"
+  # The settings file, which stops task new and task build when it is not
+  # valid settings. Without it read, a review subagent entourage wrote cannot
+  # be compared with what it would write now.
+  if ! settings_load; then
+    say "  problem    $SETTINGS_WHY"
+    settings_problems=1 unread=1
+  fi
+  # The review subagents a clone writes, rather than links (settings.sh).
+  if is_clone; then
+    for src in "$REVIEW_SOURCES"/*.md; do
+      [ -f "$src" ] || continue
+      is_profile "$(review_profile_of "$src")" || continue
+      dst=$AGENTS_HOME/${src##*/}
+      s=$(review_state "$src" "$dst" "$unread")
+      [ "$s" = written ] || problems=$((problems + 1))
+      printf '  %-10s %s\n' "$s" "$(label "$dst")"
+    done
+  fi
+  [ "$problems" = 0 ] || say "$problems not linked or not up to date. Run: entourage update"
   say "Projects: $PROJECTS"
   local project_problems=0
   check_projects || project_problems=$?
@@ -86,7 +108,7 @@ cmd_status() {
   if ! have_sqlite && [ -n "$(ls -d "$PROJECTS"/*/ 2>/dev/null)" ]; then
     say "  note       $SQLITE is not installed, so hand-offs are not recorded."
   fi
-  if [ "$problems" -gt 0 ] || [ "$project_problems" -gt 0 ]; then
+  if [ "$problems" -gt 0 ] || [ "$project_problems" -gt 0 ] || [ "$settings_problems" -gt 0 ]; then
     [ "$project_problems" = 0 ] || say "$project_problems project problem(s)."
     return 1
   fi

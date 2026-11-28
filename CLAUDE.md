@@ -8,11 +8,11 @@ machine running from a clone gets whatever `git pull` brings.
 
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
 are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
-`linear`, `runner`, `release`, `guard`, `after-merge`). The `handoff` tests use
-the real `sqlite3` and `jq`, the `linear`, `task` and `skills` tests the real
-`jq`, the `release` tests the real `git` and `jq`, the `guard` tests all three,
-and the `after-merge` tests the real `git`; they have to be in `/usr/bin` or
-`/bin`.
+`linear`, `runner`, `release`, `guard`, `after-merge`, `profile`). The
+`handoff` tests use the real `sqlite3` and `jq`, the `install`, `linear`,
+`task`, `skills` and `profile` tests the real `jq`, the `release` tests the
+real `git` and `jq`, the `guard` tests all three, and the `after-merge` tests
+the real `git`; they have to be in `/usr/bin` or `/bin`.
 No test reaches Linear: a
 stand-in `curl` answers from canned files. Cases run side by side, each in a
 process of its own, so a case must not depend on another case or on anything
@@ -39,9 +39,9 @@ being built. Which copy to run for what:
   it is run from.
 - **`./cli/entourage` to try the change.** It runs the worktree's code against
   the real machine, so it runs only the commands that read: `help`, `status`,
-  `project ls`, `project team <name>` with no teams, `task ls`, `task log` and
-  `task watch`. Any other command stops before it does anything and says so,
-  and the hand-off store is opened read-only.
+  `project ls`, `project team <name>` with no teams, `profile ls`, `task ls`,
+  `task log` and `task watch`. Any other command stops before it does
+  anything and says so, and the hand-off store is opened read-only.
 - **A test case to try a command that changes the machine.** Each case has a
   throwaway home and stand-ins for Herdr and Linear.
 - **`ENTOURAGE_LIVE=1 ./cli/entourage …` only when the human asks for it.** It
@@ -54,20 +54,29 @@ it is added only if it changes nothing.
 
 ## Reviewing a change
 
-To review a change, or to check what a review found, start the `reviewer` or
-the `verifier` subagent, not `general-purpose`. They are in `.claude/agents/`,
-so a session in any checkout or worktree of this repo can start them by name.
-Each has only the tools it uses and runs on Opus, and carries the rules every
-review prompt used to repeat: which docs to read, bash 3.2, the read-only
-worktree and the `mktemp -d` scratch folders, the real Herdr and Linear left
-alone, the env file and its key never read, no subagents of its own, and how
-to report. So give it only what to check: the branch, diff or files, and
-what to look for. The `reviewer` grades what it finds; the `verifier` tries to
-refute each finding and judges it `fix-now`, `fix-later` or `skip`.
+To review a change, or to check what a review found, start the
+`entourage-reviewer` or the `entourage-verifier` subagent, not
+`general-purpose`. Their sources are in `.claude/profiles/`. A clone that is
+the live copy writes them into `~/.claude/agents` at `entourage install`, at
+`entourage update` and at each `entourage profile set` for the reviewer or
+the verifier, so any session on this machine can start them by name. Each
+runs on the model and effort `~/.config/entourage/settings.json` names for
+it, Opus at `xhigh` unless changed with
+`entourage profile set <reviewer|verifier> <model|effort> <value>`. A change
+to a source in a worktree reaches them only once it has merged and the live
+copy has run `entourage update`. Each has only the tools it uses, and
+carries the rules every review prompt used to repeat: which docs to read,
+bash 3.2, the read-only worktree and the `mktemp -d` scratch folders, the
+real Herdr and Linear left alone, the env file and its key never read, no
+subagents of its own, and how to report. So give it only what to check: the
+branch, diff or files, and what to look for. The `entourage-reviewer` grades
+what it finds; the `entourage-verifier` tries to refute each finding and
+judges it `fix-now`, `fix-later` or `skip`.
 
 The profiles in `agents/` are a different thing: the ones `task new` and
 `task build` start `claude` with, which `entourage install` links into
-`~/.claude/agents`.
+`~/.claude/agents`. Each starts with `--model=` and `--effort=` from the
+same settings file, for the write-up and for the build.
 
 ## Herdr's docs
 

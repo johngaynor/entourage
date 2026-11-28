@@ -16,7 +16,7 @@ task_new_starts_an_agent() {
   "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
   call=$(last_call)
   case $call in
-    "do tab.new {\"name\":\"ABC-122\",\"folder\":\"$P/demo\",\"argv\":[\"claude\",\"--agent=entourage-write-up\",\"--strict-mcp-config\",\"--mcp-config=$REPO/agents/linear-mcp.json\"],\"task\":\""*"\"}") ;;
+    "do tab.new {\"name\":\"ABC-122\",\"folder\":\"$P/demo\",\"argv\":[\"claude\",\"--agent=entourage-write-up\",\"--strict-mcp-config\",\"--mcp-config=$REPO/agents/linear-mcp.json\",\"--model=opus\",\"--effort=xhigh\"],\"task\":\""*"\"}") ;;
     *) fail "wrong last call: $call" ;;
   esac
   for want in "Linear card ABC-122" sdlc-define sdlc-plan sdlc-breakdown "entourage task start demo ABC-122"; do
@@ -34,7 +34,7 @@ task_new_sends_one_line_of_json() {
   [ "$(tab_calls)" = 1 ] || fail "expected one tab.new line, got $(tab_calls)"
   json=$(last_call); json=${json#do tab.new }
   if command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "\n" in d["task"] and d["argv"]==["claude","--agent=entourage-write-up","--strict-mcp-config","--mcp-config="+sys.argv[1]+"/agents/linear-mcp.json"]' "$REPO" ||
+    printf '%s' "$json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "\n" in d["task"] and d["argv"]==["claude","--agent=entourage-write-up","--strict-mcp-config","--mcp-config="+sys.argv[1]+"/agents/linear-mcp.json","--model=opus","--effort=xhigh"]' "$REPO" ||
       fail "the call is not valid JSON with a multi-line task: $json"
   fi
 }
@@ -117,6 +117,8 @@ task_new_honors_the_agent_setting() {
   card_demo
   stub codex
   rm "$AG/entourage-write-up.md"
+  # Nor are the profiles' settings read: a broken file does not stop it.
+  echo 'not json' > "$HOME/.config/entourage/settings.json"
   ENTOURAGE_AGENT=codex "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
   case $(last_call) in *'"argv":["codex"],'*) ;; *) fail "did not start the chosen agent alone: $(last_call)" ;; esac
 }
@@ -843,8 +845,10 @@ task_new_starts_anyway_without_curl() {
 }
 
 task_new_starts_anyway_without_jq() {
-  # The stand-in curl goes first on PATH, before jq is hidden.
+  # The stand-in curl goes first on PATH, before jq is hidden. With a
+  # settings file and no jq it stops (task_new_needs_jq_only_for_a_settings_file).
   card_demo; saved_key; stub_linear; hide_jq
+  rm "$HOME/.config/entourage/settings.json"
   out=$("$E" task new demo ABC-122 2>&1) || fail "task new exited non-zero: $out"
   [ "$(tab_calls)" = 1 ] || fail "expected one tab, got $(tab_calls)"
   [ "$(curl_count)" = 0 ] || fail "asked Linear with no jq to read the answer: $(curl_calls)"
@@ -872,6 +876,63 @@ task_new_starts_anyway_with_a_key_linear_rejects() {
   case $out in *"could not check ABC-122"*rejected*) ;; *) fail "did not say why the card was not checked: $out" ;; esac
   case $out in *"$KEY"*) fail "printed the key: $out" ;; esac
 }
+
+# --- tasks: the profile's model and effort ----------------------------------
+
+# The argv of the last tab task new opened, as one line of JSON.
+tab_argv() { last_call | sed 's/^do tab\.new //' | jq -c '.argv' 2>&1; }
+
+# The write-up runs on the write-up's model and effort from the settings
+# file, the defaults when there is no file, and never on the build's.
+task_new_starts_with_the_write_up_settings() {
+  card_demo
+  local mcp="--mcp-config=$REPO/agents/linear-mcp.json"
+  rm "$HOME/.config/entourage/settings.json"
+  "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero with no settings file"
+  [ "$(tab_argv)" = "[\"claude\",\"--agent=entourage-write-up\",\"--strict-mcp-config\",\"$mcp\",\"--model=opus\",\"--effort=xhigh\"]" ] ||
+    fail "with no settings file the write-up did not start on opus at xhigh: $(tab_argv)"
+  "$E" profile set write-up model sonnet >/dev/null && "$E" profile set write-up effort high >/dev/null &&
+    "$E" profile set build model haiku >/dev/null && "$E" profile set build effort low >/dev/null ||
+    fail "could not set the profiles"
+  "$E" task new demo ABC-123 >/dev/null || fail "task new exited non-zero"
+  [ "$(tab_argv)" = "[\"claude\",\"--agent=entourage-write-up\",\"--strict-mcp-config\",\"$mcp\",\"--model=sonnet\",\"--effort=high\"]" ] ||
+    fail "the write-up did not start on sonnet at high: $(tab_argv)"
+}
+
+# A file that is not valid settings stops it before anything is opened, and
+# says which file and what is wrong.
+task_new_stops_on_a_broken_settings_file() {
+  card_demo
+  local f=$HOME/.config/entourage/settings.json body want
+  while IFS='|' read -r body want; do
+    printf '%s\n' "$body" > "$f"
+    : > "$TMP/herdr-calls.log"
+    "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" && fail "task new exited zero with the file '$body'"
+    grep -qF "$f is not valid settings: $want" "$TMP/err" || fail "the file '$body' did not give '$want': $(cat "$TMP/err")"
+    [ "$(tab_calls)" = 0 ] || fail "opened a tab with the file '$body'"
+    ! grep -q '^do space\.' "$TMP/herdr-calls.log" || fail "showed the space first: $(cat "$TMP/herdr-calls.log")"
+  done <<'EOF'
+not json|it is not JSON
+{"profiles":{"write-up":{"effort":"extreme"}}}|the effort of write-up is "extreme"
+EOF
+}
+
+# Without jq the file cannot be read, so it stops; with no file there is
+# nothing to read, and it starts on the defaults.
+task_new_needs_jq_only_for_a_settings_file() {
+  card_demo
+  hide_jq
+  "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" && fail "task new exited zero with a settings file and no jq"
+  grep -q 'jq is not installed' "$TMP/err" || fail "did not say jq is missing: $(cat "$TMP/err")"
+  [ "$(tab_calls)" = 0 ] || fail "opened a tab"
+  rm "$HOME/.config/entourage/settings.json"
+  "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" || fail "task new exited non-zero with no settings file and no jq: $(cat "$TMP/err")"
+  case $(last_call) in *'"--model=opus","--effort=xhigh"]'*) ;; *) fail "did not start on the defaults: $(last_call)" ;; esac
+}
+
+PROFILE_CASES="task_new_starts_with_the_write_up_settings task_new_stops_on_a_broken_settings_file
+  task_new_needs_jq_only_for_a_settings_file task_build_starts_with_the_build_settings
+  task_build_stops_on_a_broken_settings_file"
 
 CARD_CASES="task_new_refuses_a_card_linear_does_not_have task_new_starts_a_card_linear_has
   task_new_asks_linear_nothing_without_a_key task_new_starts_anyway_when_linear_is_out_of_reach
@@ -1170,13 +1231,16 @@ task_build_starts_the_agent() {
   agent_ran || fail "the agent did not start"
   [ "$(cat "$TMP/agent-folder")" = "$WT" ] || fail "the agent started in $(cat "$TMP/agent-folder")"
   local msg want d
-  # The build profile, the Linear server alone, then the first message last.
-  [ "$(cat "$TMP/agent-argc")" = 4 ] || fail "the agent was given $(cat "$TMP/agent-argc") arguments, not 4"
+  # The build profile, the Linear server alone, the build's model and
+  # effort, then the first message last.
+  [ "$(cat "$TMP/agent-argc")" = 6 ] || fail "the agent was given $(cat "$TMP/agent-argc") arguments, not 6"
   [ "$(agent_arg 1)" = --agent=entourage-build ] || fail "the first argument is '$(agent_arg 1)'"
   [ "$(agent_arg 2)" = --strict-mcp-config ] || fail "the second argument is '$(agent_arg 2)'"
   [ "$(agent_arg 3)" = "--mcp-config=$REPO/agents/linear-mcp.json" ] || fail "the third argument is '$(agent_arg 3)'"
+  [ "$(agent_arg 4)" = --model=opus ] || fail "the fourth argument is '$(agent_arg 4)'"
+  [ "$(agent_arg 5)" = --effort=xhigh ] || fail "the fifth argument is '$(agent_arg 5)'"
   msg=$(cat "$TMP/agent-message")
-  [ "$(agent_arg 4)" = "$msg" ] || fail "the first message is not the last argument"
+  [ "$(agent_arg 6)" = "$msg" ] || fail "the first message is not the last argument"
   for want in "Linear card ABC-1" "entourage project \`demo\`" sdlc-build sdlc-review sdlc-pr "entourage task handoff demo ABC-1"; do
     case $msg in *"$want"*) ;; *) fail "the first message does not mention '$want': $msg" ;; esac
   done
@@ -1241,10 +1305,34 @@ task_build_starts_another_agent_with_no_profile() {
   build_demo
   agent_stub codex
   rm "$AG/entourage-build.md"
+  # Nor are the profiles' settings read: a broken file does not stop it.
+  echo 'not json' > "$HOME/.config/entourage/settings.json"
   (cd "$WT" && ENTOURAGE_AGENT=codex "$E" task build demo ABC-1) || fail "task build exited non-zero"
   agent_ran || fail "the agent did not start"
   [ "$(cat "$TMP/agent-argc")" = 1 ] || fail "codex was given $(cat "$TMP/agent-argc") arguments, not the first message alone: $(agent_arg 1)"
   case $(cat "$TMP/agent-message") in *"Linear card ABC-1"*) ;; *) fail "codex was not given the first message: $(cat "$TMP/agent-message")" ;; esac
+}
+
+# The build runs on the build's model and effort from the settings file, and
+# never on the write-up's.
+task_build_starts_with_the_build_settings() {
+  build_demo
+  "$E" profile set build model sonnet >/dev/null && "$E" profile set build effort high >/dev/null &&
+    "$E" profile set write-up model haiku >/dev/null && "$E" profile set write-up effort low >/dev/null ||
+    fail "could not set the profiles"
+  (cd "$WT" && "$E" task build demo ABC-1) || fail "task build exited non-zero"
+  [ "$(cat "$TMP/agent-argc")" = 6 ] || fail "the agent was given $(cat "$TMP/agent-argc") arguments, not 6"
+  [ "$(agent_arg 4)" = --model=sonnet ] || fail "the fourth argument is '$(agent_arg 4)', not --model=sonnet"
+  [ "$(agent_arg 5)" = --effort=high ] || fail "the fifth argument is '$(agent_arg 5)', not --effort=high"
+}
+
+task_build_stops_on_a_broken_settings_file() {
+  build_demo
+  local f=$HOME/.config/entourage/settings.json
+  printf '%s\n' '{"profiles":{"build":{"model":"gpt-5"}}}' > "$f"
+  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "task build exited zero with a broken settings file"
+  grep -qF "$f is not valid settings: the model of build is \"gpt-5\"" "$TMP/err" || fail "did not say what is wrong: $(cat "$TMP/err")"
+  agent_ran && fail "the agent started"
 }
 
 BUILD_CASES="task_start_starts_the_agent_in_the_tab task_start_says_how_to_start_the_agent_without_hc
@@ -1798,7 +1886,7 @@ FINISH_CASES="task_finish_removes_the_task task_finish_removes_a_task_of_two_rep
   task_finish_refuses_a_locked_or_moved_worktree task_finish_refusal_changes_nothing
   task_finish_from_its_own_tab task_finish_with_no_task"
 
-CASES="$WATCH_CASES $FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES
+CASES="$WATCH_CASES $FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES $PROFILE_CASES
   task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
   task_start_keeps_the_task_when_the_space_fails task_start_branch_has_no_upstream
   task_start_refusal_keeps_the_first_task task_start_refusal_keeps_an_existing_branch

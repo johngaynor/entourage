@@ -118,15 +118,35 @@
       "type": "column",
       "children": [
         {
-          "id": "tabs",
-          "type": "block",
-          "content": {
-            "mod": "tabs"
-          },
+          "id": "top",
+          "type": "row",
+          "children": [
+            {
+              "id": "tabs",
+              "type": "block",
+              "content": {
+                "mod": "tabs"
+              },
+              "size": {
+                "weight": 1
+              },
+              "window_drag": true
+            },
+            {
+              "id": "agent-settings",
+              "type": "block",
+              "content": {
+                "mod": "agent-settings"
+              },
+              "size": {
+                "px": 104
+              }
+            }
+          ],
           "size": {
             "px": 42
           },
-          "window_drag": true
+          "resizable": false
         },
         {
           "id": "work-body",

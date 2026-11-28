@@ -671,9 +671,10 @@ pr_no_longer_leaves_the_status_to_the_human() {
 
 # A profile is a Claude Code agent definition: frontmatter between two ---
 # lines, then the agent's instructions. The reviewer and the verifier are for
-# work on entourage itself, in the repo's own .claude/agents/, which is not
-# copied into a case's repo. The write-up and the build ship in agents/.
-REVIEW_PROFILES="$ROOT/.claude/agents/reviewer.md $ROOT/.claude/agents/verifier.md"
+# work on entourage itself, in the repo's own .claude/profiles/, which a clone
+# writes into Claude Code's agents folder with their model and effort. The
+# write-up and the build ship in agents/.
+REVIEW_PROFILES="$ROOT/.claude/profiles/entourage-reviewer.md $ROOT/.claude/profiles/entourage-verifier.md"
 factory_profiles() { printf '%s\n' "$REPO/agents/entourage-write-up.md" "$REPO/agents/entourage-build.md"; }
 
 # Print the value of one key in a profile's frontmatter, or nothing.
@@ -692,14 +693,16 @@ profile_tools_are() {
   [ "$tools" = "$2" ] || fail "${1##*/} has the tools '$tools', not '$2'"
 }
 
-# In a session on entourage, a reviewer and a verifier can be started by name,
-# each with only the tools it uses. Those include writing files: reviewers
-# write throwaway copies and repro scripts.
+# A reviewer and a verifier can be started by name, as entourage-reviewer and
+# entourage-verifier, each with only the tools it uses. Those include writing
+# files: reviewers write throwaway copies and repro scripts. The entourage-
+# names keep them from standing in for a person's own reviewer.
 review_profiles_are_named_with_only_their_tools() {
   local f name
   for f in $REVIEW_PROFILES; do
     [ -f "$f" ] || { fail "there is no ${f#"$ROOT"/}"; continue; }
     name=${f##*/}; name=${name%.md}
+    case $name in entourage-*) ;; *) fail "${f##*/} is not named entourage-<something>" ;; esac
     [ "$(profile_field "$f" name)" = "$name" ] || fail "${f##*/} is not named $name: '$(profile_field "$f" name)'"
     [ -n "$(profile_field "$f" description)" ] || fail "${f##*/} has no description, so the Agent tool cannot list it"
     profile_tools_are "$f" 'Read, Bash, Edit, Write'
@@ -731,10 +734,10 @@ review_profiles_carry_the_review_rules() {
     done
   done
   for want in Critical Important Minor verdict; do
-    grep -qF -- "$want" "$ROOT/.claude/agents/reviewer.md" || fail "reviewer.md does not mention $want"
+    grep -qF -- "$want" "$ROOT/.claude/profiles/entourage-reviewer.md" || fail "entourage-reviewer.md does not mention $want"
   done
   for want in fix-now fix-later skip refute; do
-    grep -qF -- "$want" "$ROOT/.claude/agents/verifier.md" || fail "verifier.md does not mention $want"
+    grep -qF -- "$want" "$ROOT/.claude/profiles/entourage-verifier.md" || fail "entourage-verifier.md does not mention $want"
   done
 }
 
@@ -759,13 +762,21 @@ build_profile_has_only_its_tools() {
   profile_tools_are "$f" 'Bash, Read, Edit, Write, Skill, mcp__linear-server__get_issue, mcp__linear-server__list_comments, mcp__linear-server__save_issue'
 }
 
-# Every profile runs on Opus, whatever the human's own sessions use. None
-# sets an effort yet, so that still comes from the human's own sessions.
+# The write-up and the build say Opus, though --model= beats it: the settings
+# file picks each profile's model and effort (settings.sh). No source sets an
+# effort, and the reviewer's and verifier's set no model either, since
+# entourage writes both into the file it makes of each.
 every_profile_runs_on_opus() {
   local f
-  for f in $REVIEW_PROFILES $(factory_profiles); do
+  for f in $(factory_profiles); do
     [ -f "$f" ] || { fail "there is no $f"; continue; }
     [ "$(profile_field "$f" model)" = opus ] || fail "${f##*/} does not say model: opus"
+  done
+  for f in $REVIEW_PROFILES; do
+    [ -f "$f" ] || { fail "there is no $f"; continue; }
+    [ -z "$(profile_field "$f" model)" ] || fail "${f##*/} sets a model, which entourage writes"
+  done
+  for f in $REVIEW_PROFILES $(factory_profiles); do
     [ -z "$(profile_field "$f" effort)" ] || fail "${f##*/} sets an effort"
   done
 }

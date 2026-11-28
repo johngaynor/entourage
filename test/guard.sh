@@ -140,6 +140,8 @@ status
 project ls
 project ls --json
 project team demo
+profile ls
+profile ls --json
 task ls demo
 task ls demo --json
 task log demo
@@ -211,6 +213,31 @@ guard_opens_the_store_read_only() {
   "$E" task log demo --json >/dev/null || fail "a worktree's task log --json exited non-zero"
   [ -s "$TMP/sqlite3-calls.log" ] || fail "a worktree's copy did not open the store"
   ! grep -qx rw "$TMP/sqlite3-calls.log" || fail "a worktree's copy opened the store to write: $(cat "$TMP/sqlite3-calls.log")"
+}
+
+# A profile's model and effort are read in a worktree, as the usual copy
+# reads them, and the hand-off store and settings file are left as they were.
+profile_ls_runs_in_a_worktree() {
+  guard_machine
+  "$E" profile set build effort high >/dev/null || fail "could not set the build's effort to start from"
+  local usual worktree before
+  usual=$("$E" profile ls 2>&1; "$E" profile ls --json 2>&1)
+  as_worktree
+  before=$(machine_snapshot)
+  worktree=$("$E" profile ls 2>&1; "$E" profile ls --json 2>&1) || fail "a worktree's profile ls exited non-zero: $worktree"
+  [ "$(machine_snapshot)" = "$before" ] || fail "profile ls changed the machine"
+  [ "$worktree" = "$usual" ] || fail "a worktree's copy read otherwise: $(diff <(printf '%s\n' "$usual") <(printf '%s\n' "$worktree"))"
+  case $usual in *'build     opus     high'*'"name":"build","model":"opus","effort":"high"'*) ;; *) fail "profile ls did not show the build at high: $usual" ;; esac
+}
+
+# Setting one changes the settings file, and the reviewer's file in Claude
+# Code's agents folder.
+profile_set_is_refused_in_a_worktree() {
+  guard_machine
+  refused profile set build effort high
+  refused profile set reviewer model sonnet
+  refused profile
+  refused profile nonsense
 }
 
 # --- asked, a worktree's copy acts on the machine ---------------------------
@@ -330,6 +357,7 @@ guard_refuses_task_new guard_refuses_task_start guard_refuses_task_build
 guard_refuses_task_handoff guard_refuses_linear_key guard_refuses_linear_type guard_refuses_linear_section
 guard_refuses_linear_move
 guard_refuses_a_command_it_does_not_know
+profile_ls_runs_in_a_worktree profile_set_is_refused_in_a_worktree
 guard_knows_a_worktree_git_made
 guard_runs_the_reads_and_changes_nothing guard_opens_the_store_read_only
 guard_runs_project_new_when_asked guard_runs_task_start_when_asked guard_records_a_handoff_when_asked

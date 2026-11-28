@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # entourage: set up and maintain this machine's copy of the software factory.
 # It links the Herdr mods and layouts under herdr/, the agent skills under
-# skills/ and the agent profiles under agents/, and manages projects (groups of repos that show up in Herdr as
-# spaces) and their tasks (a card an agent writes up, then a worktree of each
-# repo on one branch, each shown as a tab in the project's space).
+# skills/ and the agent profiles under agents/, keeps the model and effort
+# each profile runs on, and manages projects (groups of repos that show up in
+# Herdr as spaces) and their tasks (a card an agent writes up, then a worktree
+# of each repo on one branch, each shown as a tab in the project's space).
 set -euo pipefail
 
 usage() {
@@ -19,6 +20,11 @@ Usage:
   entourage project open <name>             show the project as a Herdr space
   entourage project ls [--json]             list projects and their repos (--json for programs)
   entourage project team <name> [<team>...] set the Linear teams whose cards are the project's, or print them
+  entourage profile ls [--json]             show the model and effort each agent profile runs on
+                                           (--json for programs)
+  entourage profile set <profile> <model|effort> <value>
+                                           set the model or the effort of one profile: write-up,
+                                           build, reviewer or verifier
   entourage task ls <project> [--json]     list the open cards of the project's Linear teams, by status
   entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
   entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
@@ -151,14 +157,34 @@ Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage). Hand-offs are recorded beside them, in
 entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
 
-A profile is a Claude Code agent definition: the tools a session has and the
-model it runs on, whatever your own sessions use. claude starts with one,
-entourage-write-up for `task new` and entourage-build for `task build`, and
-with Linear's MCP server alone (agents/linear-mcp.json), not the servers of
-your own sessions. Claude Code asks once to sign in to Linear as
-linear-server on a machine where it is not signed in under that name. When
-the profile is not linked, both stop before starting anything; run
-`entourage update`. Another agent starts as it is, with no profile.
+A profile is a Claude Code agent definition: the tools a session has,
+whatever your own sessions have. claude starts with one, entourage-write-up
+for `task new` and entourage-build for `task build`, and with Linear's MCP
+server alone (agents/linear-mcp.json), not the servers of your own sessions.
+Claude Code asks once to sign in to Linear as linear-server on a machine
+where it is not signed in under that name. When the profile is not linked,
+both stop before starting anything; run `entourage update`. Another agent
+starts as it is, with no profile, model or effort.
+
+Each profile runs on the model and effort that ~/.config/entourage/settings.json
+names for it. `install` and `update` make the file when it is missing, with
+every profile on opus at xhigh effort, and never change one that is there.
+`profile ls` shows them, and `profile set` changes one: write-up is the agent
+`task new` starts, build the one `task build` starts, and reviewer and
+verifier the entourage-reviewer and entourage-verifier subagents, for work on
+entourage itself. A model is one of claude's aliases (fable, opus, sonnet,
+haiku) or a full model name like claude-opus-5-5, and an effort is low,
+medium, high, xhigh or max; anything else is refused, and the file is left as
+it was. claude starts with --model= and --effort=, which beat the profile's
+own model and your own Claude Code settings; only CLAUDE_CODE_EFFORT_LEVEL
+beats the effort. A clone of entourage writes the two subagents into
+~/.claude/agents, with their model and effort, at `install`, at `update` and
+at each `profile set` for one of them, and replaces or removes only a file it
+wrote; an npm install writes neither. A profile or value the file leaves out
+is opus at xhigh. A file that is not valid settings stops `task new` and
+`task build` before an agent starts, saying what in it is wrong, and
+`status` says so too. The file is read with jq. The Agent settings button at
+the right end of Herdr's tab bar shows and changes them with these commands.
 
 These variables, and your Linear key as LINEAR_API_KEY, can be exported in
 your shell or written as NAME=value lines in ~/.config/entourage/.env, which
@@ -170,8 +196,8 @@ ENTOURAGE_LIVE are the variables the file cannot set.
 
 The copy of entourage in a git worktree of the entourage repo, run as
 ./cli/entourage, is a change being built. It runs only the commands that
-read: help, status, project ls, project team <name> with no teams, task ls,
-task log and task watch. Every other command stops before it does anything,
+read: help, status, project ls, project team <name> with no teams,
+profile ls, task ls, task log and task watch. Every other command stops before it does anything,
 says why, and leaves this machine as it was. ENTOURAGE_LIVE=1, set for that one run,
 runs it for real. The installed entourage is never stopped, whatever folder
 it is run from.
@@ -292,6 +318,9 @@ HERDR_INSTALL='curl -fsSL https://releases.herdr.dev/app/install.sh | sh'
 NPM_SPEC=${ENTOURAGE_NPM_SPEC:-@johngaynor/entourage}
 
 PROJECTS=$ENT_HOME/projects
+# The model and effort each agent profile runs on (settings.sh). Not the env
+# file: a Herdr mod changes it, and the env file holds the Linear key.
+SETTINGS=$ENT_HOME/settings.json
 TEMPLATE=$REPO/herdr/projects/template
 # A PROJECT.md that still has this line has not been filled in.
 TEMPLATE_MARK='<!-- entourage:template -->'
@@ -300,7 +329,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common guard links recipes trust project linear task finish watch handoff commands; do
+for part in common guard links recipes trust settings project linear task finish watch handoff commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null
@@ -317,6 +346,7 @@ case ${1:-help} in
   project) shift; cmd_project "$@" ;;
   task) shift; cmd_task "$@" ;;
   linear) shift; cmd_linear "$@" ;;
+  profile) shift; cmd_profile "$@" ;;
   help | -h | --help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

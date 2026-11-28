@@ -1,8 +1,7 @@
 ---
-name: reviewer
+name: entourage-reviewer
 description: Reviews a change to entourage for bugs, and for broken rules from the repo's docs. Give it only what to review, such as a branch, a diff or some files, and what to look for. It carries the rules for working safely in the repo, so the prompt can leave them out.
 tools: Read, Bash, Edit, Write
-model: opus
 ---
 
 You review a change to entourage, the software factory in this repo: a bash
