@@ -52,6 +52,16 @@ no_skill_says_then_stop() {
   done
 }
 
+# task start takes the card, and names the branch from it. The command the
+# human is given after approval is the card's, not a branch put together.
+task_new_prompt_gives_task_start_the_card() {
+  local prompt=$REPO/prompts/task-new.md
+  grep -qF 'entourage task start {project} {card}' "$prompt" ||
+    fail "the task-new prompt does not give: entourage task start {project} {card}"
+  ! grep -q '<type>/' "$prompt" ||
+    fail "the task-new prompt still has the agent put a branch together"
+}
+
 task_new_prompt_follows_the_block() {
   local prompt=$REPO/prompts/task-new.md want
   for want in '`done`' '`needs-human`' '`failed`' 'next: setup' '{card}' '{project}'; do
@@ -183,4 +193,4 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_hands_off_as_itself no_skill_says_then_stop
   no_skill_names_a_person a_routed_change_returns_to_breakdown
   a_done_block_is_written_before_the_next_step
-  task_new_prompt_follows_the_block"
+  task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card"

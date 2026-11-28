@@ -186,6 +186,26 @@ linear_answers() {
 # The HTTP status of every answer from now on.
 linear_status() { echo "$1" > "$TMP/linear/status"; }
 
+# Linear's answer when asked for one card: the card $1, titled $2, with $3 as
+# its label in the Type group, or with no labels when $3 is empty. The title
+# goes into the JSON as it is, so keep quotes and backslashes out of it.
+card_answer() {
+  local labels='[]'
+  [ -z "${3:-}" ] || labels="[{\"name\":\"$3\",\"parent\":{\"name\":\"Type\"}}]"
+  printf '{"data":{"issues":{"nodes":[{"identifier":"%s","title":"%s","labels":{"nodes":%s}}]}}}' "$1" "$2" "$labels"
+}
+# Linear's answer when it has no such card.
+NO_CARD='{"data":{"issues":{"nodes":[]}}}'
+
+# A Linear that has the card $1, titled $2, of the type $3, and a key to ask
+# it with. The key is exported, so it is found wherever entourage's home is
+# and whatever a case writes in the env file.
+linear_has_card() {
+  export LINEAR_API_KEY=$KEY
+  stub_linear
+  linear_answers "$(card_answer "$@")"
+}
+
 # Every call made to curl, one line each, and how many there were.
 curl_calls() { cat "$TMP/curl-calls.log" 2>/dev/null; }
 curl_count() { curl_calls | grep -c '' || true; }
