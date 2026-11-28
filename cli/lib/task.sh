@@ -8,8 +8,9 @@
 #               own, where it types `task build` to start the agent that
 #               builds the card
 # The agent runs `task handoff` as each step ends, and `task log` shows what
-# it recorded. Both are in handoff.sh. Once the work has merged, `task finish`
-# removes the task; it is in finish.sh.
+# it recorded. Both are in handoff.sh. While the pull requests wait on the
+# human, `task watch` watches them on GitHub; it is in watch.sh. Once the work
+# has merged, `task finish` removes the task; it is in finish.sh.
 
 # A card ID is a team key and a number, like ABC-122.
 CARD_RE='^[A-Za-z][A-Za-z0-9]*-[0-9]+$'
@@ -535,8 +536,9 @@ cmd_task() {
     start) shift; task_start "$@" ;;
     build) shift; task_build "$@" ;;
     finish) shift; task_finish "$@" ;;
+    watch) shift; task_watch "$@" ;;
     handoff) shift; task_handoff "$@" ;;
     log) shift; task_log "$@" ;;
-    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task build <project> <card>, or: entourage task finish <project> <card>, or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
+    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task build <project> <card>, or: entourage task finish <project> <card>, or: entourage task watch <project> <card> [--once], or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
   esac
 }

@@ -27,6 +27,9 @@ Usage:
   entourage task build <project> <card>    start the agent that builds the card, in its task's tab
   entourage task finish <project> <card>   end a task whose work has merged: remove its worktrees,
                                            its branch in each repo and its folder, and close its tab
+  entourage task watch <project> <card> [--once]
+                                           watch the card's pull requests on GitHub until every one
+                                           has merged or one is closed (--once: check once)
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
   entourage task log <project> [<card>] [--json]
                                            list a card's hand-offs and how long each step took,
@@ -95,9 +98,11 @@ item against the card's Plan and writes what it found on the card as a
 Review. Neither pushes anything. What is not met goes back to sdlc-build.
 When all is met, sdlc-pr pushes the task's branch and opens a pull request
 into the default branch of each repo the work changed, saying how the review
-showed each Done when item. You merge it, then tell the agent in the tab that
-it has merged: it checks GitHub, and records the merge once every pull
-request for the card has merged. No agent merges a pull request.
+showed each Done when item. You merge it. Meanwhile the agent watches the pull
+requests on GitHub with `task watch`, and records the merge once every pull
+request for the card has merged, with no one typing in the tab; telling it in
+the tab that they have merged makes it check at once. When one is closed
+without merging, it asks you whether to stop. No agent merges a pull request.
 entourage moves the card in Linear at three points: once `task start` has
 opened the tab, to the team's first started status (In Progress); once
 sdlc-pr has opened every pull request, with `linear move <card> review`, to
@@ -110,6 +115,13 @@ in a note, and sdlc-pr in its hand-off. `linear move` alone exits non-zero
 then, saying why.
 Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122`, `/sdlc-pr ABC-122`.
+`task watch` asks GitHub, with gh, for the pull request of each worktree of
+the card's task, skipping one whose branch has none, and prints a line for
+each: merged, open or closed, then its URL. It checks every minute for the
+first 10 minutes after the newest was opened, every 5 minutes for the hour
+after that, then every 30 minutes, and ends once every one has merged (exit
+0) or one is closed without merging (exit 3). With --once it checks once,
+and exits 2 while one is still open. It changes nothing.
 `task finish` ends a task once its work has merged: it removes the task's
 worktrees, deletes its branch in each repo, deletes its folder and closes its
 tab. It checks first, and removes nothing when that would lose work: changes
@@ -155,9 +167,9 @@ ENTOURAGE_LIVE are the variables the file cannot set.
 
 The copy of entourage in a git worktree of the entourage repo, run as
 ./cli/entourage, is a change being built. It runs only the commands that
-read: help, status, project ls, project team <name> with no teams, task ls
-and task log. Every other command stops before it does anything, says why,
-and leaves this machine as it was. ENTOURAGE_LIVE=1, set for that one run,
+read: help, status, project ls, project team <name> with no teams, task ls,
+task log and task watch. Every other command stops before it does anything,
+says why, and leaves this machine as it was. ENTOURAGE_LIVE=1, set for that one run,
 runs it for real. The installed entourage is never stopped, whatever folder
 it is run from.
 EOF
@@ -285,7 +297,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common guard links recipes trust project linear task finish handoff commands; do
+for part in common guard links recipes trust project linear task finish watch handoff commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null
