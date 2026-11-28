@@ -397,6 +397,36 @@ no_agent_merges_a_pull_request() {
   done < <(grep -F 'gh pr merge' "$skill")
 }
 
+# While the pull requests wait to be merged, the human can ask in the tab for a
+# change instead. It goes into the same pull request: made on the task's
+# branch with its test, committed, pushed, never forced, added to the
+# description, and then the agent waits again.
+pr_makes_a_change_asked_for_in_the_tab() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md section want
+  ! grep -qF 'not part of this step yet' "$skill" ||
+    fail "sdlc-pr still says a change asked for in the tab is not made"
+  # The wait names a change as one of its answers.
+  grep -A5 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" |
+    grep -E '^options: merged \|' | grep -q 'change' ||
+    fail "sdlc-pr's wait for the merge does not name a change as an answer"
+  # The section that makes a change, from its heading to the next one.
+  section=$(awk '/^## / { if (on) exit } /^## [0-9]+\. Make a change/ { on = 1 } on' "$skill")
+  [ -n "$section" ] || fail "sdlc-pr has no section that makes a change asked for in the tab"
+  for want in "task's branch" 'whole test suite' 'git commit' 'git push' 'never forced' \
+      'gh pr edit' '--body-file' 'Ask first' 'Done when item' 'new dependency'; do
+    case $section in
+      *"$want"*) ;;
+      *) fail "sdlc-pr's section that makes a change does not mention $want" ;;
+    esac
+  done
+  # Once the change is pushed, the agent waits for the merge again.
+  case $section in
+    *'`needs-human` again'*) ;;
+    *) fail "sdlc-pr does not hand off needs-human again once the change is pushed" ;;
+  esac
+  case $section in *'--force'*) fail "sdlc-pr's section that makes a change shows a forced push" ;; esac
+}
+
 # What can stop the push is checked before anything is pushed, and a check
 # that fails is a failed hand-off with the reason, not a push that half works.
 pr_checks_it_can_push_before_pushing() {
@@ -434,6 +464,7 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   pr_opens_nothing_unless_the_review_met_every_item pr_pushes_only_the_worktrees_with_commits
   pr_follows_the_repos_rules_for_pull_requests pr_waits_for_the_human_to_merge
   no_agent_merges_a_pull_request pr_checks_it_can_push_before_pushing
+  pr_makes_a_change_asked_for_in_the_tab
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop
