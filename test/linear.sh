@@ -1409,6 +1409,26 @@ linear_move_moves_a_card_to_review_in_a_team_of_other_names() {
   case $out in *"ABC-122 moved to Checking in Linear (it was Doing)"*) ;; *) fail "did not say the card moved: $out" ;; esac
 }
 
+# A team with three started statuses, listed out of their order: the last by
+# place, Shipping, is neither the first nor the last that Linear lists.
+THREE_STARTED='[{"id":"t-doing","name":"Doing","type":"started","position":20},
+  {"id":"t-shipping","name":"Shipping","type":"started","position":40},
+  {"id":"t-checking","name":"Checking","type":"started","position":30},
+  {"id":"t-todo","name":"Todo","type":"unstarted","position":10},
+  {"id":"t-done","name":"Done","type":"completed","position":50}]'
+
+# review is picked by place, whatever order Linear lists the statuses in.
+linear_move_takes_the_last_started_status_by_place() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Doing "$THREE_STARTED")" "$(moved_answer Shipping "$THREE_STARTED")"
+  out=$("$E" linear move ABC-122 review) || fail "linear move exited non-zero: $out"
+  case $(changes_sent) in
+    *'"stateId":"t-shipping"'*) ;;
+    *) fail "did not move the card to Shipping, the last started status by place: $(changes_sent)" ;;
+  esac
+  [ "$out" = 'ABC-122 moved to Shipping in Linear (it was Doing)' ] || fail "did not say the card moved: $out"
+}
+
 # In a team with one started status, review is that status, so a card in it
 # already stays there, and the command has done all it is asked.
 linear_move_leaves_a_card_in_a_teams_only_started_status() {
@@ -1480,6 +1500,7 @@ linear_move_refuses_what_is_not_a_move() {
 }
 
 MOVE_CASES="linear_move_moves_a_card_to_review linear_move_moves_a_card_to_review_in_a_team_of_other_names
+  linear_move_takes_the_last_started_status_by_place
   linear_move_leaves_a_card_in_a_teams_only_started_status linear_move_takes_started_and_done
   linear_move_never_moves_a_closed_card linear_move_fails_when_linear_is_out_of_reach
   linear_move_fails_when_linear_refuses_the_change linear_move_refuses_what_is_not_a_move"
