@@ -89,6 +89,7 @@ guard_refuses_linear_section() {
   guard_machine
   refused linear section ABC-122 Plan <<< "**Approach:** Build it."
   refused linear section ABC-122 Plan --replace <<< "**Approach:** Build it."
+  refused linear section ABC-122 Review --replace <<< "Round 2, on api 3f2a91c. The tests pass."
 }
 # Moving a card, as sdlc-pr does once its pull requests are open.
 guard_refuses_linear_move() {

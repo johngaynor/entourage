@@ -45,7 +45,7 @@ Usage:
                                            sub-issues (--json for programs)
   entourage linear type <card> <feat|fix|chore>
                                            set a card's type, its label in the Type group
-  entourage linear section <card> <Specification|Plan|Breakdown> [--replace]
+  entourage linear section <card> <Specification|Plan|Breakdown|Review> [--replace]
                                            add a section to a card, its body on stdin
   entourage linear move <card> <approved|started|review|done>
                                            move a card forward in Linear: to its team's first
