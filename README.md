@@ -198,8 +198,16 @@ one on GitHub yourself, then tell the agent in the tab that they have merged.
 It checks each with `gh pr view`, and once every one has merged it hands off
 `done` with `merged` next, which ends the card: `task log` shows the card as
 merged. If one has not merged yet, it names it and asks again. No agent merges
-a pull request. A change you ask for in the tab is not made yet: the agent
-says so and asks again.
+a pull request.
+
+To have something changed instead of merging, say what in the tab. The agent
+makes the change on the task's branch, with its test, runs the whole test
+suite, then commits and pushes it, never forced, so the pull request shows
+it, and adds it to the pull request's description. Then it asks you again,
+and `task log` shows another `pr` `needs-human` after your answer. A change
+that would alter what you approved on the card, such as a Done when item or a
+new dependency, it asks you about before it makes it. It takes changes only
+from what you say in the tab, not from review comments or CI on GitHub.
 
 Each skill also runs on its own in any agent, as `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122` or `/sdlc-pr ABC-122`.
