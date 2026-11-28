@@ -531,6 +531,57 @@ pr_checks_it_can_push_before_pushing() {
   ! grep -qE -- 'git push[^`]*--force' "$skill" || fail "sdlc-pr shows a forced push"
 }
 
+# Once every pull request for the card is open and read back, sdlc-pr moves
+# the card to In Review with one run of linear move: after the read-back, and
+# after the steps it takes for each repo, so a card with pull requests in
+# several repos does not move before the last one is open.
+pr_moves_the_card_to_review_once_every_pull_request_is_open() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md section readback last_step move
+  section=$(awk '/^## / { if (on) exit } /^## [0-9]+\. Push the branch/ { on = 1 } on' "$skill")
+  [ -n "$section" ] || { fail "sdlc-pr has no section that pushes the branch and opens the pull requests"; return; }
+  readback=$(printf '%s\n' "$section" | grep -nF 'gh pr view <url> --json url,title,body,baseRefName,headRefName' | head -n1 | cut -d: -f1)
+  last_step=$(printf '%s\n' "$section" | grep -nE '^[0-9]+\. ' | tail -n1 | cut -d: -f1)
+  move=$(printf '%s\n' "$section" | grep -nF 'entourage linear move <card ID> review' | head -n1 | cut -d: -f1)
+  if [ -z "$move" ]; then
+    fail "sdlc-pr's section that opens the pull requests does not run entourage linear move <card ID> review"
+    return
+  elif [ -z "$readback" ] || [ "$move" -le "$readback" ]; then
+    fail "sdlc-pr moves the card before it reads every pull request back"
+  elif [ "$move" -le "$last_step" ]; then
+    fail "sdlc-pr moves the card in the steps it takes for each repo"
+  fi
+  # The move comes before the wait for the merge.
+  [ "$(grep -nF 'entourage linear move' "$skill" | head -n1 | cut -d: -f1)" -lt \
+    "$(grep -nE '^## [0-9]+\. Wait for the merge' "$skill" | cut -d: -f1)" ] ||
+    fail "sdlc-pr moves the card after it waits for the merge"
+}
+
+# A move that fails does not stop the step: sdlc-pr says that the card was not
+# moved, and why, in flags, and goes on to wait for the merge.
+pr_goes_on_when_the_card_cannot_be_moved() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md section row
+  section=$(awk '/^## / { if (on) exit } /^## [0-9]+\. Push the branch/ { on = 1 } on' "$skill")
+  case $section in
+    *'exits non-zero'*'not moved'*'wait for the merge'*'`flags`'*) ;;
+    *) fail "sdlc-pr does not say to go on to wait for the merge, with the move in flags, when the card is not moved" ;;
+  esac
+  row=$(grep -F '| `entourage linear move` exits non-zero |' "$skill")
+  [ -n "$row" ] || fail "sdlc-pr's table of what goes wrong has no row for a move that fails"
+  case $row in
+    *'`flags`'*'wait for the merge'*) ;;
+    *) fail "sdlc-pr's row for a move that fails does not say to flag it and wait for the merge: $row" ;;
+  esac
+  # The hand-off that ends the step has room for it.
+  grep -A5 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -E '^flags: ' | grep -q 'not moved' ||
+    fail "sdlc-pr's done hand-off does not say a card that was not moved goes in flags"
+}
+
+# entourage moves the card now, so the skill no longer leaves it to the human.
+pr_no_longer_leaves_the_status_to_the_human() {
+  ! grep -qF "is the human's to move" "$REPO/skills/sdlc-pr/SKILL.md" ||
+    fail "sdlc-pr still says the card's status is the human's to move"
+}
+
 # --- agent profiles ---------------------------------------------------------
 
 # A profile is a Claude Code agent definition: frontmatter between two ---
@@ -655,6 +706,8 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   pr_follows_the_repos_rules_for_pull_requests pr_waits_for_the_human_to_merge
   no_agent_merges_a_pull_request pr_checks_it_can_push_before_pushing
   pr_makes_a_change_asked_for_in_the_tab
+  pr_moves_the_card_to_review_once_every_pull_request_is_open pr_goes_on_when_the_card_cannot_be_moved
+  pr_no_longer_leaves_the_status_to_the_human
   pr_finishes_the_task_after_the_merge pr_says_what_finish_would_lose
   pr_finishes_nothing_for_a_closed_pull_request
   the_answer_is_recorded_first

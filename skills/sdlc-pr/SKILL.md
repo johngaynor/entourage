@@ -1,11 +1,11 @@
 ---
 name: sdlc-pr
-description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, waiting for the human to merge them while making in the same pull requests any change they ask for in the tab, recording the merge and then finishing the task. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
+description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, moving the card to In Review once they are all open, waiting for the human to merge them while making in the same pull requests any change they ask for in the tab, recording the merge and then finishing the task. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
 ---
 
 # Open the pull request
 
-Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, waits for the human to merge them, makes in the same pull requests any change they ask for in the tab while they wait, records the merge, and then finishes the task, which removes its worktrees and closes its tab.
+Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, moves the card to In Review once they are all open, waits for the human to merge them, makes in the same pull requests any change they ask for in the tab while they wait, records the merge, and then finishes the task, which removes its worktrees and closes its tab.
 
 The human reads the pull request, not this session. So each pull request has to name the card and say, for each Done when item, how the review showed that it is met and what is left to the human to check.
 
@@ -57,7 +57,15 @@ For each worktree with commits, and no other:
 6. With several repos, open them all first, then edit each description to link the others.
 7. Read each pull request back with `gh pr view <url> --json url,title,body,baseRefName,headRefName`, and check that it goes from the task's branch into the default branch and that its description says what you wrote.
 
-Change nothing on the card. Its status in Linear is the human's to move.
+Then, once every pull request is open and read back, move the card in Linear to its team's last started status, In Review:
+
+```sh
+entourage linear move <card ID> review
+```
+
+Run it once, after the last pull request is read back, never in the steps above: with pull requests in several repos, the card does not move before the last one is open. The status is picked by its kind and its place in the team's order, so in a team with only one started status the card stays in it. A card that is there already, further on, done or canceled stays where it is, and the command says so. Change nothing else on the card.
+
+If the command exits non-zero, the card was not moved, and what it printed says why, such as Linear out of reach or a key without Write permission. Don't stop for it, don't run it again, and don't move the card with the Linear tools instead: go on to wait for the merge. Say in the summary of the hand-off that waits that the card was not moved, and why, and put the same in `flags` when the step hands off `done`.
 
 ## 5. Wait for the merge
 
@@ -67,7 +75,7 @@ With every pull request open, hand off as `needs-human` with their links, and wa
 entourage task handoff <project> <card ID> <<'EOF'
 phase: pr
 status: needs-human
-summary: <the pull requests opened, one for each repo the work changed, and what is left to the human in them>
+summary: <the pull requests opened, one for each repo the work changed, what is left to the human in them, and why the card was not moved to In Review, if it was not>
 question: Merge <the link of each pull request>, then tell me when they have merged.
 options: merged | a change you want made | stop here
 EOF
@@ -119,7 +127,7 @@ phase: pr
 status: done
 next: merged
 summary: <each pull request, and the default branch it merged into>
-flags: <each item that was left to the human, and anything else they should know>
+flags: <each item that was left to the human, a card that was not moved to In Review and why, and anything else they should know>
 EOF
 ```
 
@@ -183,6 +191,7 @@ EOF
 | The push is refused | Hand off as `failed`, with what git said. Never force it, and don't pull or rebase to get it through |
 | `gh pr create` or `gh pr edit` fails | Hand off as `failed`, with what `gh` said and which branches are already pushed |
 | The branch already has an open pull request | Update it with `gh pr edit`. Don't open a second one |
+| `entourage linear move` exits non-zero | The card was not moved. Say so, and why, in the summary of the hand-off that waits, and in `flags` when the step hands off `done`, and go on to wait for the merge. Don't move it with the Linear tools |
 | The human says it has merged, and GitHub says it is open | Name the pull request that has not merged, and ask again |
 | A pull request was closed without merging | Ask the human whether to stop. Don't reopen it or open another, and run no `task finish`: the task stays |
 | `task finish` refuses, or stops partway | Tell the human everything it named, and that the task is left as it is. Record no other hand-off, and change nothing to get it through |
@@ -225,7 +234,7 @@ Builds [ABC-122](https://linear.app/acme/issue/ABC-122/export-orders-as-csv): Ex
 entourage task handoff shop ABC-122 <<'EOF'
 phase: pr
 status: needs-human
-summary: Opened acme/api#141 and acme/web#88 into main, each linking the card and the other. One item is left to you: open the file in a spreadsheet.
+summary: Opened acme/api#141 and acme/web#88 into main, each linking the card and the other, and moved ABC-122 to In Review. One item is left to you: open the file in a spreadsheet.
 question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88, then tell me when they have merged.
 options: merged | a change you want made | stop here
 EOF
