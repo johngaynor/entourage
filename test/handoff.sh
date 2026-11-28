@@ -560,9 +560,10 @@ handoff_moves_no_closed_card_on_the_merge() {
   grep -qF 'ABC-122 stays in Canceled, which is closed' "$TMP/err" || fail "did not say why the card stays: $(cat "$TMP/err")"
 }
 
-# Only the merge moves the card. A pull request closed without merging hands
-# off failed, or asks the human, and Linear is asked nothing; so does every
-# other step.
+# Of the pull request's hand-offs, only the merge moves the card. A pull
+# request closed without merging hands off failed, or asks the human, and
+# Linear is asked nothing; so does a review or a define that is done. (The
+# approval moves the card too: see below.)
 handoff_moves_the_card_only_on_the_merge() {
   demo
   linear_for_moves "$(move_answer ABC-122 'In Review')" "$(moved_answer Done)"
@@ -610,6 +611,137 @@ handoff_records_the_merge_with_no_key_saved() {
     fail "did not say why the card was not moved: $(cat "$TMP/err")"
 }
 
+# --- the card and its slices move to not-started on approval ----------------
+
+APPROVE_BLOCK='phase: breakdown
+status: done
+next: start
+summary: Approved as one piece.'
+
+# Recording the approval moves the card to its team's first not-started
+# status, Todo in Lab. The question asks for the card's sub-issues too. The
+# block is printed as it is, on stdout, and what happened to the card goes to
+# stderr.
+handoff_moves_the_card_to_todo_on_approval() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 Backlog)" "$(moved_answer Todo)"
+  out=$(hand "$APPROVE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$APPROVE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(rows)" = 1 ] || fail "expected one row, got $(rows)"
+  [ "$(curl_count)" = 2 ] || fail "asked Linear $(curl_count) times, not 2: $(curl_calls)"
+  curl_calls | head -n 1 | grep -qF 'children' || fail "did not ask Linear for the card's sub-issues: $(curl_calls | head -n 1)"
+  case $(changes_sent) in
+    *'"id":"id-ABC-122"'*'"stateId":"s-todo"'*) ;;
+    *) fail "did not move the card to Todo: $(changes_sent)" ;;
+  esac
+  [ "$(cat "$TMP/err")" = 'ABC-122 moved to Todo in Linear (it was Backlog)' ] ||
+    fail "did not say the card moved: $(cat "$TMP/err")"
+}
+
+# In a team like PHY's, a card starts in Triage, and its first not-started
+# status by place is Ready for Dev, whatever order Linear lists them in.
+handoff_moves_a_triage_card_to_ready_for_dev_on_approval() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 Triage "$PHY_STATUSES")" "$(moved_answer 'Ready for Dev' "$PHY_STATUSES")"
+  out=$(hand "$APPROVE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$APPROVE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  case $(changes_sent) in
+    *'"stateId":"p-ready"'*) ;;
+    *) fail "did not move the card to Ready for Dev: $(changes_sent)" ;;
+  esac
+  grep -qxF 'ABC-122 moved to Ready for Dev in Linear (it was Triage)' "$TMP/err" ||
+    fail "did not say the card moved: $(cat "$TMP/err")"
+}
+
+# A sliced card's sub-issues move after it, each to its own team's first
+# not-started status, and each change is read back.
+handoff_moves_the_card_and_its_slices_on_approval() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 Backlog '' "[$(move_card ABC-123 Backlog),$(move_card PHY-8 Backlog "$PHY_STATUSES")]")" \
+    "$(moved_answer Todo)" "$(moved_answer Todo)" "$(moved_answer 'Ready for Dev' "$PHY_STATUSES")"
+  out=$(hand "$APPROVE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$APPROVE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(curl_count)" = 4 ] || fail "asked Linear $(curl_count) times, not 4: $(curl_calls)"
+  case $(changes_sent | tr '\n' ' ') in
+    *'"id":"id-ABC-122"'*'"stateId":"s-todo"'*'"id":"id-ABC-123"'*'"stateId":"s-todo"'*'"id":"id-PHY-8"'*'"stateId":"p-ready"'*) ;;
+    *) fail "did not move the card, then each sub-issue, to its team's first not-started status: $(changes_sent)" ;;
+  esac
+  [ "$(cat "$TMP/err")" = 'ABC-122 moved to Todo in Linear (it was Backlog)
+ABC-123 moved to Todo in Linear (it was Backlog)
+PHY-8 moved to Ready for Dev in Linear (it was Backlog)' ] || fail "did not say each card moved: $(cat "$TMP/err")"
+}
+
+# The rules of a move hold for each card on its own: one already there, one
+# further along and one that is closed stay where they are, and the others
+# still move.
+handoff_moves_no_slice_back_on_approval() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 Todo '' "[$(move_card ABC-123 Backlog),$(move_card ABC-124 'In Progress'),$(move_card ABC-125 Canceled)]")" \
+    "$(moved_answer Todo)"
+  out=$(hand "$APPROVE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$APPROVE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(curl_count)" = 2 ] || fail "asked Linear $(curl_count) times, not 2: $(curl_calls)"
+  [ "$(changes_sent | grep -c '')" = 1 ] || fail "asked Linear for more than one change: $(changes_sent)"
+  case $(changes_sent) in
+    *'"id":"id-ABC-123"'*'"stateId":"s-todo"'*) ;;
+    *) fail "did not move the sub-issue in Backlog to Todo: $(changes_sent)" ;;
+  esac
+  [ "$(cat "$TMP/err")" = 'ABC-122 is in Todo already
+ABC-123 moved to Todo in Linear (it was Backlog)
+ABC-124 stays in In Progress, which is past Todo: a card only moves forward
+ABC-125 stays in Canceled, which is closed: a card that is done or canceled is never moved' ] ||
+    fail "did not say what happened to each card: $(cat "$TMP/err")"
+}
+
+# A card that cannot be moved never costs the approval: it is recorded and
+# printed, the command exits zero, and stderr says why the card was not moved.
+handoff_records_the_approval_when_linear_is_out_of_reach() {
+  demo
+  linear_for_moves
+  echo 6 > "$TMP/linear/exit"
+  out=$(hand "$APPROVE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$APPROVE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(rows)" = 1 ] || fail "expected one row, got $(rows)"
+  [ "$(cat "$TMP/err")" = 'ABC-122 was not moved in Linear: could not reach Linear (curl: (6) Could not resolve host: api.linear.app)' ] ||
+    fail "did not say why the card was not moved: $(cat "$TMP/err")"
+}
+
+# When Linear refuses the changes, the note names each card that was not
+# moved, and why.
+handoff_records_the_approval_when_linear_refuses_the_moves() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 Backlog '' "[$(move_card ABC-123 Backlog)]")" "$NO_WRITE" "$NO_WRITE"
+  linear_status_at 2 400; linear_status_at 3 400
+  out=$(hand "$APPROVE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$APPROVE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(rows)" = 1 ] || fail "expected one row, got $(rows)"
+  [ "$(curl_count)" = 3 ] || fail "did not try each card: asked Linear $(curl_count) times, not 3: $(curl_calls)"
+  [ "$(cat "$TMP/err")" = 'ABC-122 was not moved in Linear: Linear answered with an error: Invalid scope: `write` required
+ABC-123 was not moved in Linear: Linear answered with an error: Invalid scope: `write` required' ] ||
+    fail "did not name each card that was not moved, and why: $(cat "$TMP/err")"
+}
+
+# Only the approval moves the card: asking for it, the human's answer and a
+# breakdown that fails ask Linear nothing.
+handoff_moves_the_card_only_on_approval() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 Backlog)" "$(moved_answer Todo)"
+  local block
+  for block in 'phase: breakdown
+status: needs-human
+question: Approve ABC-122 as specified, planned and broken down?
+options: approve | change breakdown | change plan | change specification' 'phase: breakdown
+status: answered
+answer: approve' 'phase: breakdown
+status: failed
+reason: Could not create the sub-issues.'; do
+    hand "$block" >/dev/null 2>"$TMP/err" || fail "task handoff refused the block: $block: $(cat "$TMP/err")"
+    [ ! -s "$TMP/err" ] || fail "said something on stderr for: $block: $(cat "$TMP/err")"
+  done
+  [ "$(rows)" = 3 ] || fail "expected three rows, got $(rows)"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear: $(curl_calls)"
+}
+
 # The step after breakdown is called start, as the row `entourage task start`
 # records is. Breakdown hands on to it, but only that command records it, and
 # setup, its old name, is no step at all.
@@ -634,7 +766,7 @@ reason: Could not start.' 'entourage task start'
   hand 'phase: breakdown
 status: done
 next: start
-summary: Approved as one piece.' >/dev/null || fail "task handoff refused breakdown with next: start"
+summary: Approved as one piece.' >/dev/null 2>&1 || fail "task handoff refused breakdown with next: start"
   [ "$(q "select phase || '|' || status || '|' || next from handoffs")" = 'breakdown|done|start' ] ||
     fail "wrong row: $(q 'select * from handoffs')"
 }
@@ -1066,6 +1198,10 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_moves_the_card_to_done_on_the_merge handoff_moves_no_closed_card_on_the_merge
   handoff_moves_the_card_only_on_the_merge handoff_records_the_merge_when_linear_refuses_the_move
   handoff_records_the_merge_with_no_key_saved
+  handoff_moves_the_card_to_todo_on_approval handoff_moves_a_triage_card_to_ready_for_dev_on_approval
+  handoff_moves_the_card_and_its_slices_on_approval handoff_moves_no_slice_back_on_approval
+  handoff_records_the_approval_when_linear_is_out_of_reach
+  handoff_records_the_approval_when_linear_refuses_the_moves handoff_moves_the_card_only_on_approval
   handoff_takes_start_only_as_next an_old_setup_row_is_kept
   an_older_store_gains_the_answer_column
   log_reads_an_older_store_without_changing_it

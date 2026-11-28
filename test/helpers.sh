@@ -287,13 +287,28 @@ OTHER_STATUSES='[{"id":"o-shipped","name":"Shipped","type":"completed","position
   {"id":"o-checking","name":"Checking","type":"started","position":30},
   {"id":"o-doing","name":"Doing","type":"started","position":20},
   {"id":"o-waiting","name":"Waiting","type":"unstarted","position":10}]'
+# A team like PHY's, whose cards start in Triage and whose first not-started
+# status is Ready for Dev. It has two, listed out of their order.
+PHY_STATUSES='[{"id":"p-triage","name":"Triage","type":"triage","position":0},
+  {"id":"p-backlog","name":"Backlog","type":"backlog","position":1},
+  {"id":"p-next","name":"Up Next","type":"unstarted","position":3},
+  {"id":"p-ready","name":"Ready for Dev","type":"unstarted","position":2},
+  {"id":"p-progress","name":"In Progress","type":"started","position":4},
+  {"id":"p-done","name":"Done","type":"completed","position":5}]'
 
-# Linear's answer to a move's question: the card $1, in its team's status
+# A card as a move's answer lists it: the card $1, in its team's status
 # named $2, with the team's statuses ($3 as JSON, or Lab's).
-move_answer() {
+move_card() {
   jq -cn --arg card "$1" --arg now "$2" --argjson states "${3:-$LAB_STATUSES}" \
-    '{data: {issues: {nodes: [{id: ("id-" + $card), identifier: $card,
-      state: ($states[] | select(.name == $now)), team: {states: {nodes: $states}}}]}}}'
+    '{id: ("id-" + $card), identifier: $card,
+      state: ($states[] | select(.name == $now)), team: {states: {nodes: $states}}}'
+}
+# Linear's answer to a move's question: the card $1, in its team's status
+# named $2, with the team's statuses ($3 as JSON, or Lab's), and its
+# sub-issues ($4, a JSON list of move_card's, or none).
+move_answer() {
+  jq -cn --argjson card "$(move_card "$1" "$2" "${3:-}")" --argjson subs "${4:-[]}" \
+    '{data: {issues: {nodes: [$card + {children: {nodes: $subs}}]}}}'
 }
 # Linear's answer to the move itself: the card now in the status named $1
 # ($2 the team's statuses as JSON, or Lab's).

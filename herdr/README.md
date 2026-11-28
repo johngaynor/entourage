@@ -219,6 +219,13 @@ entourage task new <project> <card>
   `sdlc-define` and follow each skill's handoff block to the next
   (`sdlc-plan`, then `sdlc-breakdown`), in that one session, and to wait for
   your approval at the end. Edit that file to change what the agent is told.
+- **Your approval moves the card.** Once you approve it, and its sub-issues
+  exist when it was sliced, the agent records the approval, and recording it
+  moves the card in Linear to its team's first not-started status (Todo in
+  Lab, Ready for Dev in PHY), and each of its sub-issues with it, by its own
+  team's statuses (see [Hand-offs](#hand-offs)). A card already further
+  along, done or canceled stays where it is. When a card cannot be moved, the
+  approval is still recorded, and the agent tells you which card, and why.
 - **It makes no branch, worktree or task folder.** The card has no type until
   the agent has defined it, and the type is the start of the branch name.
 - **It checks first.** An unknown project, something that is not a card ID,
@@ -242,7 +249,7 @@ entourage task new <project> <card>
   |---|---|
   | `entourage linear type <card> <feat\|fix\|chore>` | Sets the card's type: its one label in the `Type` label group, the team's or else the workspace's. Any other type comes off; the card's other labels are never touched. A missing label is refused, never made. |
   | `entourage linear section <card> <Specification\|Plan\|Breakdown> [--replace]` | Adds the section, its body on stdin, below the description. Specification and Plan are folded away, in the form Linear keeps them in, `+++ ## <name>` … `+++` (one written as `>>>` is read the same); the Breakdown is left open, because you read it to approve the card. A section of that name already there is refused, unless `--replace` puts the new one in its place; `--replace` with none there is refused too. A body is refused when a line in it would end the section early or start a second one: a fold line, and in the Breakdown a `#` or `##` heading. A line inside a fenced code block is never taken for a section. |
-  | `entourage linear move <card> <started\|review\|done>` | Moves the card forward to its team's first started status (In Progress), its last started one (In Review), or its first completed one (Done), picked by its kind and its place in the team's order, not by its name. In a team with one started status, `review` is that status. A card already there, further on, done or canceled stays where it is, and the command says so and exits zero. A move that cannot be made, such as with Linear out of reach or a key without Write permission, exits non-zero, saying that the card was not moved and why. |
+  | `entourage linear move <card> <approved\|started\|review\|done>` | Moves the card forward to its team's first not-started status (Todo in Lab, Ready for Dev in PHY), its first started status (In Progress), its last started one (In Review), or its first completed one (Done), picked by its kind and its place in the team's order, not by its name. `approved` moves each of the card's sub-issues after it the same way, by its own team's statuses, and is the move your approval makes. In a team with one started status, `review` is that status. A card already there, further on, done or canceled stays where it is, and the command says so and exits zero. A move that cannot be made, such as with Linear out of reach or a key without Write permission, exits non-zero, saying which card was not moved and why; the other cards still move. |
 
   All three read the card back before they say they are done: one type, the
   one asked for; the section there once, and the text above it as it was; the
@@ -256,9 +263,10 @@ entourage task new <project> <card>
 On the `test` layout, the Cards panel under the projects list shows the open
 cards of the project whose space is showing, each with a button that writes
 the card up. Each card is under its status in Linear, which shows where its
-work is: `task start` moves a card to In Progress, opening its pull requests
-moves it to In Review, and recording its merge moves it to Done, which takes
-it off the list (see [Starting the work](#starting-the-work)).
+work is: your approval moves a card and its sub-issues to Todo, `task start`
+moves it to In Progress, opening its pull requests moves it to In Review, and
+recording its merge moves it to Done, which takes it off the list (see
+[Starting the work](#starting-the-work)).
 
 - **It shows what `task ls` lists**: the same statuses in the same order, each
   with its count, and the cards under them. A click on a status closes its
@@ -289,7 +297,12 @@ it off the list (see [Starting the work](#starting-the-work)).
 Each step of a write-up ends by handing off: which step it was, how it ended
 (`done`, `needs-human` or `failed`) and what comes next. Breakdown, the last
 of them, hands off `done` with `start` next once you approve the card: the
-next step is `entourage task start`, which you run. So does the build,
+next step is `entourage task start`, which you run. Recording that hand-off
+moves the card in Linear to its team's first not-started status (Todo in Lab,
+Ready for Dev in PHY), and each of its sub-issues with it, by its own team's
+statuses. What happened to each card is said on stderr; when one cannot be
+moved, the hand-off is still recorded, the note names each card that was not
+moved and why, and the agent tells you. The build hands off too,
 which the `sdlc-build` skill runs in a started task: it hands off as `build`,
 `done` only when the tests pass, with `review` next. So does the review after
 it, which the `sdlc-review` skill runs: it hands off as `review`, `done` with

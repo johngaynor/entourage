@@ -102,6 +102,11 @@ three skills on the card and then asks you to approve it:
 entourage task new my-project ABC-122
 ```
 
+Recording your approval moves the card in Linear to its team's first
+not-started status (Todo in Lab), and each of its sub-issues with it. When a
+card cannot be moved, the approval is still recorded, and the agent tells you
+which card, and why.
+
 As it goes, the agent records how each step ended. `task log` lists that for
 a card, oldest first, with how long each step took and how long a question
 waited for your answer:
@@ -220,12 +225,12 @@ when that is settled. Once every one has merged, the agent records the merge
 as your answer, so `task log` shows how long the pull requests waited on
 you, and hands off `done` with `merged` next, which ends the card: `task log`
 shows the card as merged, and recording it moves the card to Done in Linear,
-as `task start` moved it to In Progress and opening the pull requests moved
-it to In Review. Each move picks the team's own status of that kind, goes
-only forward, never touches a card that is done or canceled, and needs your
-Linear key to have Write permission. A move that cannot be made is a note
-saying why, and the step goes on. Telling the agent in the tab that they have
-merged makes it check at once, with
+as your approval moved it to Todo, `task start` moved it to In Progress and
+opening the pull requests moved it to In Review. Each move picks the team's
+own status of that kind, goes only forward, never touches a card that is done
+or canceled, and needs your Linear key to have Write permission. A move that
+cannot be made is a note saying why, and the step goes on. Telling the agent
+in the tab that they have merged makes it check at once, with
 `task watch --once`; if one has not merged yet, it names it and asks again.
 When one is closed without merging, it asks you whether to stop. No agent
 merges a pull request.

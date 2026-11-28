@@ -1453,6 +1453,46 @@ linear_move_takes_started_and_done() {
     *'"stateId":"s-progress"'*'"stateId":"s-done"'*) ;;
     *) fail "did not send In Progress, then Done: $(changes_sent)" ;;
   esac
+  # Only the approval moves a card's sub-issues, so these never ask for them.
+  ! curl_calls | grep -qF children || fail "asked Linear for the card's sub-issues: $(curl_calls)"
+}
+
+# approved is the move the approval makes: the card to its team's first
+# not-started status (Todo in Lab), then each of its sub-issues the same way.
+linear_move_moves_an_approved_card_and_its_slices() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Backlog '' "[$(move_card ABC-123 Backlog),$(move_card ABC-124 'In Progress')]")" \
+    "$(moved_answer Todo)"
+  out=$("$E" linear move ABC-122 approved) || fail "linear move approved exited non-zero: $out"
+  [ "$(curl_count)" = 3 ] || fail "asked Linear $(curl_count) times, not 3: $(curl_calls)"
+  case $(changes_sent | tr '\n' ' ') in
+    *'"id":"id-ABC-122"'*'"stateId":"s-todo"'*'"id":"id-ABC-123"'*'"stateId":"s-todo"'*) ;;
+    *) fail "did not move the card, then its sub-issue in Backlog, to Todo: $(changes_sent)" ;;
+  esac
+  [ "$out" = 'ABC-122 moved to Todo in Linear (it was Backlog)
+ABC-123 moved to Todo in Linear (it was Backlog)
+ABC-124 stays in In Progress, which is past Todo: a card only moves forward' ] || fail "did not say what happened to each card: $out"
+}
+
+# The same in a team like PHY's: from Triage to Ready for Dev.
+linear_move_moves_an_approved_card_to_ready_for_dev() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Triage "$PHY_STATUSES")" "$(moved_answer 'Ready for Dev' "$PHY_STATUSES")"
+  out=$("$E" linear move ABC-122 approved) || fail "linear move approved exited non-zero: $out"
+  case $(changes_sent) in *'"stateId":"p-ready"'*) ;; *) fail "did not move the card to Ready for Dev: $(changes_sent)" ;; esac
+  [ "$out" = 'ABC-122 moved to Ready for Dev in Linear (it was Triage)' ] || fail "did not say the card moved: $out"
+}
+
+# A sub-issue that cannot be moved fails the command, which still says what
+# happened to each card, and still moves the ones it can.
+linear_move_fails_when_a_slice_cannot_be_moved() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Backlog '' "[$(move_card ABC-123 Backlog)]")" "$(moved_answer Todo)" "$NO_WRITE"
+  linear_status_at 3 400
+  out=$("$E" linear move ABC-122 approved 2>"$TMP/err") && fail "exited zero when a sub-issue was not moved"
+  [ "$out" = 'ABC-122 moved to Todo in Linear (it was Backlog)' ] || fail "did not say the card moved: $out"
+  [ "$(cat "$TMP/err")" = 'entourage: ABC-123 was not moved in Linear: Linear answered with an error: Invalid scope: `write` required' ] ||
+    fail "did not say the sub-issue was not moved, and why: $(cat "$TMP/err")"
 }
 
 # The rules of a move hold for review too: a card that is done or canceled
@@ -1491,7 +1531,7 @@ linear_move_fails_when_linear_refuses_the_change() {
 linear_move_refuses_what_is_not_a_move() {
   saved_key; stub_linear
   out=$("$E" linear move ABC-122 todo 2>&1) && fail "accepted the move 'todo'"
-  case $out in *started*review*done*) ;; *) fail "did not name the moves there are: $out" ;; esac
+  case $out in *approved*started*review*done*) ;; *) fail "did not name the moves there are: $out" ;; esac
   "$E" linear move ABC-122 >/dev/null 2>&1 && fail "accepted no move"
   "$E" linear move >/dev/null 2>&1 && fail "accepted no card"
   out=$("$E" linear move ABC review 2>&1) && fail "accepted the card 'ABC'"
@@ -1502,6 +1542,8 @@ linear_move_refuses_what_is_not_a_move() {
 MOVE_CASES="linear_move_moves_a_card_to_review linear_move_moves_a_card_to_review_in_a_team_of_other_names
   linear_move_takes_the_last_started_status_by_place
   linear_move_leaves_a_card_in_a_teams_only_started_status linear_move_takes_started_and_done
+  linear_move_moves_an_approved_card_and_its_slices linear_move_moves_an_approved_card_to_ready_for_dev
+  linear_move_fails_when_a_slice_cannot_be_moved
   linear_move_never_moves_a_closed_card linear_move_fails_when_linear_is_out_of_reach
   linear_move_fails_when_linear_refuses_the_change linear_move_refuses_what_is_not_a_move"
 
