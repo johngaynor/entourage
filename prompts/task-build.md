@@ -6,6 +6,6 @@ Start with the sdlc-build skill. Each skill ends by recording a hand-off with `e
 - `needs-human`: wait for my answer. When it comes, record my answer as the skill describes, then carry on with the same skill.
 - `failed`: stop there. Don't start the next skill.
 
-When the pull request hands off with `next: merged`, the run is over: every pull request for the card has merged, so tell me that. I merge the pull requests myself. Never merge one, and never turn on auto-merge.
+When the pull request hands off with `next: merged`, every pull request for the card has merged. Then finish the task with `entourage task finish {project} {card}`, as the sdlc-pr skill says. It is the run's last command. It removes the task and closes this tab, which ends the run. When it removes nothing because that would lose work, or stops for another reason, tell me everything it named and leave the task as it is. I merge the pull requests myself. Never merge one, and never turn on auto-merge.
 
 Do every step yourself, in this session. Don't hand a step to a subagent.

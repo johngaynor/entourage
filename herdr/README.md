@@ -311,6 +311,12 @@ on the pull requests. A card that is done or canceled already stays as it is,
 and a pull request closed without merging moves nothing. What happened to the
 card is said on stderr, so the block printed is the one recorded; when the
 card cannot be moved, the hand-off is still recorded, and the note says why.
+Right after that hand-off, as the run's last command, the agent finishes the
+task with `entourage task finish` (see [Finishing a task](#finishing-a-task)):
+its worktrees, its branch in each repo and its folder go, and then its tab
+closes. When that would lose work, it removes nothing, and the agent tells you
+everything it named and leaves the task as it is. A pull request closed
+without merging finishes nothing either: the agent asks you whether to stop.
 When it cannot push or open a pull request, such as when `gh`
 is not signed in or a repo has no remote, it hands off `failed` with the
 reason. `merged` is where a card ends: it is only ever next, and
@@ -447,8 +453,9 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   with `sdlc-build`, then review the build with `sdlc-review`, and back to the
   build when the review sends it back. When the review finds every item met,
   `sdlc-pr` pushes the branch and opens the pull requests, and waits for you
-  to merge them and tell the agent so. The run ends when it hands off with
-  `merged` next. No agent merges a pull request. `task build` refuses to run
+  to merge them and tell the agent so. Once it hands off with `merged` next,
+  it finishes the task with `task finish`, which closes the tab, and the run
+  is over. No agent merges a pull request. `task build` refuses to run
   outside the card's own task folder, with no agent on your `PATH`, with the
   skills not linked, or, for `claude`, with the build profile not linked. If
   the agent stops, run the same command again in the tab.
@@ -489,12 +496,15 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
 - **Nothing is made unless everything can be.** A task or branch of that name
   that already exists, a missing repo, or Herdr not running stops it first,
   and a worktree that fails partway is undone.
-- **When the work has merged**, `task finish` removes the task (see
+- **When the work has merged**, the agent runs `task finish` itself, which
+  removes the task and closes its tab (see
   [Finishing a task](#finishing-a-task)).
 
 ### Finishing a task
 
-Once a task's pull requests have merged, one command ends it.
+Once a task's pull requests have merged, one command ends it. The build's
+agent runs it itself, as its last command once it has recorded the merge, so
+you run it only for a task it left, such as one it refused.
 
 ```sh
 entourage task finish <project> <card>
