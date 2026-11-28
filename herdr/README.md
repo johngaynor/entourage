@@ -204,8 +204,8 @@ entourage task new <project> <card>
 
 - **The card is its ID**, like `ABC-122`. Upper or lower case both work.
 - **It opens a tab named after the card** in the project's space, in the
-  project folder, and starts an agent in it. The agent is `claude`;
-  `ENTOURAGE_AGENT` picks another command.
+  project folder, and starts an agent in it. The harness, the program the
+  agent runs in, is `claude`; `ENTOURAGE_HARNESS` picks another.
 - **`claude` starts with the write-up profile**,
   [../agents/entourage-write-up.md](../agents/entourage-write-up.md), linked
   into `~/.claude/agents`, on the write-up's model and effort: `claude
@@ -484,8 +484,8 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
 - **The agent starts in the tab.** Once the tab is open, `task start` types
   `entourage task build <project> <card>` into its shell, after setup when
   setup runs, so the agent starts on the card with no one typing there, and
-  not before setup has finished. `task build` starts the agent
-  (`ENTOURAGE_AGENT`, or `claude`) in the folder it is run in, with the first
+  not before setup has finished. `task build` starts the agent in its harness
+  (`ENTOURAGE_HARNESS`, or `claude`) in the folder it is run in, with the first
   message in [prompts/task-build.md](../prompts/task-build.md). `claude` starts
   with the build profile,
   [../agents/entourage-build.md](../agents/entourage-build.md), and Linear's
@@ -661,7 +661,7 @@ entourage profile set <profile> <model|effort> <value>
   npm install writes neither, since only a clone works on entourage.
 - **It needs `jq`.** Without it `profile` stops and says so, and `task new`
   and `task build` stop only when there is a file to read.
-- **Another agent**, named by `ENTOURAGE_AGENT`, starts with no model or
+- **Another harness**, named by `ENTOURAGE_HARNESS`, starts with no model or
   effort, as before, and the file is not read.
 
 ### The Agents button
@@ -739,7 +739,7 @@ shell, or written as a `NAME=value` line in entourage's env file,
 | Variable | What it sets |
 |---|---|
 | `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
-| `ENTOURAGE_AGENT` | The agent `task new` and `task build` start. `claude` when it is not set, which starts with an agent profile. Another agent starts as it is, with no profile. |
+| `ENTOURAGE_HARNESS` | The harness `task new` and `task build` start the agent in: the program it runs in. `claude` when it is not set, which starts with an agent profile. Another harness starts as it is, with no profile. |
 | `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
 | `ENTOURAGE_SETUP` | `1` makes `task start` run each repo's `setup` recipe. Off when it is not set, for now. |
 | `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |

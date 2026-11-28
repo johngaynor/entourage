@@ -201,8 +201,9 @@ nothing there:
 entourage task build my-project ABC-122
 ```
 
-`task build` starts the agent, `claude` unless `ENTOURAGE_AGENT` names
-another, with the `entourage-build` profile on the build's model and effort,
+`task build` starts the agent in its harness, the program it runs in:
+`claude` unless `ENTOURAGE_HARNESS` names another, with the `entourage-build`
+profile on the build's model and effort,
 and a first message that has it
 build the card with the
 `sdlc-build` skill, review the build with the `sdlc-review` skill, and then
@@ -210,8 +211,8 @@ put it up as a pull request with the `sdlc-pr` skill. If the agent stops, run
 the same command again in the tab. It runs only in the
 card's own task folder. When a profile is not linked, `task new` and
 `task build` stop before they start anything, and say to run
-`entourage update`. Another agent, named by `ENTOURAGE_AGENT`, starts as it
-always has, with no profile, model or effort. When the task has one repo and Claude Code has not
+`entourage update`. Another harness, named by `ENTOURAGE_HARNESS`, starts as
+it always has, with no profile, model or effort. When the task has one repo and Claude Code has not
 trusted that repo yet, `task start` says so: Claude Code asks once in the tab,
 and not again for that repo. `task log` shows when the work was started.
 
