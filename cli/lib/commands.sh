@@ -3,7 +3,7 @@
 cmd_install() {
   require_herdr
   CHANGED=0 SKIPPED=0
-  say "Linking mods and layouts into $APP_HOME, and skills into $SKILLS_HOME"
+  say "Linking mods and layouts into $APP_HOME, skills into $SKILLS_HOME, and agent profiles into $AGENTS_HOME"
   link_all
 
   # npm already put the command on PATH; a clone has to do it itself.
@@ -51,7 +51,7 @@ cmd_update() {
   fi
   if is_clone; then after=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo none); fi
 
-  say "Linking mods and layouts into $APP_HOME, and skills into $SKILLS_HOME"
+  say "Linking mods and layouts into $APP_HOME, skills into $SKILLS_HOME, and agent profiles into $AGENTS_HOME"
   link_all
   prune
 
@@ -67,6 +67,7 @@ cmd_status() {
   say "Repo:  $REPO"
   say "Herdr: $APP_HOME"
   say "Skills: $SKILLS_HOME"
+  say "Agents: $AGENTS_HOME"
   have_herdr || say "  Herdr is not installed ($HERDR_INSTALL)"
   local src dst s problems=0
   while IFS=$'\t' read -r src dst; do

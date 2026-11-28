@@ -1,10 +1,10 @@
-# Linking mods and layouts into Herdr, and skills into Claude Code. Sourced by
-# cli/entourage.
+# Linking mods and layouts into Herdr, and skills and agent profiles into
+# Claude Code. Sourced by cli/entourage.
 
 # Every (source, destination) pair this repo wants linked, one per line,
 # tab-separated.
 wanted() {
-  local m l s
+  local m l s a
   for m in "$REPO"/herdr/mods/*/; do
     [ -d "$m" ] || continue
     m=${m%/}
@@ -19,6 +19,12 @@ wanted() {
     s=${s%/}
     printf '%s\t%s\n' "$s" "$SKILLS_HOME/${s##*/}"
   done
+  # Only the profiles: agents/ also holds the MCP config they start with,
+  # which `task new` and `task build` name by its path in the repo.
+  for a in "$REPO"/agents/*.md; do
+    [ -f "$a" ] || continue
+    printf '%s\t%s\n' "$a" "$AGENTS_HOME/${a##*/}"
+  done
 }
 
 # linked | missing | elsewhere (a link to somewhere else) | blocked (a real file)
@@ -31,11 +37,13 @@ state_of() {
   fi
 }
 
-# A short name for a destination: mods/cpu, layouts/default.json, skills/sdlc-plan.
+# A short name for a destination: mods/cpu, layouts/default.json,
+# skills/sdlc-plan, agents/entourage-build.md.
 label() {
   local dst=$1
   case $dst in
     "$SKILLS_HOME"/*) say "skills/${dst#"$SKILLS_HOME"/}" ;;
+    "$AGENTS_HOME"/*) say "agents/${dst#"$AGENTS_HOME"/}" ;;
     *) say "${dst#"$APP_HOME"/}" ;;
   esac
 }
@@ -45,6 +53,7 @@ link_all() {
   local src dst added=0 skipped=0
   mkdir -p "$APP_HOME/mods" "$APP_HOME/layouts"
   [ ! -d "$REPO/skills" ] || mkdir -p "$SKILLS_HOME"
+  [ ! -d "$REPO/agents" ] || mkdir -p "$AGENTS_HOME"
   while IFS=$'\t' read -r src dst; do
     case $(state_of "$src" "$dst") in
       linked) ;;
@@ -59,13 +68,13 @@ link_all() {
 }
 
 # Remove links that point into this repo at something that no longer exists
-# (a mod, layout or skill that was deleted or renamed upstream).
+# (a mod, layout, skill or profile that was deleted or renamed upstream).
 prune() {
   local dst target
-  for dst in "$APP_HOME"/mods/* "$APP_HOME"/layouts/* "$SKILLS_HOME"/*; do
+  for dst in "$APP_HOME"/mods/* "$APP_HOME"/layouts/* "$SKILLS_HOME"/* "$AGENTS_HOME"/*; do
     [ -L "$dst" ] || continue
     target=$(readlink "$dst")
-    case $target in "$REPO"/herdr/* | "$REPO"/skills/*) ;; *) continue ;; esac
+    case $target in "$REPO"/herdr/* | "$REPO"/skills/* | "$REPO"/agents/*) ;; *) continue ;; esac
     if [ ! -e "$target" ]; then
       rm "$dst"; say "  removed  $(label "$dst") (no longer in the repo)"
       CHANGED=$((CHANGED + 1))

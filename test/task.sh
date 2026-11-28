@@ -16,7 +16,7 @@ task_new_starts_an_agent() {
   "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
   call=$(last_call)
   case $call in
-    "do tab.new {\"name\":\"ABC-122\",\"folder\":\"$P/demo\",\"argv\":[\"claude\"],\"task\":\""*"\"}") ;;
+    "do tab.new {\"name\":\"ABC-122\",\"folder\":\"$P/demo\",\"argv\":[\"claude\",\"--agent=entourage-write-up\",\"--strict-mcp-config\",\"--mcp-config=$REPO/agents/linear-mcp.json\"],\"task\":\""*"\"}") ;;
     *) fail "wrong last call: $call" ;;
   esac
   for want in "Linear card ABC-122" sdlc-define sdlc-plan sdlc-breakdown "entourage task start demo ABC-122"; do
@@ -34,7 +34,7 @@ task_new_sends_one_line_of_json() {
   [ "$(tab_calls)" = 1 ] || fail "expected one tab.new line, got $(tab_calls)"
   json=$(last_call); json=${json#do tab.new }
   if command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "\n" in d["task"] and d["argv"]==["claude"]' ||
+    printf '%s' "$json" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "\n" in d["task"] and d["argv"]==["claude","--agent=entourage-write-up","--strict-mcp-config","--mcp-config="+sys.argv[1]+"/agents/linear-mcp.json"]' "$REPO" ||
       fail "the call is not valid JSON with a multi-line task: $json"
   fi
 }
@@ -112,11 +112,24 @@ task_new_needs_an_agent() {
   [ "$(tab_calls)" = 0 ] || fail "opened a tab"
 }
 
+# Another agent starts as it always has: no profile, and none needed.
 task_new_honors_the_agent_setting() {
   card_demo
   stub codex
+  rm "$AG/entourage-write-up.md"
   ENTOURAGE_AGENT=codex "$E" task new demo ABC-122 >/dev/null || fail "task new exited non-zero"
-  case $(last_call) in *'"argv":["codex"]'*) ;; *) fail "did not start the chosen agent: $(last_call)" ;; esac
+  case $(last_call) in *'"argv":["codex"],'*) ;; *) fail "did not start the chosen agent alone: $(last_call)" ;; esac
+}
+
+# claude starts with the write-up profile, so without it nothing is started.
+task_new_needs_the_write_up_profile_linked() {
+  card_demo
+  rm "$AG/entourage-write-up.md"
+  "$E" task new demo ABC-122 >/dev/null 2>"$TMP/err" && fail "started an agent with no write-up profile linked"
+  grep -q entourage-write-up "$TMP/err" && grep -q 'entourage update' "$TMP/err" ||
+    fail "did not say the write-up profile is missing: $(cat "$TMP/err")"
+  [ "$(tab_calls)" = 0 ] || fail "opened a tab"
+  ! grep -q '^do space\.' "$TMP/herdr-calls.log" || fail "showed the space first: $(cat "$TMP/herdr-calls.log")"
 }
 
 task_new_needs_herdr_running() {
@@ -792,7 +805,8 @@ CARD_CASES="task_new_refuses_a_card_linear_does_not_have task_new_starts_a_card_
   task_new_starts_an_agent task_new_sends_one_line_of_json task_new_takes_a_lowercase_card
   task_new_makes_no_task_folder task_new_selects_an_open_space task_new_refuses_a_branch
   task_new_refuses_a_bad_card task_new_refuses_unknown_project task_new_needs_the_skills_linked
-  task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_herdr_running
+  task_new_needs_an_agent task_new_honors_the_agent_setting task_new_needs_the_write_up_profile_linked
+  task_new_needs_herdr_running
   task_new_says_when_the_tab_fails task_new_escapes_the_folder
   task_new_trusts_a_project_made_before task_new_trusts_before_the_tab_opens
   task_new_leaves_trusted_claude_state_alone task_new_starts_when_trust_cannot_be_written
@@ -1051,16 +1065,28 @@ task_start_starts_when_the_store_cannot_be_written() {
 build_demo() {
   "$E" install >/dev/null
   "$E" project new demo >/dev/null
-  cat > "$TMP/bin/claude" <<EOF
-#!/usr/bin/env bash
-pwd -P > "$TMP/agent-folder"
-printf '%s' "\$*" > "$TMP/agent-message"
-EOF
-  chmod +x "$TMP/bin/claude"
+  agent_stub claude
   WT=$P/demo/tasks/abc-1-x/api
   mkdir -p "$WT"
 }
 agent_ran() { [ -e "$TMP/agent-folder" ]; }
+
+# An agent on PATH, named $1, that notes where it ran, how many arguments it
+# was given, each one in agent-arg.<n>, and its last, the first message, in
+# agent-message.
+agent_stub() {
+  cat > "$TMP/bin/$1" <<EOF
+#!/usr/bin/env bash
+pwd -P > "$TMP/agent-folder"
+rm -f "$TMP"/agent-arg.*
+echo "\$#" > "$TMP/agent-argc"
+n=0
+for a in "\$@"; do n=\$((n + 1)); printf '%s' "\$a" > "$TMP/agent-arg.\$n"; done
+printf '%s' "\$a" > "$TMP/agent-message"
+EOF
+  chmod +x "$TMP/bin/$1"
+}
+agent_arg() { cat "$TMP/agent-arg.$1" 2>/dev/null; }
 
 task_build_starts_the_agent() {
   build_demo
@@ -1068,7 +1094,13 @@ task_build_starts_the_agent() {
   agent_ran || fail "the agent did not start"
   [ "$(cat "$TMP/agent-folder")" = "$WT" ] || fail "the agent started in $(cat "$TMP/agent-folder")"
   local msg want d
+  # The build profile, the Linear server alone, then the first message last.
+  [ "$(cat "$TMP/agent-argc")" = 4 ] || fail "the agent was given $(cat "$TMP/agent-argc") arguments, not 4"
+  [ "$(agent_arg 1)" = --agent=entourage-build ] || fail "the first argument is '$(agent_arg 1)'"
+  [ "$(agent_arg 2)" = --strict-mcp-config ] || fail "the second argument is '$(agent_arg 2)'"
+  [ "$(agent_arg 3)" = "--mcp-config=$REPO/agents/linear-mcp.json" ] || fail "the third argument is '$(agent_arg 3)'"
   msg=$(cat "$TMP/agent-message")
+  [ "$(agent_arg 4)" = "$msg" ] || fail "the first message is not the last argument"
   for want in "Linear card ABC-1" "entourage project \`demo\`" sdlc-build sdlc-review sdlc-pr "entourage task handoff demo ABC-1"; do
     case $msg in *"$want"*) ;; *) fail "the first message does not mention '$want': $msg" ;; esac
   done
@@ -1117,12 +1149,35 @@ task_build_needs_the_skills_linked() {
   agent_ran && fail "the agent started"
 }
 
+# claude starts with the build profile, so without it nothing is started.
+task_build_needs_the_build_profile_linked() {
+  build_demo
+  rm "$AG/entourage-build.md"
+  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "started the agent with no build profile linked"
+  grep -q entourage-build "$TMP/err" && grep -q 'entourage update' "$TMP/err" ||
+    fail "did not say the build profile is missing: $(cat "$TMP/err")"
+  agent_ran && fail "the agent started"
+}
+
+# Another agent starts as it always has: the first message alone, no profile,
+# and none needed.
+task_build_starts_another_agent_with_no_profile() {
+  build_demo
+  agent_stub codex
+  rm "$AG/entourage-build.md"
+  (cd "$WT" && ENTOURAGE_AGENT=codex "$E" task build demo ABC-1) || fail "task build exited non-zero"
+  agent_ran || fail "the agent did not start"
+  [ "$(cat "$TMP/agent-argc")" = 1 ] || fail "codex was given $(cat "$TMP/agent-argc") arguments, not the first message alone: $(agent_arg 1)"
+  case $(cat "$TMP/agent-message") in *"Linear card ABC-1"*) ;; *) fail "codex was not given the first message: $(cat "$TMP/agent-message")" ;; esac
+}
+
 BUILD_CASES="task_start_starts_the_agent_in_the_tab task_start_says_how_to_start_the_agent_without_hc
   task_start_notes_a_repo_claude_code_has_not_trusted task_start_says_nothing_of_a_trusted_repo
   task_start_says_nothing_of_trust_for_several_repos task_start_records_the_start
   task_start_follows_breakdown_by_one_name
   task_start_starts_when_the_store_cannot_be_written task_build_starts_the_agent
-  task_build_refuses_outside_the_cards_task task_build_needs_an_agent task_build_needs_the_skills_linked"
+  task_build_refuses_outside_the_cards_task task_build_needs_an_agent task_build_needs_the_skills_linked
+  task_build_needs_the_build_profile_linked task_build_starts_another_agent_with_no_profile"
 
 # --- tasks: targets ---------------------------------------------------------
 

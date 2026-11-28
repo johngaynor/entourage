@@ -18,7 +18,9 @@ layouts (whole-window arrangements of mods).
 
 The skills are in [../skills/](../skills/), outside this folder. They are
 linked into `~/.claude/skills` (`CLAUDE_CONFIG_DIR` picks another `~/.claude`)
-by the same `entourage install` and `entourage update`.
+by the same `entourage install` and `entourage update`. So are the agent
+profiles in [../agents/](../agents/), into `~/.claude/agents`: the ones
+`task new` and `task build` start `claude` with.
 
 ## How it works
 
@@ -56,9 +58,10 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
    entourage install
    ```
 
-   It links every mod and layout into Herdr and refreshes Herdr if it is
-   running. It is safe to re-run, and it never replaces a real file that is
-   already in Herdr's folder.
+   It links every mod and layout into Herdr, every skill into
+   `~/.claude/skills` and both agent profiles into `~/.claude/agents`, and
+   refreshes Herdr if it is running. It is safe to re-run, and it never
+   replaces a real file or someone else's link that is already there.
 
 5. Pick a layout from the Layout dropdown at the top of the sidebar, or press
    `ctrl-shift-l` to cycle. The dropdown only appears on our layouts, so the
@@ -70,12 +73,12 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
 entourage update
 ```
 
-This reinstalls the latest entourage through npm, links any mod or layout that
-is new, removes links to ones that were deleted, and refreshes Herdr so it
-re-reads everything.
+This reinstalls the latest entourage through npm, links any mod, layout,
+skill or agent profile that is new, removes links to ones that were deleted,
+and refreshes Herdr so it re-reads everything.
 
-- **Check a machine:** `entourage status` lists each mod and layout and whether
-  it is linked.
+- **Check a machine:** `entourage status` lists each mod, layout, skill and
+  agent profile and whether it is linked.
 - **Remove one from a machine:** delete its link in `~/.config/herdr-app/mods`
   or `layouts`. The next `entourage update` will link it again, so remove it
   from the repo to drop it everywhere.
@@ -194,6 +197,15 @@ entourage task new <project> <card>
 - **It opens a tab named after the card** in the project's space, in the
   project folder, and starts an agent in it. The agent is `claude`;
   `ENTOURAGE_AGENT` picks another command.
+- **`claude` starts with the write-up profile**,
+  [../agents/entourage-write-up.md](../agents/entourage-write-up.md), linked
+  into `~/.claude/agents`: `claude --agent=entourage-write-up
+  --strict-mcp-config --mcp-config=<repo>/agents/linear-mcp.json`. The profile
+  gives the session only the tools a write-up uses and runs it on Opus, and the
+  MCP config gives it Linear's server alone, whatever your own sessions have.
+  Claude Code asks once to sign in to Linear as `linear-server` on a machine
+  where it is not signed in under that name. Another agent starts as it is,
+  with no profile.
 - **The project folder is trusted first.** Claude Code asks "do you trust this
   folder?" the first time it starts somewhere, which would leave the agent
   waiting. So `project new`, and `task new` before it opens the tab, mark the
@@ -210,9 +222,10 @@ entourage task new <project> <card>
 - **It makes no branch, worktree or task folder.** The card has no type until
   the agent has defined it, and the type is the start of the branch name.
 - **It checks first.** An unknown project, something that is not a card ID,
-  Herdr not running, no agent on your `PATH`, or the skills not linked into
-  `~/.claude/skills` stops it before anything is opened. Run
-  `entourage update` to link the skills.
+  Herdr not running, no agent on your `PATH`, the skills not linked into
+  `~/.claude/skills`, or, for `claude`, the write-up profile not linked into
+  `~/.claude/agents` stops it before anything is opened. Run
+  `entourage update` to link them.
 - **With a Linear key saved, it checks that Linear has the card**, so a
   mistyped ID stops it before an agent starts. It looks the card up by its
   team's key and number, so it does not check that the card is one of the
@@ -408,15 +421,19 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   setup runs, so the agent starts on the card with no one typing there, and
   not before setup has finished. `task build` starts the agent
   (`ENTOURAGE_AGENT`, or `claude`) in the folder it is run in, with the first
-  message in [prompts/task-build.md](../prompts/task-build.md): build the card
+  message in [prompts/task-build.md](../prompts/task-build.md). `claude` starts
+  with the build profile,
+  [../agents/entourage-build.md](../agents/entourage-build.md), and Linear's
+  server alone, as `task new` starts the write-up's: the tools a build and a
+  review use, on Opus. The first message has it build the card
   with `sdlc-build`, then review the build with `sdlc-review`, and back to the
   build when the review sends it back. When the review finds every item met,
   `sdlc-pr` pushes the branch and opens the pull requests, and waits for you
   to merge them and tell the agent so. The run ends when it hands off with
   `merged` next. No agent merges a pull request. `task build` refuses to run
-  outside the card's own task folder, with no agent on your `PATH`, or with
-  the skills not linked. If the agent stops, run the same command again in
-  the tab.
+  outside the card's own task folder, with no agent on your `PATH`, with the
+  skills not linked, or, for `claude`, with the build profile not linked. If
+  the agent stops, run the same command again in the tab.
 - **Claude Code asks once to trust a repo it does not know.** With one repo,
   the tab starts in its worktree, and a worktree takes the trust of its repo's
   own checkout, not of the project folder above it. When Claude Code's file
@@ -488,11 +505,11 @@ shell, or written as a `NAME=value` line in entourage's env file,
 | Variable | What it sets |
 |---|---|
 | `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
-| `ENTOURAGE_AGENT` | The agent `task new` and `task build` start. `claude` when it is not set. |
+| `ENTOURAGE_AGENT` | The agent `task new` and `task build` start. `claude` when it is not set, which starts with an agent profile. Another agent starts as it is, with no profile. |
 | `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
 | `ENTOURAGE_SETUP` | `1` makes `task start` run each repo's `setup` recipe. Off when it is not set, for now. |
 | `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |
-| `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills are linked. `~/.claude` when it is not set. |
+| `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills and agent profiles are linked. `~/.claude` when it is not set. |
 | `ENTOURAGE_HOME` | entourage's own folder. `~/.config/entourage` when it is not set. Export only: it says where the env file is, so the file cannot set it. |
 | `ENTOURAGE_LIVE` | `1` lets the copy of entourage in a git worktree of its repo change the machine, for that run (see [Changing things](#changing-things)). Export only, best on the command line: the file cannot set it, so it is never left on. |
 
