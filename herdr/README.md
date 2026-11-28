@@ -361,13 +361,13 @@ without merging finishes nothing either: the agent asks you whether to stop.
 When it cannot push or open a pull request, such as when `gh`
 is not signed in or a repo has no remote, it hands off `failed` with the
 reason. `merged` is where a card ends: it is only ever next, and
-`task handoff` refuses it as a phase. It does the same with `start`, since
-only `task start` records that step. The agent records each hand-off itself,
-with the block on stdin:
+`task handoff` refuses it as the step that hands off. It does the same with
+`start`, since only `task start` records that step. The agent records each
+hand-off itself, with the block on stdin:
 
 ```sh
 entourage task handoff <project> <card> <<'EOF'
-phase: define
+step: define
 status: done
 next: plan
 summary: Set the type to fix. The Specification has six Done when items.
@@ -380,8 +380,10 @@ entourage task log <project> [<card>]
 
 - **The command holds the rules.** It refuses a block with a missing line, an
   unknown status or step, a line that doesn't belong to that status, or a
-  value that runs onto a second line, and says what to fix. Run it with no
-  block to see the rules.
+  value that runs onto a second line, and says what to fix. A block from an
+  agent that started before the step's line was called `step:` is refused
+  once, with `step:` to write in its place. Run it with no block to see the
+  rules.
 - **It is a command because wording wasn't enough.** An agent going from one
   skill straight into the next writes nothing in between, but it does run
   commands.
@@ -411,7 +413,11 @@ entourage task log <project> [<card>]
   beside your projects, on this machine only. It needs `sqlite3`, which macOS
   ships; `ENTOURAGE_SQLITE` picks another command. Without it `task new`
   still starts the agent, the hand-offs are not recorded, and
-  `entourage status` says so.
+  `entourage status` says so. A store made before the block's line was
+  called `step:` keeps each step in a column called `phase`. The first
+  hand-off recorded into it renames that column to `step` and keeps every
+  hand-off it held; until then `task log` reads it as it is and changes
+  nothing.
 - **The card stays in Linear.** The store records how a step ended, not what
   was written.
 - **The Steps panel shows it in Herdr.** Select a card's tab, the one `task

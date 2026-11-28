@@ -38,9 +38,27 @@ each_skill_hands_off_as_itself() {
   local s
   for s in $CARD_SKILL_NAMES; do
     grep -A1 -F "entourage task handoff <project> <card ID> <<'EOF'" "$REPO/skills/$s/SKILL.md" |
-      grep -qx "phase: ${s#sdlc-}" ||
-      fail "$s does not show the command for handing off with phase: ${s#sdlc-}"
+      grep -qx "step: ${s#sdlc-}" ||
+      fail "$s does not show the command for handing off with step: ${s#sdlc-}"
   done
+}
+
+# The line of a block that names its step is step:. It used to be phase:, and
+# nothing an agent or the human reads still shows a block with one: not the
+# skills, not herdr/README.md, not the usage text.
+no_doc_shows_a_phase_line() {
+  local f s found
+  for f in "$REPO/skills/"sdlc-*/SKILL.md "$ROOT/herdr/README.md" "$REPO/cli/entourage" "$REPO/cli/lib/handoff.sh"; do
+    if found=$(grep -nE '^[[:space:]]*phase:' "$f"); then
+      f=${f#"$REPO/"}; fail "${f#"$ROOT/"} shows a phase: line: $found"
+    fi
+  done
+  for s in $CARD_SKILL_NAMES; do
+    ! grep -qF '`phase`' "$REPO/skills/$s/SKILL.md" ||
+      fail "$s still lists \`phase\` as a line of the block"
+  done
+  ! grep -qF '(phase,' "$REPO/cli/entourage" ||
+    fail "the usage text still names the block's phase line"
 }
 
 # "Then stop" is how a skill used to end. It contradicts the block's own rule
@@ -908,7 +926,7 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   pr_brings_a_conflicting_branch_up_to_date pr_asks_only_when_a_conflict_cannot_be_settled
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
-  each_skill_hands_off_as_itself no_skill_says_then_stop
+  each_skill_hands_off_as_itself no_doc_shows_a_phase_line no_skill_says_then_stop
   review_profiles_are_named_with_only_their_tools review_profiles_leave_out_the_listing_tools
   review_profiles_carry_the_review_rules write_up_profile_has_only_its_tools
   build_profile_has_only_its_tools every_profile_runs_on_opus no_profile_names_a_person

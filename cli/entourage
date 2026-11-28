@@ -145,7 +145,7 @@ that are not committed, commits that are not in the remote's default branch
 files the repo's `made-by-setup` recipe does not say its setup makes again.
 It names every problem in every repo in one go.
 `task handoff` is run by the agent each time a step ends or pauses, and
-when the human answers a question. It reads a handoff block on stdin (phase,
+when the human answers a question. It reads a handoff block on stdin (step,
 status, next and so on, one per line), refuses one that breaks the rules, and
 records it. `task log` lists what was recorded for a card, with how long each
 step took and how long it waited on the human. With no card it lists the
