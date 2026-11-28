@@ -12,7 +12,8 @@ layouts (whole-window arrangements of mods).
 | `mods/projects/` | Every project in your config, open or not. Click one to show its space; `+` makes a new one. |
 | `mods/cards/` | The open Linear cards of the project whose space is showing, under their statuses. Start writes a card up with `task new`; Open shows the tab of a card already started. |
 | `mods/steps/` | The steps of the card whose tab is selected: what each did, how long it took, and how long it waited on you. With no card's tab selected, the project's cards and where each stands. |
-| `layouts/default.json` | Herdr's own layout, plus the layout dropdown. |
+| `mods/agent-settings/` | The Agents button at the right end of the tab bar, and the popup it opens: the model and effort each agent profile runs on, which a click changes. See [Agent settings](#agent-settings). |
+| `layouts/default.json` | Herdr's own layout, plus the layout dropdown, and the Agents button beside the tabs: the tab bar is a row of Herdr's `tabs` and `agent-settings`. |
 | `layouts/test.json` | `default` with the projects list in place of spaces, plus the Cards and Steps panels and the CPU mod in the sidebar. |
 | `projects/template/` | The starting `PROJECT.md` for every new project. |
 
@@ -60,8 +61,12 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
 
    It links every mod and layout into Herdr, every skill into
    `~/.claude/skills` and both agent profiles into `~/.claude/agents`, and
-   refreshes Herdr if it is running. It is safe to re-run, and it never
-   replaces a real file or someone else's link that is already there.
+   refreshes Herdr if it is running. It also makes
+   `~/.config/entourage/settings.json`, the model and effort each profile runs
+   on, with every profile on Opus at `xhigh` effort (see
+   [Agent settings](#agent-settings)). It is safe to re-run, and it never
+   replaces a real file or someone else's link that is already there, or a
+   settings file that is there.
 
 5. Pick a layout from the Layout dropdown at the top of the sidebar, or press
    `ctrl-shift-l` to cycle. The dropdown only appears on our layouts, so the
@@ -75,10 +80,14 @@ entourage update
 
 This reinstalls the latest entourage through npm, links any mod, layout,
 skill or agent profile that is new, removes links to ones that were deleted,
-and refreshes Herdr so it re-reads everything.
+makes the settings file if it is missing, writes the review subagents again
+on a clone (see [Agent settings](#agent-settings)), and refreshes Herdr so it
+re-reads everything.
 
 - **Check a machine:** `entourage status` lists each mod, layout, skill and
-  agent profile and whether it is linked.
+  agent profile and whether it is linked, and on a clone each review subagent
+  and whether it is written. A settings file that is not valid settings is a
+  problem it names.
 - **Remove one from a machine:** delete its link in `~/.config/herdr-app/mods`
   or `layouts`. The next `entourage update` will link it again, so remove it
   from the repo to drop it everywhere.
@@ -199,13 +208,16 @@ entourage task new <project> <card>
   `ENTOURAGE_AGENT` picks another command.
 - **`claude` starts with the write-up profile**,
   [../agents/entourage-write-up.md](../agents/entourage-write-up.md), linked
-  into `~/.claude/agents`: `claude --agent=entourage-write-up
-  --strict-mcp-config --mcp-config=<repo>/agents/linear-mcp.json`. The profile
-  gives the session only the tools a write-up uses and runs it on Opus, and the
-  MCP config gives it Linear's server alone, whatever your own sessions have.
-  Claude Code asks once to sign in to Linear as `linear-server` on a machine
-  where it is not signed in under that name. Another agent starts as it is,
-  with no profile.
+  into `~/.claude/agents`, on the write-up's model and effort: `claude
+  --agent=entourage-write-up --strict-mcp-config
+  --mcp-config=<repo>/agents/linear-mcp.json --model=opus --effort=xhigh`. The
+  profile gives the session only the tools a write-up uses, the MCP config
+  gives it Linear's server alone, whatever your own sessions have, and the
+  model and effort are the ones `~/.config/entourage/settings.json` names for
+  the write-up, which beat your own Claude Code settings (see
+  [Agent settings](#agent-settings)). Claude Code asks once to sign in to
+  Linear as `linear-server` on a machine where it is not signed in under that
+  name. Another agent starts as it is, with no profile, model or effort.
 - **The project folder is trusted first.** Claude Code asks "do you trust this
   folder?" the first time it starts somewhere, which would leave the agent
   waiting. So `project new`, and `task new` before it opens the tab, mark the
@@ -232,7 +244,8 @@ entourage task new <project> <card>
   Herdr not running, no agent on your `PATH`, the skills not linked into
   `~/.claude/skills`, or, for `claude`, the write-up profile not linked into
   `~/.claude/agents` stops it before anything is opened. Run
-  `entourage update` to link them.
+  `entourage update` to link them. So does a settings file that is not valid
+  settings, for `claude`, saying what in it is wrong.
 - **With a Linear key saved, it checks that Linear has the card**, so a
   mistyped ID stops it before an agent starts. It looks the card up by its
   team's key and number, so it does not check that the card is one of the
@@ -477,7 +490,7 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   with the build profile,
   [../agents/entourage-build.md](../agents/entourage-build.md), and Linear's
   server alone, as `task new` starts the write-up's: the tools a build and a
-  review use, on Opus. The first message has it build the card
+  review use, on the model and effort the settings file names for the build. The first message has it build the card
   with `sdlc-build`, then review the build with `sdlc-review`, and back to the
   build when the review sends it back. When the review finds every item met,
   `sdlc-pr` pushes the branch and opens the pull requests, and waits for you
@@ -495,7 +508,7 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   tab, and the run is over. No agent merges a pull request. `task build`
   refuses to run outside the card's own task folder, with no agent on your
   `PATH`, with the skills not linked, or, for `claude`, with the build
-  profile not linked. If the agent stops, run the same command again in the
+  profile not linked or a settings file that is not valid settings. If the agent stops, run the same command again in the
   tab.
 - **The card moves to In Progress.** Once the tab is open, `task start` moves
   the card in Linear to its team's first started status: picked by its kind
@@ -591,6 +604,85 @@ entourage task finish <project> <card>
 - **To throw away a task it refuses**, remove it by hand: in each repo run
   `git worktree remove --force <project folder>/tasks/<task>/<repo>` and
   `git branch -D <branch>`, then delete the task's folder and close its tab.
+
+## Agent settings
+
+Each agent profile runs on a model and an effort of its own, kept in
+`~/.config/entourage/settings.json` (`ENTOURAGE_HOME` picks another
+`~/.config/entourage`). It is not Herdr's `settings.json`, nor Claude Code's.
+
+```sh
+entourage profile ls [--json]
+entourage profile set <profile> <model|effort> <value>
+```
+
+| Profile | What starts on it | How the values reach it |
+|---|---|---|
+| `write-up` | the agent `task new` starts | `--model=` and `--effort=` on its `claude` command |
+| `build` | the agent `task build` starts | the same |
+| `reviewer` | the `entourage-reviewer` subagent, for work on entourage itself | written into its file in `~/.claude/agents` |
+| `verifier` | the `entourage-verifier` subagent, the same | the same |
+
+- **`install` makes the file**, with every profile on Opus at `xhigh` effort,
+  and `update` makes it again when it is missing. Neither changes a file that
+  is there, even one that is not valid settings.
+- **`profile ls` shows each profile's model and effort**, and what starts on
+  it. `--json` prints them as one line for programs, with the models and
+  efforts there are to choose from; the Agents button reads it.
+- **`profile set` changes one value**, and the file then holds it. It takes a
+  model that is one of claude's aliases (`fable`, `opus`, `sonnet`, `haiku`)
+  or a full model name like `claude-opus-5-5` or `claude-opus-5-5[1m]`, an
+  effort of `low`, `medium`, `high`, `xhigh` or `max`, and one of the four
+  profiles. Anything else is refused, saying what it takes, and the file is
+  left as it was. With no file yet, it makes one that names every profile.
+- **The next agent starts with it.** A change reaches the next `task new` or
+  `task build`, not an agent that is already running. `--model=` and
+  `--effort=` beat the profile's own `model:` and your own Claude Code
+  settings; only `CLAUDE_CODE_EFFORT_LEVEL` beats the effort.
+- **A profile or a value the file leaves out is Opus at `xhigh`**, and so is
+  every profile when there is no file.
+- **A file that is not valid settings stops `task new` and `task build`**
+  before an agent starts, and says what in it is wrong: not JSON, a profile
+  that is not one of the four, or a model or effort it does not take.
+  `profile ls` and `profile set` stop the same way, and `entourage status`
+  reports it as a problem. Fix the file, or move it aside to go back to the
+  defaults.
+- **The reviewer and the verifier are written, not linked.** A subagent runs
+  on the model and effort in its own file, and the Agent tool cannot give it
+  an effort. So a clone of entourage writes
+  [../.claude/profiles/](../.claude/profiles/)`entourage-reviewer.md` and
+  `entourage-verifier.md` into `~/.claude/agents`, with `model:` and
+  `effort:` from the settings file and a comment naming the source, at
+  `install`, at `update`, and at each `profile set` for one of them. It
+  replaces or removes only a file with that comment: one of your own of the
+  same name is left alone, and named. `entourage status` lists each as
+  `written`, `stale`, `missing` or `skipped`. Their names start with
+  `entourage-`, so they do not take the place of a `reviewer` of your own. An
+  npm install writes neither, since only a clone works on entourage.
+- **It needs `jq`.** Without it `profile` stops and says so, and `task new`
+  and `task build` stop only when there is a file to read.
+- **Another agent**, named by `ENTOURAGE_AGENT`, starts with no model or
+  effort, as before, and the file is not read.
+
+### The Agents button
+
+On both layouts, the tab bar is a row: Herdr's tabs, which take the room and
+drag the window as before, then the Agents button at the right end.
+
+- **A click opens a popup** with a row for each of the four profiles: its
+  name, its model and its effort. Hover a name to see what starts on it.
+- **A click on a model or an effort lists the choices**: claude's aliases,
+  and the profile's own model when it is a full name, or the five efforts.
+  Picking one runs `entourage profile set`, then reads the profiles again, so
+  the popup shows what the file now holds and `entourage profile ls` agrees.
+  The next `task new` or `task build` starts with it.
+- **What entourage refuses shows in the popup**, in its words, such as a
+  settings file that is not valid settings.
+- **It works nothing out itself.** The profiles, their values and the choices
+  come from `entourage profile ls --json`, and a change is made with
+  `entourage profile set`, so the button and the command always agree. When
+  `entourage` is not on Herdr's `PATH`, it runs the copy the mod is linked
+  from.
 
 ## What a repo provides
 
@@ -697,7 +789,8 @@ shell, or written as a `NAME=value` line in entourage's env file,
 - Run `herdr-app check herdr/mods/<name>` after editing a mod.
 - A worktree's copy of the CLI, `./cli/entourage` in a git worktree of this
   repo, runs only the commands that read: `help`, `status`, `project ls`,
-  `project team <name>`, `task ls` and `task log`. Any other command stops
+  `project team <name>`, `profile ls`, `task ls`, `task log` and
+  `task watch`. Any other command stops
   before it changes anything, and says to run plain `entourage` for a card's
   own steps, to write a test case to try the command, or to run it for real
   with `ENTOURAGE_LIVE=1 ./cli/entourage …`. Plain `entourage` is never

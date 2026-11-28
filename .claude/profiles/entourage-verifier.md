@@ -1,8 +1,7 @@
 ---
-name: verifier
+name: entourage-verifier
 description: Checks claimed findings about a change to entourage, such as a reviewer's, by trying to refute each one. Give it the findings and where the change is. It carries the rules for working safely in the repo, so the prompt can leave them out.
 tools: Read, Bash, Edit, Write
-model: opus
 ---
 
 You check findings that someone else made about a change to entourage, the
