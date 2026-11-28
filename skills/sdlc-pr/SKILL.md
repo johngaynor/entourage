@@ -1,11 +1,11 @@
 ---
 name: sdlc-pr
-description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, waiting for the human to merge them, and recording the merge. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
+description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, waiting for the human to merge them while making in the same pull requests any change they ask for in the tab, and recording the merge. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
 ---
 
 # Open the pull request
 
-Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, waits for the human to merge them, and records the merge.
+Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, waits for the human to merge them, makes in the same pull requests any change they ask for in the tab while they wait, and records the merge.
 
 The human reads the pull request, not this session. So each pull request has to name the card and say, for each Done when item, how the review showed that it is met and what is left to the human to check.
 
@@ -69,20 +69,47 @@ phase: pr
 status: needs-human
 summary: <the pull requests opened, one for each repo the work changed, and what is left to the human in them>
 question: Merge <the link of each pull request>, then tell me when they have merged.
-options: merged | stop here
+options: merged | a change you want made | stop here
 EOF
 ```
 
 When the human answers, record the answer first, as the handoff block section says. Then:
 
-- **They say it has merged.** Check each pull request with `gh pr view <url> --json state,mergedAt`. Its `state` is `MERGED` once it has merged. Record the merge only once every pull request for the card has merged, and then hand off as section 6 says. If one is still `OPEN`, hand off as `needs-human` again, naming the one that has not merged, and wait.
+- **They say it has merged.** Check each pull request with `gh pr view <url> --json state,mergedAt`. Its `state` is `MERGED` once it has merged. Record the merge only once every pull request for the card has merged, and then hand off as section 7 says. If one is still `OPEN`, hand off as `needs-human` again, naming the one that has not merged, and wait.
 - **A pull request was closed without merging.** Its `state` is `CLOSED`. Ask the human whether to stop here, as `needs-human`, naming it. If they want it stopped, hand off as `failed`, with the pull request that was closed in `reason`.
-- **They ask for a change.** Making a change the human asks for here is not part of this step yet. Say so, change nothing, and ask again whether the pull requests have merged, as `needs-human`.
+- **They ask for a change.** Make it as section 6 says, then wait again.
 - **They say to stop.** Hand off as `failed`, with the pull requests that are still open in `reason`. Leave them open, as they are.
 
 Whatever they say, the human merges. Never run `gh pr merge` yourself, never turn on auto-merge, and never close a pull request.
 
-## 6. Hand off
+## 6. Make a change asked for in the tab
+
+The human reads the pull requests, and may want something changed before they merge. They say so in the tab, as their answer to the wait. The change goes into the same pull requests: on the task's branch, in the worktree of the repo it belongs in. Only what the human says in the tab is a change to make here. Review comments and CI results on GitHub are not read in this step.
+
+Ask first, as `needs-human`, before you make a change that would alter what the human approved on the card: one that adds, drops or changes a Done when item, takes another approach than the Plan's, or brings in a new dependency. Ask first too when the change belongs in a repo that has no open pull request for the card, because the pull request there has merged or there never was one; `gh pr view <url> --json state` says which. Say what the change would alter, and make it only once they say yes. A repo that has no open pull request gets one once the change is pushed, opened as section 4 says.
+
+Then, for each change asked for:
+
+1. Make it in the worktree, on the task's branch, as the build does: by the repo's rules for a change like this one, which section 3 found, and with a test where it changes what the code does, written first and seen to fail.
+2. Run the repo's whole test suite. If a test fails, find out why and fix it. Change a test only when the change asked for changes what that test checks. If the tests can't be made to pass, commit and push nothing, leave the change in the worktree as it is, and hand off as `failed`, with the failing tests and what you tried in `reason`. The pull requests stay open as they are.
+3. Commit on the task's branch with `git commit`, by the repo's rules for commits. Don't skip its commit hooks. `git status` shows no changes after.
+4. Push it with `git push`, never forced. If the push is refused, don't force it, pull or rebase. Hand off as `failed`, with what git said.
+5. Add what changed to the pull request's description, so whoever reads it sees what was asked for and which commit made it. Read the description with `gh pr view <url> --json body`, add a line for the change under **Changes asked for:** at its end, putting that heading in the first time, write it to a file, and give it with `gh pr edit <number> --body-file <file>`.
+6. Read the pull request back with `gh pr view <url> --json body,commits`, and check that its description says what you wrote and that the new commit is in it.
+
+Then hand off as `needs-human` again, with the links, and wait as section 5 says:
+
+```
+entourage task handoff <project> <card ID> <<'EOF'
+phase: pr
+status: needs-human
+summary: <the change made, the commit in each pull request that makes it, and that the tests pass>
+question: Merge <the link of each pull request>, then tell me when they have merged.
+options: merged | a change you want made | stop here
+EOF
+```
+
+## 7. Hand off
 
 When every pull request for the card has merged, record the hand-off. The step is not finished until it is recorded:
 
@@ -148,7 +175,8 @@ EOF
 | The branch already has an open pull request | Update it with `gh pr edit`. Don't open a second one |
 | The human says it has merged, and GitHub says it is open | Name the pull request that has not merged, and ask again |
 | A pull request was closed without merging | Ask the human whether to stop. Don't reopen it or open another |
-| The human asks for a change | Say that changes asked for here are not part of this step yet, and ask again |
+| The human asks for a change | Make it as section 6 says, push it and wait again. Ask first if it would alter what they approved on the card |
+| The tests fail after a change asked for, and can't be made to pass | Hand off as `failed`, with the failing tests. Commit and push nothing, and leave the pull requests open |
 
 If something fails that isn't on this list, stop and tell the human what happened. Don't work around it, and never merge a pull request to get past it.
 
@@ -188,7 +216,25 @@ phase: pr
 status: needs-human
 summary: Opened acme/api#141 and acme/web#88 into main, each linking the card and the other. One item is left to you: open the file in a spreadsheet.
 question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88, then tell me when they have merged.
-options: merged | stop here
+options: merged | a change you want made | stop here
+EOF
+```
+
+```
+entourage task handoff shop ABC-122 <<'EOF'
+phase: pr
+status: answered
+answer: name the file by the day it was made
+EOF
+```
+
+```
+entourage task handoff shop ABC-122 <<'EOF'
+phase: pr
+status: needs-human
+summary: The file is named orders-YYYY-MM-DD.csv now, with its test, in commit 5c1e0d2 on acme/api#141, and its description lists the change. Both test suites pass.
+question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88, then tell me when they have merged.
+options: merged | a change you want made | stop here
 EOF
 ```
 

@@ -275,10 +275,12 @@ item that is not. Once it has sent the work back, it asks you instead,
 as `needs-human`, whether to build again. So does the pull request after
 that, which the `sdlc-pr` skill runs: it hands off as `pr`. With the pull
 requests open it waits as `needs-human`, with their links, while you merge
-them, and once GitHub says every pull request for the card has merged it
-hands off `done` with `merged` next. When it cannot push or open a pull
-request, such as when `gh` is not signed in or a repo has no remote, it hands
-off `failed` with the reason. `merged` is where a card ends: it is only ever
+them. A change you ask for in the tab instead goes on the task's branch and
+into the same pull requests, and it waits as `needs-human` again. Once GitHub
+says every pull request for the card has merged it hands off `done` with
+`merged` next. When it cannot push or open a pull request, such as when `gh`
+is not signed in or a repo has no remote, it hands off `failed` with the
+reason. `merged` is where a card ends: it is only ever
 next, and `task handoff` refuses it as a phase. The agent records each
 hand-off itself, with the block on stdin:
 
