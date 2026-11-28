@@ -44,15 +44,21 @@ each_skill_hands_off_as_itself() {
 }
 
 # The line of a block that names its step is step:. It used to be phase:, and
-# nothing an agent or the human reads still shows a block with one: not the
-# skills, not herdr/README.md, not the usage text.
+# nothing an agent or the human reads still names one, in a block or in a
+# sentence: not the skills, not the READMEs or the glossary, not the usage
+# text. The command's own code names phase: only to refuse it, so there it is
+# a line of the usage that must not start with one.
 no_doc_shows_a_phase_line() {
   local f s found
-  for f in "$REPO/skills/"sdlc-*/SKILL.md "$ROOT/herdr/README.md" "$REPO/cli/entourage" "$REPO/cli/lib/handoff.sh"; do
-    if found=$(grep -nE '^[[:space:]]*phase:' "$f"); then
-      f=${f#"$REPO/"}; fail "${f#"$ROOT/"} shows a phase: line: $found"
+  for f in "$REPO/skills/"sdlc-*/SKILL.md "$ROOT/herdr/README.md" "$ROOT/README.md" \
+      "$ROOT/GLOSSARY.md" "$REPO/cli/entourage"; do
+    if found=$(grep -nF 'phase:' "$f"); then
+      f=${f#"$REPO/"}; fail "${f#"$ROOT/"} names a phase: line: $found"
     fi
   done
+  if found=$(grep -nE '^[[:space:]]*phase:' "$REPO/cli/lib/handoff.sh"); then
+    fail "cli/lib/handoff.sh shows a phase: line: $found"
+  fi
   for s in $CARD_SKILL_NAMES; do
     ! grep -qF '`phase`' "$REPO/skills/$s/SKILL.md" ||
       fail "$s still lists \`phase\` as a line of the block"
