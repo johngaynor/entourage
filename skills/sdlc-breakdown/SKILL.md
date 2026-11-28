@@ -24,7 +24,7 @@ This skill has two parts. Proposing, and asking the human to approve, happens on
 
 ### First, is it already small?
 
-Look at the plan's Changes. If the whole card is one agent, one sitting and one quick pull request, it stands as one piece, even if you could cut it further. Every slice costs the human a review and a merge, so don't slice for its own sake.
+Look at the plan's Changes. If the whole card is one agent, one sitting and one quick pull request, it stands as one piece, even if you could cut it further. Every slice costs the human a pull request to read and merge, so don't slice for its own sake.
 
 ### If it is too big, try to cut it
 
@@ -95,7 +95,7 @@ Create nothing else in Linear yet. A proposal the human turns down should leave 
 
 ### Ask the human to approve
 
-Breakdown is the last step before building, so it ends by asking the human to approve the whole card: the Specification, the Plan and the Breakdown together. This happens on every card, sliced or not.
+Breakdown is the last step of the write-up phase, so it ends by asking the human to approve the whole card: the Specification, the Plan and the Breakdown together. This happens on every card, sliced or not.
 
 Give them a summary they can answer from without opening Linear:
 
@@ -165,7 +165,7 @@ Put your own words in place of each hint in angle brackets, and leave the `flags
 
 Recording this hand-off moves the card in Linear to its team's first not-started status, Todo in Lab or Ready for Dev in PHY, and, when the card was sliced, each of its sub-issues too. A card already further along, done or canceled stays where it is. Below the block, the command says what happened to each card. When it says a card was not moved, tell the human in your message which card was not moved, and why, such as no Linear key saved or a key without Write permission. They can move it in Linear, or run `entourage linear move <card ID> approved` with the parent's ID once what stopped it is fixed. The hand-off is recorded either way, so don't record it again.
 
-Start is not a skill. It is the `entourage task start` command, which the human runs, so there is no step for you to go on to.
+Start is not a skill. It is the `entourage task start` command, which the human runs, so there is no skill for you to go on to.
 
 ## The handoff block
 
@@ -187,7 +187,7 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<project>` is the entourage project this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
