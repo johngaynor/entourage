@@ -190,12 +190,45 @@ linear_open_cards() {
 }
 
 # Find a card by its team's key and its number, as Linear keeps them: ABC-122
-# is team ABC, number 122.
+# is team ABC, number 122. Its title and labels come with it.
 CARD_QUERY='query($team: String!, $number: Float!) {
-  issues(first: 1, filter: {team: {key: {eq: $team}}, number: {eq: $number}}) { nodes { identifier } }
+  issues(first: 1, filter: {team: {key: {eq: $team}}, number: {eq: $number}}) {
+    nodes { identifier title labels { nodes { name parent { name } } } }
+  }
 }'
+# The label group a card's type is in. sdlc-define sets the type there.
+TYPE_GROUP=Type
 
-# Whether Linear has a card, for `task new` to check before it starts one.
+# Print one card as one line of JSON, or stop and say why:
+#   {"id":"ABC-122","title":"Export orders as CSV","type":"feat"}
+# type is null when the card has no label in the Type group.
+#   linear_card <card ID, in upper case>
+linear_card() {
+  local card=$1 key vars data found
+  linear_tools
+  key=$(linear_saved_key) || exit 1
+  vars=$(jq -cn --arg team "${card%-*}" --arg number "${card##*-}" \
+    '{team: $team, number: ($number | tonumber)}' 2>/dev/null) ||
+    die "'$card' is not a card ID like ABC-122."
+  data=$(linear_ask "$key" "$CARD_QUERY" "$vars") || exit 1
+  # An answer with no list of cards in it is not Linear saying it has none.
+  found=$(printf '%s' "$data" | jq -c --arg group "$TYPE_GROUP" '
+    if (.issues.nodes | type) != "array" then error("no list of cards")
+    elif (.issues.nodes | length) == 0 then "none"
+    else .issues.nodes[0]
+      | {id: .identifier, title: (.title // ""),
+         type: ([.labels.nodes[]? | select(.parent.name? == $group) | .name] | first)}
+    end' 2>/dev/null) || found=
+  case $found in
+    '') die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it." ;;
+    '"none"') die "Linear has no card $card that the saved key can see. Check the ID, then run this again." ;;
+  esac
+  printf '%s\n' "$found"
+}
+
+# Whether Linear has a card, for `task new` to check before it starts one. It
+# asks the same question as linear_card, which `task start` uses, but it never
+# stops: what it found is in how it returns.
 #   linear_card_known <card ID, in upper case>
 # It returns how that went, and prints nothing on stdout:
 #   0  Linear has the card

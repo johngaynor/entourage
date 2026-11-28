@@ -524,6 +524,68 @@ task_ls_names_the_line_of_a_bad_team_key() {
   [ "$(curl_count)" = 0 ] || fail "asked Linear: $(curl_calls)"
 }
 
+# --- asking for one card ----------------------------------------------------
+
+# The project "demo" with one repo of one commit, the key saved, and Linear
+# answering with $1, for `task start` to ask it about a card.
+card_asked() {
+  "$E" project new demo >/dev/null
+  git init -q -b main "$HOME/Dev/api"
+  git -C "$HOME/Dev/api" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+  "$E" project add demo "$HOME/Dev/api" >/dev/null
+  saved_key; stub_linear; linear_answers "$1"
+}
+# The repo's branches other than main, one per line.
+task_branches() { git -C "$HOME/Dev/api" branch --format='%(refname:short)' | grep -v '^main$' || true; }
+
+# Linear keeps a card as its team's key and a number, so that is how it is
+# asked: once, with the key on stdin as for every question.
+task_start_asks_linear_for_the_card_by_team_and_number() {
+  card_asked "$(card_answer ABC-122 'Export orders' feat)"
+  "$E" task start demo abc-122 >/dev/null || fail "task start exited non-zero"
+  case $(curl_calls) in *'"team":"ABC"'*) ;; *) fail "did not ask for team ABC: $(curl_calls)" ;; esac
+  case $(curl_calls) in *'"number":122'*) ;; *) fail "did not ask for number 122: $(curl_calls)" ;; esac
+  [ "$(key_given_to_curl)" = "$KEY" ] || fail "curl was not given the key on stdin"
+  case $(curl_calls) in *"$KEY"*) fail "passed the key to curl as an argument" ;; esac
+  [ "$(curl_count)" = 1 ] || fail "asked Linear $(curl_count) times"
+}
+
+# The type is the card's label in the Type group. A label in another group,
+# or in none, is not a type.
+task_start_takes_the_type_from_the_type_group() {
+  card_asked '{"data":{"issues":{"nodes":[{"identifier":"ABC-122","title":"Export orders","labels":{"nodes":[
+    {"name":"urgent","parent":{"name":"Priority"}},{"name":"feat","parent":null},{"name":"fix","parent":{"name":"Type"}}]}}]}}}'
+  "$E" task start demo ABC-122 >/dev/null || fail "task start exited non-zero"
+  [ "$(task_branches)" = fix/abc-122-export-orders ] || fail "the task's branch is: $(task_branches)"
+}
+
+task_start_finds_no_type_outside_the_type_group() {
+  card_asked '{"data":{"issues":{"nodes":[{"identifier":"ABC-122","title":"Export orders","labels":{"nodes":[
+    {"name":"feat","parent":{"name":"Kind"}},{"name":"fix"}]}}]}}}'
+  "$E" task start demo ABC-122 >/dev/null 2>"$TMP/err" && fail "started a card with no type"
+  grep -q 'has no type' "$TMP/err" || fail "did not say the card has no type: $(cat "$TMP/err")"
+  [ -z "$(task_branches)" ] || fail "made a branch: $(task_branches)"
+}
+
+# An answer with no list of cards in it is not Linear saying it has none.
+task_start_says_when_linears_answer_cannot_be_read() {
+  card_asked '{"data":{"issues":null}}'
+  "$E" task start demo ABC-122 >/dev/null 2>"$TMP/err" && fail "exited zero on an answer it cannot read"
+  grep -q 'not one entourage can read' "$TMP/err" || fail "did not say the answer cannot be read: $(cat "$TMP/err")"
+  if grep -q 'has no card' "$TMP/err"; then fail "said Linear has no such card: $(cat "$TMP/err")"; fi
+}
+
+task_start_says_when_linear_rejects_the_key() {
+  card_asked "$REJECTED"; linear_status 401
+  "$E" task start demo ABC-122 >/dev/null 2>"$TMP/err" && fail "exited zero with a rejected key"
+  grep -q 'Linear rejected the key' "$TMP/err" || fail "did not say the key was rejected: $(cat "$TMP/err")"
+  [ ! -e "$P/demo/tasks" ] || fail "made a tasks folder"
+}
+
+CARD_LOOKUP_CASES="task_start_asks_linear_for_the_card_by_team_and_number
+  task_start_takes_the_type_from_the_type_group task_start_finds_no_type_outside_the_type_group
+  task_start_says_when_linears_answer_cannot_be_read task_start_says_when_linear_rejects_the_key"
+
 # --- where the key comes from: entourage's env file, or the environment -----
 
 # A key exported in the shell works with no file at all.
@@ -653,7 +715,8 @@ env_file_that_cannot_be_read_says_so() {
   case $out in *"line "[0-9]*) fail "gave bash's own message: $out" ;; esac
 }
 
-CASES="linear_key_saves_the_key linear_key_keeps_the_env_file_private linear_key_closes_an_env_file_others_could_read
+CASES="$CARD_LOOKUP_CASES
+  linear_key_saves_the_key linear_key_keeps_the_env_file_private linear_key_closes_an_env_file_others_could_read
   linear_key_says_whose_key_it_is linear_key_never_shows_the_key linear_key_gives_curl_the_key_on_stdin
   linear_key_replaces_the_old_key_and_keeps_the_other_lines linear_key_says_when_an_exported_key_is_used_instead
   task_ls_takes_the_key_from_the_environment task_ls_prefers_an_exported_key_to_the_env_file
