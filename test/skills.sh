@@ -142,6 +142,24 @@ build_is_done_only_when_the_tests_pass() {
     fail "sdlc-build does not say it is done only when the tests pass"
 }
 
+# A new task's worktree may have nothing installed, so the build installs what
+# the tests need, the way the repo's own docs say, before it first runs them.
+# It installs only, and starts nothing that would outlive the build.
+build_installs_what_the_tests_need_first() {
+  local skill=$REPO/skills/sdlc-build/SKILL.md install first_run
+  install=$(grep -niF "install what the tests need the way the repo's docs say" "$skill" | head -n1 | cut -d: -f1)
+  first_run=$(grep -niF 'run the tests once, before you change anything' "$skill" | head -n1 | cut -d: -f1)
+  grep -qF 'Install only: start no app, dev server or database' "$skill" ||
+    fail "sdlc-build does not say to install only, starting no app, dev server or database"
+  if [ -z "$install" ]; then
+    fail "sdlc-build does not say to install what the tests need the way the repo's docs say"
+  elif [ -z "$first_run" ]; then
+    fail "sdlc-build does not run the tests once before it changes anything"
+  elif [ "$install" -ge "$first_run" ]; then
+    fail "sdlc-build runs the tests before it installs what they need"
+  fi
+}
+
 # A card with no Plan is not built. The skill says so in its first section,
 # before any step that changes a file.
 build_stops_on_a_card_with_no_plan() {
@@ -159,7 +177,7 @@ build_stops_on_a_card_with_no_plan() {
 
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   build_pushes_nothing build_is_done_only_when_the_tests_pass
-  build_stops_on_a_card_with_no_plan
+  build_stops_on_a_card_with_no_plan build_installs_what_the_tests_need_first
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop

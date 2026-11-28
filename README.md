@@ -146,8 +146,11 @@ ask it to build the card with the `sdlc-build` skill:
 ```
 
 It reads the card's Plan, makes the change in the task's worktrees, runs the
-tests and commits on the task's branch. It pushes nothing and opens no pull
-request, so the commits wait for you there. Like the write-up, it records how
+tests and commits on the task's branch. Since setup is off, it first installs
+into each worktree what the tests need, the way that repo's own docs say. It
+installs only: it starts no app, server or database, and asks you when the
+tests need one running. It pushes nothing and opens no pull request, so the
+commits wait for you there. Like the write-up, it records how
 it ended, and `task log` shows it: `done` only when the tests pass,
 `needs-human` with a question, or `failed` with the reason. A card with no
 Plan is not built.
