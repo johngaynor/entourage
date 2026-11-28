@@ -65,9 +65,21 @@ task_new_prompt_gives_task_start_the_card() {
 
 task_new_prompt_follows_the_block() {
   local prompt=$REPO/prompts/task-new.md want
-  for want in '`done`' '`needs-human`' '`failed`' 'next: setup' '{card}' '{project}'; do
+  for want in '`done`' '`needs-human`' '`failed`' 'next: start' '{card}' '{project}'; do
     grep -qF -- "$want" "$prompt" || fail "the task-new prompt does not mention $want"
   done
+}
+
+# The step after breakdown is `entourage task start`, and it has one name:
+# start, the word its own row in the log uses. Breakdown hands on to it, and
+# nothing the agents read still calls it setup.
+breakdown_hands_on_to_start() {
+  local skill=$REPO/skills/sdlc-breakdown/SKILL.md found
+  grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'next: start' ||
+    fail "sdlc-breakdown does not show its done hand-off with next: start"
+  found=$(grep -rnF 'next: setup' "$REPO/skills" "$REPO/prompts") &&
+    fail "the step after breakdown is still called setup: $found"
+  return 0
 }
 
 # The build's agent starts from prompts/task-build.md, which drives build,
@@ -428,4 +440,4 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   no_skill_names_a_person a_routed_change_returns_to_breakdown
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
-  task_build_prompt_drives_build_and_review"
+  task_build_prompt_drives_build_and_review breakdown_hands_on_to_start"

@@ -1004,6 +1004,25 @@ task_start_records_the_start() {
   case $out in *"start      done, then build"*) ;; *) fail "the log does not show the start: $out" ;; esac
 }
 
+# The log reads straight through from the approval to the build: breakdown
+# hands on to start, and start is the row task start records.
+task_start_follows_breakdown_by_one_name() {
+  task_demo api
+  printf 'phase: breakdown\nstatus: done\nnext: start\nsummary: Approved as one piece.\n' |
+    "$E" task handoff demo ABC-1 >/dev/null || fail "task handoff refused breakdown with next: start"
+  out=$("$E" task log demo) || fail "task log with no card exited non-zero"
+  printf '%s\n' "$out" | grep -Eq '^ABC-1 +breakdown done, then start +for ' ||
+    fail "the card list does not show breakdown done, then start: $out"
+  "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
+  out=$("$E" task log demo ABC-1) || fail "task log exited non-zero"
+  printf '%s\n' "$out" | grep -Eq '  breakdown  done, then start( |$)' ||
+    fail "the log does not show breakdown done, then start: $out"
+  printf '%s\n' "$out" | grep -Eq '  start      done, then build$' ||
+    fail "the log does not show start done, then build: $out"
+  [ "$(printf '%s\n' "$out" | grep -Eo '(breakdown|start) +done, then [a-z]+' | tr -s ' ' | tr '\n' '|')" = \
+    'breakdown done, then start|start done, then build|' ] || fail "not breakdown, then start, in that order: $out"
+}
+
 task_start_starts_when_the_store_cannot_be_written() {
   task_demo api
   mkdir -p "$HOME/.config/entourage/entourage.db"
@@ -1087,6 +1106,7 @@ task_build_needs_the_skills_linked() {
 BUILD_CASES="task_start_starts_the_agent_in_the_tab task_start_says_how_to_start_the_agent_without_hc
   task_start_notes_a_repo_claude_code_has_not_trusted task_start_says_nothing_of_a_trusted_repo
   task_start_says_nothing_of_trust_for_several_repos task_start_records_the_start
+  task_start_follows_breakdown_by_one_name
   task_start_starts_when_the_store_cannot_be_written task_build_starts_the_agent
   task_build_refuses_outside_the_cards_task task_build_needs_an_agent task_build_needs_the_skills_linked"
 

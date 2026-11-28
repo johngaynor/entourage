@@ -519,6 +519,35 @@ status: failed
 reason: Not merged.' 'merged'
 }
 
+# The step after breakdown is called start, as the row `entourage task start`
+# records is. Breakdown hands on to it, but only that command records it, and
+# setup, its old name, is no step at all.
+handoff_takes_start_only_as_next() {
+  demo
+  local steps='The steps are: define plan breakdown start build review pr merged.'
+  refused 'phase: breakdown
+status: done
+next: setup
+summary: Approved as one piece.' "'setup' is not a step that can come next. $steps"
+  refused 'phase: setup
+status: done
+next: build
+summary: Set up.' "'setup' is not a step. $steps"
+  refused 'phase: start
+status: done
+next: build
+summary: Started.' 'entourage task start'
+  refused 'phase: start
+status: failed
+reason: Could not start.' 'entourage task start'
+  hand 'phase: breakdown
+status: done
+next: start
+summary: Approved as one piece.' >/dev/null || fail "task handoff refused breakdown with next: start"
+  [ "$(q "select phase || '|' || status || '|' || next from handoffs")" = 'breakdown|done|start' ] ||
+    fail "wrong row: $(q 'select * from handoffs')"
+}
+
 # A store as the version before answers made it: no column for them, one row.
 older_store() {
   mkdir -p "$HOME/.config/entourage"
@@ -785,9 +814,10 @@ a_task_start_row_keeps_the_run() {
   put 2026-01-01T10:00:00Z new done define
   put 2026-01-01T10:00:50Z define done plan
   put 2026-01-01T10:02:34Z plan done breakdown
-  put 2026-01-01T10:05:00Z breakdown done setup
+  put 2026-01-01T10:05:00Z breakdown done start
   put 2026-01-01T11:00:00Z start done build
   out=$("$E" task log demo ABC-122 --json)
+  j_is '.steps[3].next' start
   j_is '.steps[4].kind' start; j_is '.steps[4].label' started; j_is '.steps[4].seconds' null
   j_is '.steps[4].run' 1; j_is .run 1; j_is .state started
   out=$("$E" task log demo) || fail "task log exited non-zero"
@@ -799,6 +829,24 @@ a_task_start_row_keeps_the_run() {
   log_has 'define +done, then plan +50s$'
   out=$("$E" task log demo ABC-122 --json)
   j_is '.steps[5].run' 1; j_is .run 1
+}
+
+# A hand-off recorded before the step after breakdown was called start keeps
+# the name it was recorded with, and the log still reads a store that holds one.
+an_old_setup_row_is_kept() {
+  demo; make_store
+  put 2026-01-01T10:02:34Z plan done breakdown
+  put 2026-01-01T10:05:00Z breakdown done setup
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero on a store with an old setup row"
+  log_has 'breakdown +done, then setup +2m 26s$'
+  out=$("$E" task log demo) || fail "task log with no card exited non-zero"
+  log_has '^ABC-122 +breakdown done, then setup +for '
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+  j_is '.steps[1].next' setup; j_is .state 'breakdown done, then setup'
+  out=$("$E" task log demo --json) || fail "task log --json with no card exited non-zero"
+  j_is '[.cards[] | select(.card == "ABC-122") | .next] | join(" ")' setup
+  [ "$(q "select phase || '|' || status || '|' || next from handoffs where card = 'ABC-122' order by id desc limit 1")" = 'breakdown|done|setup' ] ||
+    fail "the old row was changed: $(q "select * from handoffs where card = 'ABC-122'")"
 }
 
 log_json_fails_as_the_plain_log_does() {
@@ -924,6 +972,7 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_review_that_needs_the_human handoff_records_a_failed_review
   handoff_records_a_pull_request_waiting_to_merge handoff_records_a_merge
   handoff_records_a_pull_request_that_cannot_be_opened handoff_refuses_merged_as_a_phase
+  handoff_takes_start_only_as_next an_old_setup_row_is_kept
   an_older_store_gains_the_answer_column
   log_reads_an_older_store_without_changing_it
   hand_offs_at_once_into_an_older_store_are_all_recorded

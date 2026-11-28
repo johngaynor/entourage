@@ -155,7 +155,7 @@ Breakdown is finished when the human has approved the card and, if it was sliced
 entourage task handoff <project> <card ID> <<'EOF'
 phase: breakdown
 status: done
-next: setup
+next: start
 summary: <that the card is approved, and whether it is one piece or sliced; if sliced, the sub-issues in order with their IDs, and which one is first>
 flags: <anything that didn't go to plan, such as a blocking relation that couldn't be set>
 EOF
@@ -163,7 +163,7 @@ EOF
 
 Put your own words in place of each hint in angle brackets, and leave the `flags` line out when there is nothing to flag.
 
-Setup is not a skill. It is the `entourage task start` command, which the human runs, so there is no step for you to go on to.
+Start is not a skill. It is the `entourage task start` command, which the human runs, so there is no step for you to go on to.
 
 ## The handoff block
 

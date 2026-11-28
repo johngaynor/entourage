@@ -266,7 +266,9 @@ the card up.
 ### Hand-offs
 
 Each step of a write-up ends by handing off: which step it was, how it ended
-(`done`, `needs-human` or `failed`) and what comes next. So does the build,
+(`done`, `needs-human` or `failed`) and what comes next. Breakdown, the last
+of them, hands off `done` with `start` next once you approve the card: the
+next step is `entourage task start`, which you run. So does the build,
 which the `sdlc-build` skill runs in a started task: it hands off as `build`,
 `done` only when the tests pass, with `review` next. So does the review after
 it, which the `sdlc-review` skill runs: it hands off as `review`, `done` with
@@ -279,7 +281,8 @@ them, and once GitHub says every pull request for the card has merged it
 hands off `done` with `merged` next. When it cannot push or open a pull
 request, such as when `gh` is not signed in or a repo has no remote, it hands
 off `failed` with the reason. `merged` is where a card ends: it is only ever
-next, and `task handoff` refuses it as a phase. The agent records each
+next, and `task handoff` refuses it as a phase. It does the same with
+`start`, since only `task start` records that step. The agent records each
 hand-off itself, with the block on stdin:
 
 ```sh
@@ -306,9 +309,12 @@ entourage task log <project> [<card>]
   from the hand-offs alone.
 - **`task start` records a start too,** as `start` in the log, with `build`
   next, so the build's first step is timed from it and not from your
-  approval. Like a write-up's start it shows as started, with no time, but it
-  begins no new run: the Steps panel shows the write-up and the build of a
-  card together.
+  approval. It is the step breakdown named, so the log reads
+  `breakdown  done, then start` and then `start  done, then build`. A
+  hand-off recorded before the step was called `start` keeps the name it was
+  recorded with, `setup`. Like a write-up's start it shows as started, with
+  no time, but it begins no new run: the Steps panel shows the write-up and
+  the build of a card together.
 - **It records your answers too.** When you reply to a question, the agent
   records a hand-off with `status: answered` and what you said in a few
   words. `task log` shows how long each step took, and the time a question
