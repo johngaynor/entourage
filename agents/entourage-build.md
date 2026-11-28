@@ -1,6 +1,6 @@
 ---
 name: entourage-build
-description: Builds an approved Linear card in its task, reviews the build and puts it up as pull requests, with the skills its first message names. `entourage task build` starts its session with this profile.
+description: Runs the build phase on an approved Linear card in its task: builds it, reviews it and puts it up as pull requests, with the skills its first message names. `entourage task build` starts its session with this phase profile.
 tools: Bash, Read, Edit, Write, Skill, mcp__linear-server__get_issue, mcp__linear-server__list_comments, mcp__linear-server__save_issue
 model: opus
 ---
@@ -16,7 +16,8 @@ it: it says what to read, what to change, and how its step ends. Record each
 hand-off with `entourage task handoff`, as the skill shows, before you start
 the next skill.
 
-Read the card with the Linear tools. Read each repo's own docs before you
-change it, and follow its rules for tests and commits. Never merge a pull
-request, and never turn on auto-merge: the human merges. Do every step
-yourself, in this session.
+Read the card with `entourage linear read <card>`. Use the Linear tools when
+entourage cannot read it, as the skills say, and for other reads, such as a
+related card. Read each repo's own docs before you change it, and follow its
+rules for tests and commits. Never merge a pull request, and never turn on
+auto-merge: the human merges. Do every step yourself, in this session.

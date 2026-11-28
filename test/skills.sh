@@ -38,9 +38,33 @@ each_skill_hands_off_as_itself() {
   local s
   for s in $CARD_SKILL_NAMES; do
     grep -A1 -F "entourage task handoff <project> <card ID> <<'EOF'" "$REPO/skills/$s/SKILL.md" |
-      grep -qx "phase: ${s#sdlc-}" ||
-      fail "$s does not show the command for handing off with phase: ${s#sdlc-}"
+      grep -qx "step: ${s#sdlc-}" ||
+      fail "$s does not show the command for handing off with step: ${s#sdlc-}"
   done
+}
+
+# The line of a block that names its step is step:. It used to be phase:, and
+# nothing an agent or the human reads still names one, in a block or in a
+# sentence: not the skills, not the READMEs or the glossary, not the usage
+# text. The command's own code names phase: only to refuse it, so there it is
+# a line of the usage that must not start with one.
+no_doc_shows_a_phase_line() {
+  local f s found
+  for f in "$REPO/skills/"sdlc-*/SKILL.md "$ROOT/herdr/README.md" "$ROOT/README.md" \
+      "$ROOT/GLOSSARY.md" "$REPO/cli/entourage"; do
+    if found=$(grep -nF 'phase:' "$f"); then
+      f=${f#"$REPO/"}; fail "${f#"$ROOT/"} names a phase: line: $found"
+    fi
+  done
+  if found=$(grep -nE '^[[:space:]]*phase:' "$REPO/cli/lib/handoff.sh"); then
+    fail "cli/lib/handoff.sh shows a phase: line: $found"
+  fi
+  for s in $CARD_SKILL_NAMES; do
+    ! grep -qF '`phase`' "$REPO/skills/$s/SKILL.md" ||
+      fail "$s still lists \`phase\` as a line of the block"
+  done
+  ! grep -qF '(phase,' "$REPO/cli/entourage" ||
+    fail "the usage text still names the block's phase line"
 }
 
 # "Then stop" is how a skill used to end. It contradicts the block's own rule
@@ -53,8 +77,8 @@ no_skill_says_then_stop() {
   done
 }
 
-# task start takes the card, and names the branch from it. The command the
-# human is given after approval is the card's, not a branch put together.
+# task start takes the card, and names the branch from it. The command that
+# starts the work after approval is the card's, not a branch put together.
 task_new_prompt_gives_task_start_the_card() {
   local prompt=$REPO/prompts/task-new.md
   grep -qF 'entourage task start {project} {card}' "$prompt" ||
@@ -80,6 +104,32 @@ breakdown_hands_on_to_start() {
   found=$(grep -rnF 'next: setup' "$REPO/skills" "$REPO/prompts") &&
     fail "the step after breakdown is still called setup: $found"
   return 0
+}
+
+# Approving the card starts its build phase, unless the human holds it for later:
+# breakdown asks which, and the task-new prompt has the agent run task start
+# itself only for an approval to start now.
+approval_starts_the_build_unless_held() {
+  local skill=$REPO/skills/sdlc-breakdown/SKILL.md prompt=$REPO/prompts/task-new.md section want
+  grep -qxF 'question: Approve <card ID> as specified, planned and broken down, and start its build phase now?' "$skill" ||
+    fail "the approval's question does not ask whether to start the build phase now"
+  grep -qxF 'options: approve and start | approve, start later | change breakdown | change plan | change specification' "$skill" ||
+    fail "sdlc-breakdown does not offer to start now or later"
+  grep -qF 'Go by what they mean, not by the exact words.' "$skill" ||
+    fail "sdlc-breakdown does not tell a start now from a start later by what the human means"
+  section=$(sed -n '/^### Start the build phase/,/^## /p' "$skill")
+  [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build phase section"; return; }
+  for want in 'the first sub-issue in order that is not already started, done or canceled' \
+      'start later:** give them the command, `entourage task start <project> <ID>`, and run nothing' \
+      'start now:** run that command yourself, once, after the hand-off above is recorded' \
+      'every `agent` and `note` line' "If it stops, don't run it again." \
+      'it says `made the task at <folder>`' 'run `entourage task build <project> <ID>` there'; do
+    case $section in *"$want"*) ;; *) fail "sdlc-breakdown's Start the build phase does not say: $want" ;; esac
+  done
+  ! grep -qF 'which the human runs' "$skill" || fail "sdlc-breakdown still says the human always runs task start"
+  ! grep -qF "don't run it yourself" "$prompt" || fail "the task-new prompt still has the agent never run task start"
+  grep -qF 'Run it yourself only when I approved to start now. When I chose to start later, give it to me and' "$prompt" ||
+    fail "the task-new prompt does not say when the agent runs task start and when it holds it"
 }
 
 # Recording the approval moves the card, and its slices, to the team's
@@ -287,12 +337,44 @@ each_skill_revises_its_section_with_replace() {
     fail "sdlc-breakdown does not replace the parent's Breakdown to add the sub-issue IDs"
 }
 
-# With no key saved, each skill still writes, through the agent's Linear tools.
+# With no key saved, or a key Linear rejects, each skill still reads the card,
+# and the write-up's skills still write, through the agent's Linear tools, and
+# say so. The row names the words `linear read` says then (test/linear.sh).
 each_skill_falls_back_without_a_key() {
-  local s
+  local s row
+  for s in $CARD_SKILL_NAMES; do
+    row=$(grep -E '^\| `entourage linear( read)?` says no Linear key is saved' "$REPO/skills/$s/SKILL.md")
+    [ -n "$row" ] || { fail "$s does not say what to do when no Linear key is saved"; continue; }
+    case $row in *'Linear rejected the key'*) ;; *) fail "$s does not say what to do when Linear rejects the key: $row" ;; esac
+    case $row in *'Read the card'*'Linear tools'*) ;; *) fail "$s does not read the card with the Linear tools then: $row" ;; esac
+    case $row in *'`flags`'*) ;; *) fail "$s does not say so in flags: $row" ;; esac
+  done
+  # The steps that write the card up write with the Linear tools then too.
   for s in sdlc-define sdlc-plan sdlc-breakdown; do
     grep -qF '`entourage linear` says no Linear key is saved' "$REPO/skills/$s/SKILL.md" ||
-      fail "$s does not say what to do when no Linear key is saved"
+      fail "$s does not write with the Linear tools when no Linear key is saved"
+  done
+}
+
+# Every card skill and both of the factory's profiles read the card through
+# entourage, and none says to read it with the Linear tools, which are for
+# when entourage cannot. Lines are joined, so a sentence a line break splits
+# is still found.
+each_skill_reads_the_card_through_entourage() {
+  local s f text
+  for s in $CARD_SKILL_NAMES; do
+    f=$REPO/skills/$s/SKILL.md
+    grep -qF 'Read the card with `entourage linear read <card ID>`' "$f" ||
+      fail "$s does not read the card with entourage linear read"
+  done
+  for f in $(factory_profiles); do
+    grep -qF 'entourage linear read' "$f" || fail "${f##*/} does not read the card with entourage linear read"
+  done
+  for f in $(factory_profiles) $(for s in $CARD_SKILL_NAMES; do printf '%s\n' "$REPO/skills/$s/SKILL.md"; done); do
+    text=$(tr '\n' ' ' < "$f")
+    case $text in
+      *'Read the card with the Linear tools'[:.,]*) fail "${f#"$REPO"/} still says to read the card with the Linear tools" ;;
+    esac
   done
 }
 
@@ -330,12 +412,13 @@ review_sends_what_is_not_met_back_to_build() {
   done
 }
 
-# Build and review must not send the work back and forth with no one watching.
-# After one send-back, the review asks the human instead.
+# The build step and the review step must not send the work back and forth
+# with no one watching. After one send-back, the review step asks the human
+# instead.
 review_asks_the_human_after_one_send_back() {
   local skill=$REPO/skills/sdlc-review/SKILL.md
-  grep -qF 'already shows a review with `next: build`' "$skill" ||
-    fail "sdlc-review does not look in the log for a review that sent the work back"
+  grep -qF 'already shows a hand-off from the review step with `next: build`' "$skill" ||
+    fail "sdlc-review does not look in the log for a hand-off from the review step that sent the work back"
   grep -qF 'entourage task log <project> <card ID>' "$skill" ||
     fail "sdlc-review does not say how to read the card's log"
   grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'status: needs-human' ||
@@ -382,11 +465,11 @@ pr_pushes_only_the_worktrees_with_commits() {
 }
 
 # A pull request follows the repo's own rules, and says, for each Done when
-# item, how the review showed it.
+# item, how the review step showed it.
 pr_follows_the_repos_rules_for_pull_requests() {
   local skill=$REPO/skills/sdlc-pr/SKILL.md want
   for want in 'CLAUDE.md' 'CONTRIBUTING' '.github/pull_request_template.md' \
-      'links the card' 'each Done when item' 'how the review showed it' 'left to the human'; do
+      'links the card' 'each Done when item' 'how the review step showed it' 'left to the human'; do
     grep -qF -- "$want" "$skill" || fail "sdlc-pr does not mention $want"
   done
   # A description written on the command line would have its backticks run
@@ -891,6 +974,7 @@ no_profile_names_a_person() {
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_writes_its_section_with_the_command no_skill_writes_a_section_itself
   each_skill_revises_its_section_with_replace each_skill_falls_back_without_a_key
+  each_skill_reads_the_card_through_entourage
   build_pushes_nothing build_is_done_only_when_the_tests_pass
   build_stops_on_a_card_with_no_plan build_installs_what_the_tests_need_first
   build_takes_a_later_round_from_the_review
@@ -908,11 +992,12 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   pr_brings_a_conflicting_branch_up_to_date pr_asks_only_when_a_conflict_cannot_be_settled
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
-  each_skill_hands_off_as_itself no_skill_says_then_stop
+  each_skill_hands_off_as_itself no_doc_shows_a_phase_line no_skill_says_then_stop
   review_profiles_are_named_with_only_their_tools review_profiles_leave_out_the_listing_tools
   review_profiles_carry_the_review_rules write_up_profile_has_only_its_tools
   build_profile_has_only_its_tools every_profile_runs_on_opus no_profile_names_a_person
   no_skill_names_a_person a_routed_change_returns_to_breakdown
+  approval_starts_the_build_unless_held
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
   task_build_prompt_drives_build_and_review breakdown_hands_on_to_start

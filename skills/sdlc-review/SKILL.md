@@ -1,25 +1,25 @@
 ---
 name: sdlc-review
-description: Review a built Linear card in its task before anything is pushed, by running the tests, checking each Done when item against the Plan's tests, writing what was found on the card as its Review, and sending what is not met back to build. Use this once sdlc-build has handed off done, whenever asked to review, check or verify a built card in its task, even if the request only says "review ABC-123". It changes no code, pushes nothing and opens no pull request.
+description: Review a built Linear card in its task before anything is pushed, by running the tests, checking each Done when item against the Plan's tests, writing what was found on the card as its Review, and sending what is not met back to the build step. Use this once sdlc-build has handed off done, whenever asked to review, check or verify a built card in its task, even if the request only says "review ABC-123". It changes no code, pushes nothing and opens no pull request.
 ---
 
 # Review a card
 
-Review is the step after build. Build made the change the Plan describes and committed it on the task's branch. Review checks that work against the card's Done when before anyone else sees it, and sends what falls short back to build. It also comes after the `sdlc-pr` skill when that step has merged the default branch into the task's branch, to bring a pull request in conflict up to date: the merge is checked before it is pushed.
+The review step comes after the build step. The build step made the change the Plan describes and committed it on the task's branch. The review step checks that work against the card's Done when before anyone else sees it, and sends what falls short back to the build step. It also comes after the `sdlc-pr` skill when that step has merged the default branch into the task's branch, to bring a pull request in conflict up to date: the merge is checked before it is pushed.
 
-The human is not watching while it runs. They read the card's Review and the hand-off afterwards, so the Review has to say of each Done when item whether it is met and how that was shown, and the hand-off has to say plainly how the review ended.
+The human is not watching while it runs. They read the card's Review and the hand-off afterwards, so the Review has to say of each Done when item whether it is met and how that was shown, and the hand-off has to say plainly how the review step ended.
 
-Review changes no code. Push nothing and open no pull request. What falls short goes back to build, and pushing and the pull request come after this step.
+The review step changes no code. Push nothing and open no pull request. What falls short goes back to the build step, and pushing and the pull request come after this step.
 
 ## Before you check anything
 
 1. Get the card. If you weren't given a card ID, ask for one.
-2. Read the card with the Linear tools: the original description, the Specification, the Plan, the Breakdown, the Review if an earlier round wrote one, and the comments.
+2. Read the card with `entourage linear read <card ID>`: the original description, the Specification, the Plan, the Breakdown, the Review if an earlier round wrote one, and the comments.
 3. If the card has no Plan, it was not approved to build, so there is nothing to review. Change nothing, and hand off as `failed`, saying so.
-4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a Plan and a build of its own. Review the sub-issue, not this card. Change nothing, and hand off as `failed`, naming the sub-issue that comes first.
+4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a Plan of its own, built on its own. Review the sub-issue, not this card. Change nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Check where you are. The work is in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, change nothing and hand off as `failed`, saying where you are.
-6. Run `git status` in each worktree. Build leaves nothing uncommitted. If a worktree has changes, the build did not finish: change nothing, and hand off as `failed`, naming the worktree and its changed files.
-7. Find what was built. The task started from each repo's default branch, so the build's commits are the ones the default branch doesn't have: `git log --oneline origin/main..HEAD`, with the repo's own default branch in place of `main`. If no worktree has a commit there, nothing was built. Hand off as `failed`, saying so.
+6. Run `git status` in each worktree. The build step leaves nothing uncommitted. If a worktree has changes, the build step did not finish: change nothing, and hand off as `failed`, naming the worktree and its changed files.
+7. Find what was built. The task started from each repo's default branch, so the build step's commits are the ones the default branch doesn't have: `git log --oneline origin/main..HEAD`, with the repo's own default branch in place of `main`. If no worktree has a commit there, nothing was built. Hand off as `failed`, saying so.
 
 ## 1. Read how the repo works
 
@@ -31,9 +31,9 @@ Read the guidance in each worktree with commits: its `CLAUDE.md`, `AGENTS.md`, `
 
 ## 2. Run the tests
 
-Run the repo's whole test suite in each worktree with commits. Run it yourself, though build said it passed: the review is what shows it.
+Run the repo's whole test suite in each worktree with commits. Run it yourself, though the build step said it passed: the review step is what shows it.
 
-If a test fails, note which one and what it said. Don't fix it, because review changes no code. A failing test is work that goes back to build.
+If a test fails, note which one and what it said. Don't fix it, because the review step changes no code. A failing test is work that goes back to the build step.
 
 If the tests can't run at all, because something they need is missing from the worktree, don't install anything. Ask the human, saying what is missing.
 
@@ -48,12 +48,12 @@ Work through the Done when items in order, one at a time. For each one:
 Each item is one of three:
 
 - **Met.** Its test is there, checks what the item says, and passes, and any real run the Plan names for it was done and showed it.
-- **Not met.** Its test is missing, checks less than the item says, or fails, or a real run showed the item isn't true. Say which, in words build can act on.
+- **Not met.** Its test is missing, checks less than the item says, or fails, or a real run showed the item isn't true. Say which, in words the build step can act on.
 - **For the human.** Everything you could do shows it, but part of it can only be shown by a run you may not do. An item for the human doesn't send the work back.
 
 ## 4. Check the commits
 
-Check each of the build's commits against the repo's rules for commits: the form of its message, and anything a commit must never contain. Check the change against the repo's rules for a change like this one. A commit or a change that breaks one goes in the Review, and in `flags` when you hand off. It doesn't send the work back on its own: a rule that a Done when item needs, such as a new test that must be added to a list before it runs, is already an item not met.
+Check each of the build step's commits against the repo's rules for commits: the form of its message, and anything a commit must never contain. Check the change against the repo's rules for a change like this one. A commit or a change that breaks one goes in the Review, and in `flags` when you hand off. It doesn't send the work back on its own: a rule that a Done when item needs, such as a new test that must be added to a list before it runs, is already an item not met.
 
 ## 5. Write the Review on the card
 
@@ -73,17 +73,17 @@ Round <n>, on <the commit each worktree was at>. The tests <pass, or which fail>
 >>>
 ```
 
-The round is 1 the first time, and one more each time build has been sent back before. When `sdlc-pr` sent the work here after the default branch was merged in, the round is one more than the last as well, and its round line says why: `Round <n>, on <the commit each worktree was at>, after the default branch was merged in.` Check each Done when item again with the merge commit, as for any round. After writing, read the card back. Check that nothing above the Review changed and that the Review shows as a collapsed section.
+The round is 1 the first time, and one more each time the work has been sent back to the build step before. When `sdlc-pr` sent the work here after the default branch was merged in, the round is one more than the last as well, and its round line says why: `Round <n>, on <the commit each worktree was at>, after the default branch was merged in.` Check each Done when item again with the merge commit, as for any round. After writing, read the card back. Check that nothing above the Review changed and that the Review shows as a collapsed section.
 
 ## 6. Hand off
 
-When the Review is on the card and you have read it back, record the hand-off. Review is not finished until it is recorded.
+When the Review is on the card and you have read it back, record the hand-off. The review step is not finished until it is recorded.
 
 When every Done when item is met or for the human, and the tests pass, the work is ready for its pull request:
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: review
+step: review
 status: done
 next: pr
 summary: <how many Done when items are met and how each was shown, in which repos, and that the tests pass>
@@ -93,11 +93,11 @@ EOF
 
 The step that follows is the `sdlc-pr` skill, which pushes the reviewed commits and opens the pull request.
 
-When a Done when item is not met, or the tests fail, the work goes back to build. First run `entourage task log <project> <card ID>`. If it already shows a review with `next: build` for this card, build has been sent back once already: go to the next block instead. Otherwise send it back:
+When a Done when item is not met, or the tests fail, the work goes back to the build step. First run `entourage task log <project> <card ID>`. If it already shows a hand-off from the review step with `next: build` for this card, the work has been sent back once already: go to the next block instead. Otherwise send it back:
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: review
+step: review
 status: done
 next: build
 summary: <each Done when item that is not met and why, and each test that fails>
@@ -106,11 +106,11 @@ EOF
 
 The step that follows is the `sdlc-build` skill, which reads the Review and builds only what it says is not met.
 
-When build has been sent back before, ask the human whether it should go round again, so build and review don't go back and forth with no one watching:
+When the work has been sent back to the build step before, ask the human whether it should go round again, so the build step and the review step don't go back and forth with no one watching:
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: review
+step: review
 status: needs-human
 summary: <each Done when item that is still not met and why, and what the last round changed>
 question: <the items still not met, in a few words>. Build again, or stop here?
@@ -128,7 +128,7 @@ Record a hand-off every time this step ends or pauses: when the step is finished
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: <this step>
+step: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
 summary: <one to three sentences on what you did>
@@ -140,14 +140,14 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<project>` is the entourage project this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
-| `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
-| `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
-| `answered` | The human has replied to a `needs-human` hand-off | `phase`, `status`, `answer` |
-| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
+| `done` | This step's work is on the card and you have read it back | `step`, `status`, `next`, `summary`, and `flags` if there are any |
+| `needs-human` | You can't go on without an answer or an approval | `step`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `answered` | The human has replied to a `needs-human` hand-off | `step`, `status`, `answer` |
+| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `step`, `status`, `reason` |
 
 - **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage project, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a project or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
@@ -163,8 +163,9 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Hand off as `failed`. Don't review from memory of the card or from its title |
+| `entourage linear read` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card with the Linear tools instead, and say so in `flags` when you hand off |
 | A repo the Plan changes has no worktree in the task | Ask the human. The task may have been started with targets that left it out |
-| The Plan's Tests line names a test that isn't there | The item is not met. Say which test is missing. Don't write it: that is build's work |
+| The Plan's Tests line names a test that isn't there | The item is not met. Say which test is missing. Don't write it: that is the build step's work |
 | A test fails only now and then | Run it again. If it fails again, the item is not met. If it passes, say in `flags` that it failed once |
 | A write to the card fails | Read the card before doing anything else. Retry once, and only if the Review isn't there, so it can't be added twice |
 | The collapsed section shows as plain `>>>` text | Leave the content as it is and tell the human. Don't keep reformatting it |
@@ -200,7 +201,7 @@ Round 1, on api 3f2a91c and web 8d04e17. The tests pass in both.
 
 ```
 entourage task handoff shop ABC-122 <<'EOF'
-phase: review
+step: review
 status: done
 next: build
 summary: Item 2 is not met: test_orders_export.py checks the CSV's columns but not that it has one row per order. Items 1 and 3 are met, and the tests pass in api and web.

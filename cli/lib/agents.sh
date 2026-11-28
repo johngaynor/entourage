@@ -3,10 +3,10 @@
 # running. `task log` reads it each time it runs and stores none of it.
 # Sourced by cli/entourage.
 #
-# A card's agent is the one on its current step: the write-up's, in the tab
-# `task new` names after the card, until the work starts, then the build's,
-# in the tab `task start` names after the task's folder, tasks/<card>-...
-# The card's latest hand-off says which. A tab is found by its name, in the
+# A card's agent is the one running its current phase. That is the write-up
+# phase, in the tab `task new` names after the card, until the work starts,
+# then the build phase, in the tab `task start` names after the task's
+# folder, tasks/<card>-... The card's latest hand-off says which. A tab is found by its name, in the
 # space whose folder is the project's, as `task finish` finds the task's tab.
 #
 # For each terminal in that tab, hc says what its program last reported: its
@@ -80,11 +80,11 @@ took_text() {
 # changed, or from the hand-off when it gives no time. It runs for every card
 # in the log, so it starts no program for a card with no tab open, and sets
 # AGENT_JSON rather than printing it, which would take a subshell.
-#   card_agent <card> <the card in lower case> <phase> <status> <next>
+#   card_agent <card> <the card in lower case> <step> <status> <next>
 #              <seconds since the hand-off>
 AGENT_JSON=null
 card_agent() {
-  local card=$1 low=$2 phase=$3 status=$4 next=$5 since=$6
+  local card=$1 low=$2 step=$3 status=$4 next=$5 since=$6
   AGENT_JSON=null
   [ "$AGENTS_ON" = 1 ] || return 0
 
@@ -94,10 +94,10 @@ card_agent() {
     done) case $next in '' | start | setup | merged) ;; *) under=1 ;; esac ;;
   esac
 
-  # The write-up's tab until the work starts, then the task's, named after
-  # its folder: the card in lower case, alone or before a dash.
+  # The write-up phase's tab until the work starts, then the task's, named
+  # after its folder: the card in lower case, alone or before a dash.
   local writeup=0 sep=$'\x1f' name terms tabs=() termlists=()
-  case $phase in new | define | plan | breakdown) writeup=1 ;; esac
+  case $step in new | define | plan | breakdown) writeup=1 ;; esac
   while IFS=$sep read -r name terms; do
     [ -n "$name" ] || continue
     if [ "$writeup" = 1 ]; then
@@ -158,7 +158,7 @@ card_agent() {
   # An agent that `task new` or `task start` has only just started.
   case $state in
     stopped | 'not running')
-      case $phase in new | start) [ "$since" -ge "$AGENT_START_GRACE" ] || state='' ;; esac
+      case $step in new | start) [ "$since" -ge "$AGENT_START_GRACE" ] || state='' ;; esac
       ;;
   esac
 
@@ -199,18 +199,18 @@ card_agent() {
 AGENTS_SQL='agents (card, agent) as (select null, null where 0)'
 AGENT_LAST=''
 agents_table() {
-  local view=$1 dir=$2 rows sep=$'\x1f' card low phase status next since values=''
+  local view=$1 dir=$2 rows sep=$'\x1f' card low step status next since values=''
   AGENTS_SQL='agents (card, agent) as (select null, null where 0)' AGENT_LAST=''
   [ -n "$view" ] || return 0
   agents_read "$dir"
   [ "$AGENTS_ON" = 1 ] || return 0
   rows=$(store -separator "$sep" "$STORE" "$view
-    select card, lower(card), phase, status, coalesce(next, ''),
+    select card, lower(card), step, status, coalesce(next, ''),
       max(cast(strftime('%s', 'now') - strftime('%s', at) as integer), 0)
     from shown where after is null order by id;") || return 0
-  while IFS=$sep read -r card low phase status next since; do
+  while IFS=$sep read -r card low step status next since; do
     [ -n "$card" ] || continue
-    card_agent "$card" "$low" "$phase" "$status" "$next" "$since" || AGENT_JSON=null
+    card_agent "$card" "$low" "$step" "$status" "$next" "$since" || AGENT_JSON=null
     [ "$AGENT_JSON" != null ] || continue
     values="$values${values:+, }($(sql_str "$card"), $(sql_str "$AGENT_JSON"))"
     AGENT_LAST=$AGENT_JSON
