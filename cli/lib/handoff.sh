@@ -84,15 +84,20 @@ store_handoff() {
     values ($values);"
 }
 
-# Note that a card's write-up has begun, so the first step's length can be
-# read from the store. It never fails a `task new`: it only says when it could
-# not record.
+# Note that work on a card has begun, so the first step's length can be read
+# from the store. `task new` records a `new` row, which starts a run of the
+# card, with define next. `task start` records a `start` row, with build next:
+# it starts no run, so the write-up and the build are one run of the card.
+# Neither command is ever failed by it: it only says when it could not record.
+#   record_start <project> <card> [start]
 record_start() {
+  local phase=new next=define
+  [ "${3:-}" != start ] || phase=start next=build
   if ! have_sqlite; then
     say "  note      $SQLITE is not installed, so hand-offs are not recorded"
     return 0
   fi
-  { store_ready && store_handoff "$1" "$2" new done define '' '' '' '' '' ''; } ||
+  { store_ready && store_handoff "$1" "$2" "$phase" done "$next" '' '' '' '' '' ''; } ||
     say "  note      could not record the start in $STORE"
 }
 
@@ -206,6 +211,8 @@ task_handoff() {
 # answered row is waiting on the human and belongs to no step. A needs-human
 # row with nothing after it is still waiting, measured to now. A `new` row
 # starts a run, so it has no time, however long ago the run before it ended.
+# A `start` row, from `task start`, shows as a `new` row does but starts no
+# run: the time before it was the human's, and the build is timed from it.
 
 # SQL for a number of seconds as text: 50s, 1m 44s, 1h 02m, 3d 04h. @ stands
 # for the column that holds the seconds.
@@ -232,18 +239,18 @@ log_view() {
       window w as (partition by card order by id)),
     timed as (
       select *,
-        case when phase = 'new' or prev_at is null then null
+        case when phase in ('new', 'start') or prev_at is null then null
           else max(cast(strftime('%%s', at) - strftime('%%s', prev_at) as integer), 0) end as seconds,
         case when after is null and status = 'needs-human'
           then max(cast(strftime('%%s', 'now') - strftime('%%s', at) as integer), 0) end as open_seconds
       from base),
     labeled as (
       select *,
-        case when phase = 'new' then 'start'
+        case when phase in ('new', 'start') then 'start'
           when status = 'answered' and before = 'needs-human' then 'wait'
           else 'step' end as kind,
         status || case when next is null then '' else ', then ' || next end as what,
-        case when phase = 'new' then 'started'
+        case when phase in ('new', 'start') then 'started'
           when status = 'done' then phase || ' done'
           when status = 'needs-human' then phase || ' asked a question'
           when status = 'answered' then 'answered'
@@ -260,7 +267,7 @@ log_view() {
     shown as (
       select *,
         case when status = 'needs-human' then 'waiting on the human'
-          when phase = 'new' then 'started'
+          when phase in ('new', 'start') then 'started'
           else label || substr(what, length(status) + 1) end as state
       from labeled)" \
     "$3" "$(sql_str "$1")" "$cards" \

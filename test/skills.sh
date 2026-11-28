@@ -1,4 +1,4 @@
-# Tests for what the skills and the task-new prompt must say the same way.
+# Tests for what the skills and the prompts must say the same way.
 # No agent runs here: these only read the text. Sourced by test/run.sh.
 
 # The skills for the steps of a card's lifecycle, each named sdlc-<step>: the
@@ -67,6 +67,18 @@ task_new_prompt_follows_the_block() {
   local prompt=$REPO/prompts/task-new.md want
   for want in '`done`' '`needs-human`' '`failed`' 'next: setup' '{card}' '{project}'; do
     grep -qF -- "$want" "$prompt" || fail "the task-new prompt does not mention $want"
+  done
+}
+
+# The build's agent starts from prompts/task-build.md, which drives build and
+# review as task-new.md drives the write-up, and ends the run where the pull
+# request would begin.
+task_build_prompt_drives_build_and_review() {
+  local prompt=$REPO/prompts/task-build.md want
+  for want in 'Start with the sdlc-build skill' '`review` is the sdlc-review skill' \
+      '`build` is the sdlc-build skill' 'next: pr' '`done`' '`needs-human`' '`failed`' \
+      '{card}' '{project}' 'entourage task handoff {project} {card}' 'record my answer'; do
+    grep -qF -- "$want" "$prompt" || fail "the task-build prompt does not mention $want"
   done
 }
 
@@ -252,4 +264,5 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_hands_off_as_itself no_skill_says_then_stop
   no_skill_names_a_person a_routed_change_returns_to_breakdown
   a_done_block_is_written_before_the_next_step
-  task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card"
+  task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
+  task_build_prompt_drives_build_and_review"

@@ -23,6 +23,8 @@ Usage:
   entourage task new <project> <card>      write a card up: an agent defines, plans and breaks it down
   entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
                                            start the work: a worktree per repo, opened as a tab
+                                           where the agent builds the card
+  entourage task build <project> <card>    start the agent that builds the card, in its task's tab
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
   entourage task log <project> [<card>] [--json]
                                            list a card's hand-offs and how long each step took,
@@ -58,23 +60,27 @@ a, an and the, like feat/abc-122-export-orders-as-csv. It needs your Linear
 key, and stops before it makes anything when Linear has no such card, the
 card has no type, or Linear cannot be asked. It makes a folder in the
 project's tasks/ folder with a worktree of each repo on that branch, and
-opens a tab for it. Setup is off for now: with ENTOURAGE_SETUP=1, a
-repo with a justfile that has a `setup` recipe gets `just setup` run in that
-tab, so the checkout is ready to work in.
+opens a tab for it. Then it types `entourage task build <project> <card>`
+into the tab, which starts the agent on the card, with no one typing there.
+Setup is off for now: with ENTOURAGE_SETUP=1, a repo with a justfile that has
+a `setup` recipe gets `just setup` run in that tab first, so the checkout is
+ready to work in before the agent starts. When Claude Code has not trusted the
+repo yet, `task start` says that Claude Code will ask once in the tab.
 Targets after the card narrow the task: `app` takes only that repo, and
 `app:athlete` sets it up for its athlete group (`just setup athlete`).
 Join several groups with a comma: `app:athlete,coach`.
-To build the card once its task is started, start an agent in the task's tab
-and ask it to build the card with the sdlc-build skill (`/sdlc-build ABC-122`).
-It makes the change the card's Plan describes, runs the tests and commits on
-the task's branch. It first installs what the tests need, the way the repo's
-docs say, and starts no app, server or database. It pushes nothing and opens
-no pull request.
-Then ask it to review the build with the sdlc-review skill
-(`/sdlc-review ABC-122`). It runs the tests, checks each Done when item
-against the card's Plan and writes what it found on the card as a Review.
-What is not met goes back to sdlc-build; when all is met, the commits wait on
-the task's branch. It changes no code and pushes nothing.
+`task build` starts the agent in the folder it is run in, which has to be the
+card's task, with the first message in prompts/task-build.md: build the card
+with the sdlc-build skill, then review the build with the sdlc-review skill.
+Run it again in the tab if the agent stops. The build makes the change the
+card's Plan describes, runs the tests and commits on the task's branch. It
+first installs what the tests need, the way the repo's docs say, and starts
+no app, server or database. The review runs the tests, checks each Done when
+item against the card's Plan and writes what it found on the card as a
+Review. What is not met goes back to sdlc-build; when all is met, the commits
+wait on the task's branch. Neither pushes anything or opens a pull request.
+Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
+`/sdlc-review ABC-122`.
 `task handoff` is run by the agent each time a step ends or pauses, and
 when the human answers a question. It reads a handoff block on stdin (phase,
 status, next and so on, one per line), refuses one that breaks the rules, and

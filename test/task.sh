@@ -820,12 +820,12 @@ task_start_leaves_setup_off() {
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
   [ -d "$T/abc-1-x/api" ] || fail "no worktree"
   [ "$(last_call)" = "do tab.new {\"name\":\"abc-1-x\",\"folder\":\"$T/abc-1-x/api\"}" ] || fail "did not open the tab: $(last_call)"
-  [ -z "$(hc_calls)" ] || fail "typed setup into the tab: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 entourage task build demo ABC-1" ] || fail "typed setup into the tab: $(hc_calls)"
   case $out in *"setup     not run"*"ENTOURAGE_SETUP=1"*) ;; *) fail "did not say setup is off: $out" ;; esac
   case $out in *"running in the tab"*) fail "said setup is running: $out" ;; esac
   # Only 1 turns it on.
   ENTOURAGE_SETUP=0 "$E" task start demo ABC-2 >/dev/null || fail "task start exited non-zero with ENTOURAGE_SETUP=0"
-  [ -z "$(hc_calls)" ] || fail "ENTOURAGE_SETUP=0 typed setup into the tab: $(hc_calls)"
+  [ "$(hc_calls | tail -n 1)" = "send t9 entourage task build demo ABC-2" ] || fail "ENTOURAGE_SETUP=0 typed setup into the tab: $(hc_calls)"
 }
 
 task_start_turns_setup_on_from_the_env_file() {
@@ -833,14 +833,14 @@ task_start_turns_setup_on_from_the_env_file() {
   mkdir -p "$(dirname "$(env_file)")"
   echo 'ENTOURAGE_SETUP=1' > "$(env_file)"; chmod 600 "$(env_file)"
   "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 just setup" ] || fail "the env file did not turn setup on: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 just setup && entourage task build demo ABC-1" ] || fail "the env file did not turn setup on: $(hc_calls)"
 }
 
 task_start_runs_setup_one_repo() {
   setup_on
   stub_just; stub_hc; task_demo api; give_setup api
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 just setup" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 just setup && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
   case $out in *"setup     api (running in the tab)"*) ;; *) fail "did not report setup: $out" ;; esac
 }
 
@@ -855,14 +855,14 @@ echo "\$*" >> "$TMP/herdr-calls.log"
 exit 0
 EOF
   "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t42 just setup" ] || fail "did not use the terminal tab.new named: $(hc_calls)"
+  [ "$(hc_calls)" = "send t42 just setup && entourage task build demo ABC-1" ] || fail "did not use the terminal tab.new named: $(hc_calls)"
 }
 
 task_start_runs_setup_several_repos() {
   setup_on
   stub_just; stub_hc; task_demo api web docs; give_setup api; give_setup docs
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'docs' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'docs' && just setup) && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
   case $out in *"setup     web skipped: no justfile"*) ;; *) fail "did not report the skipped repo: $out" ;; esac
   case $out in *"setup     docs (running in the tab)"*) ;; *) fail "did not report docs: $out" ;; esac
 }
@@ -871,7 +871,7 @@ task_start_skips_setup_without_a_recipe() {
   setup_on
   stub_just; stub_hc; task_demo api; give_setup api 'setup-db:\n\techo\npresetup:\n\techo\n'
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
-  [ -z "$(hc_calls)" ] || fail "typed into the tab: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 entourage task build demo ABC-1" ] || fail "typed into the tab: $(hc_calls)"
   case $out in *"setup     api skipped: its justfile has no setup recipe"*) ;; *) fail "did not say why: $out" ;; esac
 }
 
@@ -879,7 +879,7 @@ task_start_skips_an_unreadable_justfile() {
   setup_on
   stub_just; stub_hc; task_demo api; give_setup api 'BROKEN\nsetup:\n\techo\n'
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
-  [ -z "$(hc_calls)" ] || fail "typed into the tab: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 entourage task build demo ABC-1" ] || fail "typed into the tab: $(hc_calls)"
   case $out in *"setup     api skipped: its justfile could not be read by just"*) ;; *) fail "did not say why: $out" ;; esac
 }
 
@@ -891,7 +891,7 @@ task_start_ignores_a_parent_justfile() {
   stub_just; stub_hc; task_demo api
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
   [ -d "$ENTOURAGE_HOME/projects/demo/tasks/abc-1-x/api" ] || fail "no worktree"
-  [ -z "$(hc_calls)" ] || fail "ran a justfile from above the task: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 entourage task build demo ABC-1" ] || fail "ran a justfile from above the task: $(hc_calls)"
   case $out in *"setup     api skipped: no justfile"*) ;; *) fail "did not report the skip: $out" ;; esac
 }
 
@@ -899,7 +899,7 @@ task_start_quotes_repo_names() {
   setup_on
   stub_just; stub_hc; task_demo "my api" "it's"; give_setup "my api"; give_setup "it's"
   "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 (cd ./'my api' && just setup) && (cd ./'it'\\''s' && just setup)" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 (cd ./'my api' && just setup) && (cd ./'it'\\''s' && just setup) && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
 }
 
 task_start_without_just() {
@@ -907,7 +907,7 @@ task_start_without_just() {
   stub_hc; task_demo api; give_setup api
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero without just"
   [ -d "$T/abc-1-x/api" ] || fail "no worktree"
-  [ -z "$(hc_calls)" ] || fail "typed into the tab: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 entourage task build demo ABC-1" ] || fail "typed into the tab: $(hc_calls)"
   case $out in *"just is not installed"*"https://just.systems"*) ;; *) fail "did not say just is missing: $out" ;; esac
 }
 
@@ -916,7 +916,7 @@ task_start_without_hc() {
   stub_just; task_demo api; give_setup api
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero without hc"
   [ -d "$T/abc-1-x/api" ] || fail "no worktree"
-  case $out in *"run it yourself in the tab: just setup"*) ;; *) fail "did not say what to run: $out" ;; esac
+  case $out in *"run it yourself in the tab: just setup && entourage task build demo ABC-1"*) ;; *) fail "did not say what to run: $out" ;; esac
 }
 
 task_start_without_a_terminal() {
@@ -931,7 +931,7 @@ EOF
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero with no terminal"
   [ -z "$(hc_calls)" ] || fail "typed somewhere without a terminal: $(hc_calls)"
   [ -d "$T/abc-1-x/api" ] || fail "no worktree"
-  case $out in *"run it yourself in the tab: just setup"*) ;; *) fail "did not say what to run: $out" ;; esac
+  case $out in *"run it yourself in the tab: just setup && entourage task build demo ABC-1"*) ;; *) fail "did not say what to run: $out" ;; esac
 }
 
 task_start_when_hc_send_fails() {
@@ -939,7 +939,7 @@ task_start_when_hc_send_fails() {
   stub_just; stub_hc 1; task_demo api; give_setup api
   out=$("$E" task start demo ABC-1) || fail "task start exited non-zero when hc failed"
   [ -d "$T/abc-1-x/api" ] || fail "no worktree"
-  case $out in *"run it yourself in the tab: just setup"*) ;; *) fail "did not say what to run: $out" ;; esac
+  case $out in *"run it yourself in the tab: just setup && entourage task build demo ABC-1"*) ;; *) fail "did not say what to run: $out" ;; esac
   case $out in *"running in the tab"*) fail "said setup is running when it could not be started: $out" ;; esac
 }
 
@@ -949,6 +949,142 @@ SETUP_CASES="task_start_leaves_setup_off task_start_turns_setup_on_from_the_env_
   task_start_skips_an_unreadable_justfile task_start_ignores_a_parent_justfile
   task_start_quotes_repo_names task_start_without_just task_start_without_hc
   task_start_without_a_terminal task_start_when_hc_send_fails"
+
+# --- tasks: the agent in the task's tab -------------------------------------
+
+# task start types `entourage task build` into the task's tab, after setup when
+# setup runs, so the agent starts on the card with no one typing there.
+task_start_starts_the_agent_in_the_tab() {
+  stub_hc; task_demo api
+  out=$("$E" task start demo abc-1) || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
+  case $out in *"agent     starting in the tab"*) ;; *) fail "did not say the agent is starting: $out" ;; esac
+}
+
+task_start_says_how_to_start_the_agent_without_hc() {
+  task_demo api
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero without hc"
+  [ -d "$T/abc-1-x/api" ] || fail "no worktree"
+  case $out in *"run it yourself in the tab: entourage task build demo ABC-1"*) ;; *) fail "did not say what to run: $out" ;; esac
+  case $out in *"starting in the tab"*) fail "said the agent is starting: $out" ;; esac
+}
+
+# A worktree takes the trust of its repo's own checkout, never of the project
+# folder above it. task start only reads Claude Code's file, and says when the
+# agent will be asked.
+task_start_notes_a_repo_claude_code_has_not_trusted() {
+  claude_state; task_demo api
+  cp "$HOME/.claude.json" "$TMP/before"
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
+  case $out in *"Claude Code will ask once in the tab whether to trust api"*) ;; *) fail "did not say Claude Code will ask: $out" ;; esac
+  cmp -s "$HOME/.claude.json" "$TMP/before" || fail "wrote Claude Code's file: $(cat "$HOME/.claude.json")"
+}
+
+task_start_says_nothing_of_a_trusted_repo() {
+  task_demo api
+  claude_state "{\"projects\":{\"$HOME/Dev/api\":{\"hasTrustDialogAccepted\":true}}}"
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
+  case $out in *"whether to trust"*) fail "spoke of trust for a repo Claude Code trusts: $out" ;; esac
+}
+
+# With several repos the tab is in the task folder, inside the project folder
+# that project new trusts.
+task_start_says_nothing_of_trust_for_several_repos() {
+  claude_state; task_demo api web
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
+  case $out in *"whether to trust"*) fail "spoke of trust for a tab in the task folder: $out" ;; esac
+}
+
+# The log shows when the work was started, and a store that cannot be written
+# never stops the task.
+task_start_records_the_start() {
+  task_demo api
+  "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
+  out=$("$E" task log demo ABC-1) || fail "task log exited non-zero"
+  case $out in *"start      done, then build"*) ;; *) fail "the log does not show the start: $out" ;; esac
+}
+
+task_start_starts_when_the_store_cannot_be_written() {
+  task_demo api
+  mkdir -p "$HOME/.config/entourage/entourage.db"
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero with a store it cannot write"
+  [ -d "$T/abc-1-x/api" ] || fail "no worktree"
+  case $out in *"could not record"*) ;; *) fail "did not say the start was not recorded: $out" ;; esac
+}
+
+# The project "demo" as task start leaves it for the card ABC-1: skills
+# linked, the task's folder with a worktree's folder in it, and an agent on
+# PATH that notes where it ran and what it was told.
+build_demo() {
+  "$E" install >/dev/null
+  "$E" project new demo >/dev/null
+  cat > "$TMP/bin/claude" <<EOF
+#!/usr/bin/env bash
+pwd -P > "$TMP/agent-folder"
+printf '%s' "\$*" > "$TMP/agent-message"
+EOF
+  chmod +x "$TMP/bin/claude"
+  WT=$P/demo/tasks/abc-1-x/api
+  mkdir -p "$WT"
+}
+agent_ran() { [ -e "$TMP/agent-folder" ]; }
+
+task_build_starts_the_agent() {
+  build_demo
+  (cd "$WT" && "$E" task build demo abc-1) || fail "task build exited non-zero"
+  agent_ran || fail "the agent did not start"
+  [ "$(cat "$TMP/agent-folder")" = "$WT" ] || fail "the agent started in $(cat "$TMP/agent-folder")"
+  local msg want d
+  msg=$(cat "$TMP/agent-message")
+  for want in "Linear card ABC-1" "entourage project \`demo\`" sdlc-build sdlc-review "entourage task handoff demo ABC-1"; do
+    case $msg in *"$want"*) ;; *) fail "the first message does not mention '$want': $msg" ;; esac
+  done
+  case $msg in *"{card}"* | *"{project}"*) fail "a placeholder was left in the first message: $msg" ;; esac
+  # The task folder of several repos, and that of a card whose title had no
+  # plain words, are the card's too.
+  mkdir -p "$P/demo/tasks/abc-1"
+  for d in "$P/demo/tasks/abc-1-x" "$P/demo/tasks/abc-1"; do
+    (cd "$d" && "$E" task build demo ABC-1) || fail "task build refused $d"
+    [ "$(cat "$TMP/agent-folder")" = "$d" ] || fail "the agent started in $(cat "$TMP/agent-folder"), not $d"
+  done
+}
+
+# The agent works where it starts, so that has to be the card's own task.
+task_build_refuses_outside_the_cards_task() {
+  build_demo
+  mkdir -p "$P/demo/tasks/abc-2-y" "$P/demo/tasks/abc-12-z" "$TMP/elsewhere"
+  local d
+  for d in "$P/demo" "$P/demo/tasks" "$P/demo/tasks/abc-2-y" "$P/demo/tasks/abc-12-z" "$TMP/elsewhere"; do
+    (cd "$d" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "started the agent in $d"
+    grep -qF 'entourage task start demo ABC-1' "$TMP/err" || fail "did not say how to start the task, in $d: $(cat "$TMP/err")"
+  done
+  agent_ran && fail "the agent started"
+}
+
+task_build_needs_an_agent() {
+  build_demo
+  rm "$TMP/bin/claude"
+  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "exited zero with no agent on PATH"
+  grep -q ENTOURAGE_AGENT "$TMP/err" || fail "did not name the setting: $(cat "$TMP/err")"
+}
+
+task_build_needs_the_skills_linked() {
+  build_demo
+  rm "$SK/sdlc-review"
+  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "started the agent without sdlc-review"
+  grep -q sdlc-review "$TMP/err" && grep -q 'entourage update' "$TMP/err" || fail "did not say sdlc-review is missing: $(cat "$TMP/err")"
+  ln -s "$REPO/skills/sdlc-review" "$SK/sdlc-review"
+  rm "$SK/sdlc-build"
+  (cd "$WT" && "$E" task build demo ABC-1) >/dev/null 2>"$TMP/err" && fail "started the agent without sdlc-build"
+  grep -q sdlc-build "$TMP/err" && grep -q 'entourage update' "$TMP/err" || fail "did not say sdlc-build is missing: $(cat "$TMP/err")"
+  agent_ran && fail "the agent started"
+}
+
+BUILD_CASES="task_start_starts_the_agent_in_the_tab task_start_says_how_to_start_the_agent_without_hc
+  task_start_notes_a_repo_claude_code_has_not_trusted task_start_says_nothing_of_a_trusted_repo
+  task_start_says_nothing_of_trust_for_several_repos task_start_records_the_start
+  task_start_starts_when_the_store_cannot_be_written task_build_starts_the_agent
+  task_build_refuses_outside_the_cards_task task_build_needs_an_agent task_build_needs_the_skills_linked"
 
 # --- tasks: targets ---------------------------------------------------------
 
@@ -960,7 +1096,7 @@ task_start_one_target_with_a_group() {
   [ ! -e "$T/abc-1-x/web" ] || fail "made a worktree for a repo that was not named"
   has_branch "$HOME/Dev/web" feat/abc-1-x && fail "made a branch in a repo that was not named"
   [ ! -e "$T/abc-1-x/CLAUDE.md" ] && [ ! -L "$T/abc-1-x/CLAUDE.md" ] || fail "linked the project doc beside one repo"
-  [ "$(hc_calls)" = "send t9 just setup athlete" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 just setup athlete && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
   [ "$(last_call)" = "do tab.new {\"name\":\"abc-1-x\",\"folder\":\"$T/abc-1-x/api\"}" ] || fail "the tab is not in the worktree: $(last_call)"
   case $out in *"setup     api athlete (running in the tab)"*) ;; *) fail "did not report the group: $out" ;; esac
 }
@@ -969,14 +1105,14 @@ task_start_several_groups() {
   setup_on
   stub_just; stub_hc; task_demo api; give_setup api
   "$E" task start demo ABC-1 api:athlete,coach >/dev/null || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 just setup athlete coach" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 just setup athlete coach && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
 }
 
 task_start_several_targets() {
   setup_on
   stub_just; stub_hc; task_demo api web docs; give_setup api; give_setup web
   "$E" task start demo ABC-1 web:coach api >/dev/null || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'web' && just setup coach)" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 (cd ./'api' && just setup) && (cd ./'web' && just setup coach) && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
   [ -d "$T/abc-1-x/api" ] && [ -d "$T/abc-1-x/web" ] || fail "missing a named repo's worktree"
   [ ! -e "$T/abc-1-x/docs" ] || fail "made a worktree for a repo that was not named"
   is_link_to "$T/abc-1-x/CLAUDE.md" ../../PROJECT.md || fail "no project doc link for a task of several repos"
@@ -987,7 +1123,7 @@ task_start_a_target_without_a_group() {
   setup_on
   stub_just; stub_hc; task_demo api web; give_setup web
   "$E" task start demo ABC-1 web >/dev/null || fail "task start exited non-zero"
-  [ "$(hc_calls)" = "send t9 just setup" ] || fail "wrong hc calls: $(hc_calls)"
+  [ "$(hc_calls)" = "send t9 just setup && entourage task build demo ABC-1" ] || fail "wrong hc calls: $(hc_calls)"
   [ ! -e "$T/abc-1-x/api" ] || fail "made a worktree for a repo that was not named"
 }
 
@@ -1056,7 +1192,7 @@ TARGET_CASES="task_start_refuses_bad_groups_in_any_locale task_start_does_not_fe
   task_start_refuses_bad_targets task_start_refuses_a_repo_named_twice
   task_start_lists_repos_for_an_unknown_target"
 
-CASES="$TARGET_CASES $SETUP_CASES $CARD_CASES $CARD_START_CASES
+CASES="$TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES
   task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
   task_start_keeps_the_task_when_the_space_fails task_start_branch_has_no_upstream
   task_start_refusal_keeps_the_first_task task_start_refusal_keeps_an_existing_branch
