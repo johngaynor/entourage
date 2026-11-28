@@ -212,6 +212,15 @@ from the clone, removes the Claude Code worktree under `.claude/worktrees/`
 that the work was done in, deletes its branch and updates the clone; see
 [CLAUDE.md](CLAUDE.md#after-a-pull-request-merges).
 
+A git worktree of the repo, such as the one `task start` makes for one of
+entourage's own cards, holds a copy of the CLI that is a change being built.
+Its `./cli/entourage` runs only the commands that read: `help`, `status`,
+`project ls`, `project team <name>`, `task ls` and `task log`. Any other
+command stops before it does anything, says that it is a worktree's copy, and
+gives the command that runs it for real: `ENTOURAGE_LIVE=1 ./cli/entourage …`,
+for that one run. The installed `entourage` is never stopped, whatever folder
+it is run from, so an agent in the worktree records its hand-offs with it.
+
 ## Releasing
 
 A machine installed through npm gets changes only from a release:
