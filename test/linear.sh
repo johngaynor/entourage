@@ -189,6 +189,84 @@ linear_key_replaces_a_key_line_written_with_spaces() {
   [ "$(cat "$(env_file)" 2>&1)" = "$want" ] || fail "the env file holds: $(cat "$(env_file)" 2>&1)"
 }
 
+# A key line that starts with the mark some editors put at the start of a file
+# is read as the key, so it is replaced too. macOS grep, in a UTF-8 locale,
+# misses that mark in a file with a NUL byte in it, so this file has one.
+linear_key_replaces_a_key_line_that_starts_with_a_bom() {
+  stub_linear; linear_answers "$VIEWER"
+  mkdir -p "$HOME/.config/entourage"
+  for locale in C C.UTF-8; do
+    printf '\357\273\277LINEAR_API_KEY=lin_api_old\n# a\000b\nENTOURAGE_AGENT=codex\n' > "$(env_file)"
+    printf '%s\n' "$KEY" | LC_ALL=$locale "$E" linear key >/dev/null 2>&1 ||
+      fail "linear key exited non-zero in the $locale locale"
+    ! grep -a -q lin_api_old "$(env_file)" || fail "kept the old key in the $locale locale: $(cat -v "$(env_file)")"
+    grep -a -q -x 'ENTOURAGE_AGENT=codex' "$(env_file)" || fail "lost a line in the $locale locale: $(cat -v "$(env_file)")"
+    [ "$(key_in_file)" = "$KEY" ] || fail "in the $locale locale the env file holds: $(cat -v "$(env_file)")"
+  done
+}
+
+# GNU Stow links a whole folder into a dotfiles repo when it can, so the env
+# file can be a plain file in a git repo, reached through a linked folder. A
+# key written there could be committed and pushed, so none is written.
+linear_key_keeps_the_key_out_of_a_git_repo() {
+  stub_linear; linear_answers "$VIEWER"
+  mkdir -p "$TMP/dotfiles/entourage"
+  git init -q -b main "$TMP/dotfiles"
+  echo 'ENTOURAGE_AGENT=codex' > "$TMP/dotfiles/entourage/.env"
+  ln -s "$TMP/dotfiles/entourage" "$HOME/.config/entourage"
+  out=$(printf '%s\n' "$KEY" | "$E" linear key 2>&1) && fail "exited zero for a folder in a git repo"
+  [ "$(cat "$TMP/dotfiles/entourage/.env")" = 'ENTOURAGE_AGENT=codex' ] ||
+    fail "the file in the repo holds: $(cat "$TMP/dotfiles/entourage/.env")"
+  case $out in *"$TMP/dotfiles"*) ;; *) fail "did not name the repo: $out" ;; esac
+  case $out in *"LINEAR_API_KEY=<your key>"*) ;; *) fail "did not say how to add the line by hand: $out" ;; esac
+  case $out in *"$KEY"*) fail "printed the key: $out" ;; esac
+  [ "$(curl_count)" = 0 ] || fail "asked Linear before refusing: $(curl_calls)"
+}
+
+# entourage's folder may not be made yet. Made inside a linked folder, it
+# would be in the repo that folder is in.
+linear_key_keeps_the_key_out_of_a_git_repo_it_would_make_its_folder_in() {
+  stub_linear; linear_answers "$VIEWER"
+  mkdir -p "$TMP/dotfiles/config"
+  git init -q -b main "$TMP/dotfiles"
+  ln -s "$TMP/dotfiles/config" "$HOME/dots"
+  out=$(printf '%s\n' "$KEY" | ENTOURAGE_HOME=$HOME/dots/entourage "$E" linear key 2>&1) &&
+    fail "exited zero for a folder it would make in a git repo"
+  [ ! -e "$TMP/dotfiles/config/entourage" ] ||
+    fail "made the folder in the repo: $(ls -A "$TMP/dotfiles/config/entourage")"
+  case $out in *"$TMP/dotfiles"*) ;; *) fail "did not name the repo: $out" ;; esac
+  [ "$(curl_count)" = 0 ] || fail "asked Linear before refusing: $(curl_calls)"
+}
+
+# A folder where the env file should be is not the file. The key would be
+# moved into it, and said to be saved.
+linear_key_writes_nothing_into_a_folder_where_the_env_file_should_be() {
+  stub_linear; linear_answers "$VIEWER"
+  mkdir -p "$(env_file)"; chmod 755 "$(env_file)"
+  out=$(printf '%s\n' "$KEY" | "$E" linear key 2>&1) && fail "exited zero for a folder where the env file should be"
+  case $(ls -ld "$(env_file)") in
+    drwxr-xr-x*) ;;
+    *) fail "changed the folder's permissions: $(ls -ld "$(env_file)")" ;;
+  esac
+  # So that the folder can be looked in, and cleared away after the case.
+  chmod 755 "$(env_file)"
+  case $out in *Saved*) fail "said the key was saved: $out" ;; esac
+  [ -z "$(ls -A "$(env_file)")" ] || fail "wrote into the folder: $(ls -A "$(env_file)")"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear before refusing: $(curl_calls)"
+}
+
+# jq 1.6 exits zero for -e when it is given no JSON at all (old_jq, in
+# helpers.sh). What jq prints decides, so an answer that names nobody is
+# still not Linear's word on the key, an empty one included.
+linear_key_refuses_an_answer_that_names_no_user_with_an_old_jq() {
+  stub_linear; old_jq
+  for answer in '' '{"data":null}' '{"data":{"viewer":null}}' '{"data":{}}' '{"data":"hello"}'; do
+    linear_answers "$answer"
+    printf '%s\n' "$KEY" | "$E" linear key >/dev/null 2>&1 && fail "saved the key on the answer: '$answer'"
+  done
+  [ ! -e "$(env_file)" ] || fail "saved the key: $(cat "$(env_file)")"
+}
+
 # --- listing a project's open cards -----------------------------------------
 
 # The project "demo" on a machine with a key saved. Its Linear teams are the
@@ -211,9 +289,9 @@ ONE_TEAM='{"data":{
     {"name":"Ready for Dev","type":"unstarted","position":1,"team":{"key":"ABC"}},
     {"name":"Triage","type":"triage","position":0,"team":{"key":"ABC"}}]},
   "issues":{"nodes":[
-    {"identifier":"ABC-3","title":"Third card","url":"https://linear.app/x/issue/ABC-3/third-card","state":{"name":"In Review","type":"started"}},
-    {"identifier":"ABC-1","title":"First card","url":"https://linear.app/x/issue/ABC-1/first-card","state":{"name":"Backlog","type":"backlog"}},
-    {"identifier":"ABC-2","title":"Second \"quoted\" card","url":"https://linear.app/x/issue/ABC-2/second-card","state":{"name":"In Progress","type":"started"}}],
+    {"identifier":"ABC-3","title":"Third card","url":"https://linear.app/x/issue/ABC-3/third-card","updatedAt":"2024-03-01T00:00:00.000Z","state":{"name":"In Review","type":"started"}},
+    {"identifier":"ABC-1","title":"First card","url":"https://linear.app/x/issue/ABC-1/first-card","updatedAt":"2024-02-01T00:00:00.000Z","state":{"name":"Backlog","type":"backlog"}},
+    {"identifier":"ABC-2","title":"Second \"quoted\" card","url":"https://linear.app/x/issue/ABC-2/second-card","updatedAt":"2024-01-01T00:00:00.000Z","state":{"name":"In Progress","type":"started"}}],
     "pageInfo":{"hasNextPage":false,"endCursor":null}}}}'
 
 task_ls_lists_cards_under_their_status() {
@@ -280,6 +358,27 @@ task_ls_puts_a_status_two_teams_share_in_one_group() {
   XYZ-7  Seventh card
 Todo (1)
   XYZ-8  Eighth card'
+  [ "$out" = "$want" ] || fail "listed: $out"
+}
+
+# A status is one group across teams only when its name and its type are both
+# the same. A Todo that is unstarted in one team and backlog in another is two.
+task_ls_keeps_statuses_of_one_name_and_two_types_apart() {
+  listed_demo ABC XYZ
+  linear_answers '{"data":{
+    "teams":{"nodes":[{"key":"ABC"},{"key":"XYZ"}]},
+    "workflowStates":{"nodes":[
+      {"name":"Todo","type":"unstarted","position":1,"team":{"key":"ABC"}},
+      {"name":"Todo","type":"backlog","position":0,"team":{"key":"XYZ"}}]},
+    "issues":{"nodes":[
+      {"identifier":"ABC-1","title":"First card","url":"u1","state":{"name":"Todo","type":"unstarted"}},
+      {"identifier":"XYZ-7","title":"Seventh card","url":"u7","state":{"name":"Todo","type":"backlog"}}],
+      "pageInfo":{"hasNextPage":false,"endCursor":null}}}}'
+  out=$("$E" task ls demo) || fail "task ls exited non-zero"
+  want='Todo (1)
+  XYZ-7  Seventh card
+Todo (1)
+  ABC-1  First card'
   [ "$out" = "$want" ] || fail "listed: $out"
 }
 
@@ -409,6 +508,16 @@ task_ls_does_not_blame_the_key_for_a_page_from_the_network() {
   case $out in *403*) ;; *) fail "did not give the HTTP status: $out" ;; esac
 }
 
+# jq 1.6 takes an empty 403 for one of Linear's own answers, which would
+# blame the key for what a proxy or a firewall sent.
+task_ls_does_not_blame_the_key_for_an_empty_403_with_an_old_jq() {
+  listed_demo; old_jq
+  linear_answers ''; linear_status 403
+  out=$("$E" task ls demo 2>&1) && fail "exited zero for an empty 403"
+  case $out in *rejected* | *"new one"*) fail "blamed the key: $out" ;; esac
+  case $out in *403*) ;; *) fail "did not give the HTTP status: $out" ;; esac
+}
+
 # curl reads ~/.curlrc unless its first argument says not to, and a line there
 # such as --fail or --include changes what entourage reads back. The stand-in
 # cannot show curl's own behaviour, so this checks the argument it needs.
@@ -446,6 +555,36 @@ cards_page() {
 }
 backlog_card() {
   printf '{"identifier":"%s","title":"%s","url":"u","state":{"name":"Backlog","type":"backlog","position":0}}' "$1" "$2"
+}
+# A card in the Backlog that was last changed at $3.
+changed_card() {
+  printf '{"identifier":"%s","title":"%s","url":"u","updatedAt":"%s","state":{"name":"Backlog","type":"backlog","position":0}}' "$1" "$2" "$3"
+}
+
+# Linear pages through cards in the order it is asked for, each page starting
+# from a cursor. An edit changes a card's updatedAt, which would move it onto a
+# page already fetched and out of the list. When a card was made never changes.
+task_ls_asks_for_cards_in_an_order_an_edit_cannot_change() {
+  listed_demo; linear_answers "$ONE_TEAM"
+  "$E" task ls demo >/dev/null || fail "task ls exited non-zero"
+  case $(curl_calls) in
+    *'orderBy: createdAt'*) ;;
+    *) fail "did not ask for the cards in the order they were made: $(curl_calls)" ;;
+  esac
+}
+
+# Within a status the card changed last comes first, whichever page it is on.
+task_ls_lists_the_most_recently_changed_card_first() {
+  listed_demo
+  linear_answers \
+    "$(cards_page "$(changed_card ABC-3 'Third card' 2024-01-01T00:00:00.000Z),$(changed_card ABC-2 'Second card' 2024-03-01T00:00:00.000Z)" true '"cursor-1"')" \
+    "$(cards_page "$(changed_card ABC-1 'First card' 2024-04-01T00:00:00.000Z)" false null)"
+  out=$("$E" task ls demo) || fail "task ls exited non-zero"
+  want='Backlog (3)
+  ABC-1  First card
+  ABC-2  Second card
+  ABC-3  Third card'
+  [ "$out" = "$want" ] || fail "listed: $out"
 }
 
 # A card may be in a status the first page did not name, such as one made
@@ -715,6 +854,14 @@ env_file_that_cannot_be_read_says_so() {
   case $out in *"line "[0-9]*) fail "gave bash's own message: $out" ;; esac
 }
 
+# The same for anything there that is not a file, such as a folder: skipping
+# it would hide that the settings are not where entourage reads them.
+env_file_that_is_not_a_file_says_so() {
+  mkdir -p "$(env_file)"
+  out=$("$E" help 2>&1) && fail "exited zero with a folder where the env file should be"
+  case $out in *"$(env_file) is not a file"*) ;; *) fail "did not say the env file is not a file: $out" ;; esac
+}
+
 CASES="$CARD_LOOKUP_CASES
   linear_key_saves_the_key linear_key_keeps_the_env_file_private linear_key_closes_an_env_file_others_could_read
   linear_key_says_whose_key_it_is linear_key_never_shows_the_key linear_key_gives_curl_the_key_on_stdin
@@ -725,12 +872,18 @@ CASES="$CARD_LOOKUP_CASES
   env_file_takes_the_last_line_for_a_name env_file_lines_never_beat_an_exported_key
   env_file_is_used_when_the_exported_key_is_empty env_file_takes_comments_spaces_around_equals_and_a_bom
   env_file_drops_a_comment_from_a_path env_file_value_that_is_only_a_comment_is_empty
-  env_file_that_cannot_be_read_says_so
+  env_file_that_cannot_be_read_says_so env_file_that_is_not_a_file_says_so
   linear_key_refuses_an_answer_that_names_no_user linear_key_leaves_a_linked_env_file_alone
   linear_key_keeps_the_other_lines_of_a_file_grep_calls_binary linear_key_says_when_the_env_file_cannot_be_written
-  linear_key_replaces_a_key_line_written_with_spaces
+  linear_key_replaces_a_key_line_written_with_spaces linear_key_replaces_a_key_line_that_starts_with_a_bom
+  linear_key_keeps_the_key_out_of_a_git_repo linear_key_keeps_the_key_out_of_a_git_repo_it_would_make_its_folder_in
+  linear_key_writes_nothing_into_a_folder_where_the_env_file_should_be
+  linear_key_refuses_an_answer_that_names_no_user_with_an_old_jq
   task_ls_never_shows_the_key_in_what_linear_said task_ls_knows_a_rejected_key_by_its_status
   task_ls_takes_linears_own_403_as_a_rejected_key task_ls_does_not_blame_the_key_for_a_page_from_the_network
+  task_ls_does_not_blame_the_key_for_an_empty_403_with_an_old_jq
+  task_ls_asks_for_cards_in_an_order_an_edit_cannot_change task_ls_lists_the_most_recently_changed_card_first
+  task_ls_keeps_statuses_of_one_name_and_two_types_apart
   task_ls_keeps_curl_from_reading_the_humans_curlrc task_ls_never_lists_a_closed_status
   task_ls_lists_a_card_in_a_status_the_first_page_did_not_name task_ls_fails_when_linear_has_more_cards_and_no_cursor
   task_ls_lists_a_card_on_two_pages_once task_ls_reads_a_hand_edited_teams_file

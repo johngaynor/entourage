@@ -220,8 +220,12 @@ TEAM_RE='^[A-Za-z][A-Za-z0-9]*$'
 project_teams() {
   local dir=$1 line n=0 keys=''
   [ -f "$dir/teams" ] || return 0
+  # Not read, it would pass for a project with no team.
+  [ -r "$dir/teams" ] || die "cannot read $dir/teams. Check its owner and permissions, then run this again."
   while IFS= read -r line || [ -n "$line" ]; do
     n=$((n + 1))
+    # The mark some editors put at the start of a file.
+    line=${line#$'\357\273\277'}
     line=${line%%#*}
     line=${line#"${line%%[![:space:]]*}"}
     line=${line%"${line##*[![:space:]]}"}

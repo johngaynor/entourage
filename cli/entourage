@@ -143,9 +143,15 @@ KEY_EXPORTED=${LINEAR_API_KEY:+1}
 load_env() {
   local line name value from_file=' '
   local re='^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$'
-  [ -f "$ENV_FILE" ] || return 0
+  [ -e "$ENV_FILE" ] || return 0
   # Stop rather than go on without the file: its settings would be missing,
-  # and `linear key` would write it anew with only the key in it.
+  # and `linear key` would write it anew with only the key in it. Anything
+  # there that is not a file, such as a folder, stops it too.
+  [ -f "$ENV_FILE" ] || {
+    printf 'entourage: %s is not a file, and entourage reads its settings from a file there. Move it aside, then run this again.\n' \
+      "$ENV_FILE" >&2
+    exit 1
+  }
   [ -r "$ENV_FILE" ] || {
     printf 'entourage: cannot read %s. It should be yours, and readable by you only: check its owner, then run: chmod 600 %s\n' \
       "$ENV_FILE" "$ENV_FILE" >&2
