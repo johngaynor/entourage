@@ -87,7 +87,18 @@ re-reads everything.
 - **Check a machine:** `entourage status` lists each mod, layout, skill and
   agent profile and whether it is linked, and on a clone each review subagent
   and whether it is written. A settings file that is not valid settings is a
-  problem it names.
+  problem it names. Then it checks your Linear key (see
+  [Seeing a project's cards](#seeing-a-projects-cards)), by asking Linear whose
+  it is, and says where the key is set and one of these:
+
+  | It says | When | Its exit code |
+  |---|---|---|
+  | `works`, and whose the key is | Linear knows the key. | not changed |
+  | `note`, that no Linear key is saved | Neither the env file nor your environment holds one. `task ls`, the Cards panel and `task start` need one; save one with `entourage linear key`. Nothing is asked of Linear. | not changed |
+  | `problem`, that Linear rejected the key | Linear does not know the key, or `LINEAR_API_KEY` does not hold a key at all. Make a new key in Linear and save it with `entourage linear key`. | non-zero |
+  | `note`, that the key was not checked, and why | Linear is out of reach, something between this machine and Linear answered for it, or `curl` or `jq` is not installed. It says nothing of the key, which may still work. Linear gets the 20 seconds every Linear command waits for it. | not changed |
+
+  The key itself is never shown.
 - **Remove one from a machine:** delete its link in `~/.config/herdr-app/mods`
   or `layouts`. The next `entourage update` will link it again, so remove it
   from the repo to drop it everywhere.
@@ -168,6 +179,11 @@ entourage task ls <project> [--json]
 - **The key is never shown.** It is handed to `curl` on its stdin, never as an
   argument, and no message prints it. To take it off the machine, delete its
   line from the env file.
+- **`entourage status` checks the key** each time it runs, by asking Linear
+  whose it is. It says when the key works, when none is saved, when Linear
+  rejects it, and when it could not be checked; only a rejected key makes it
+  exit non-zero. See
+  [Keeping a machine up to date](#keeping-a-machine-up-to-date).
 - **When it cannot list, it says which thing is wrong:** no key saved, a key
   Linear rejects, Linear out of reach, something between this machine and
   Linear answering for it (a proxy's or a firewall's page), a project with no

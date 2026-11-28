@@ -1566,6 +1566,144 @@ WRITE_CASES="$REVIEW_CASES linear_type_sets_the_type_and_keeps_the_other_labels 
   linear_section_fails_when_the_text_above_changed linear_section_accepts_linears_rewriting_of_the_section
   linear_section_refuses_what_is_not_a_section"
 
+# --- status and the key -----------------------------------------------------
+
+# A machine with everything linked, so that only the key can make status exit
+# non-zero, and a stand-in for curl, so that a case that saves a key never
+# reaches the real Linear.
+status_machine() {
+  "$E" install >/dev/null || fail "install exited non-zero"
+  stub_linear
+}
+
+# status's line about the key: the one after its "Linear key:" heading.
+key_line() { printf '%s\n' "$1" | sed -n '/^Linear key: /{n;p;}'; }
+
+status_notes_when_no_key_is_saved() {
+  status_machine
+  out=$("$E" status 2>&1) || fail "status exited non-zero with no key saved: $out"
+  case $(key_line "$out") in
+    '  note       no Linear key is saved'*) ;;
+    *) fail "did not note that no key is saved: $out" ;;
+  esac
+  for want in 'task ls' 'the Cards panel' 'task start' 'entourage linear key'; do
+    case $(key_line "$out") in *"$want"*) ;; *) fail "the note does not name $want: $(key_line "$out")" ;; esac
+  done
+  case $out in *"Linear key: $(env_file)"*) ;; *) fail "did not say where the key is saved: $out" ;; esac
+  case $out in *"Everything is in order."*) ;; *) fail "did not say everything is in order: $out" ;; esac
+  [ "$(curl_count)" = 0 ] || fail "asked Linear with no key: $(curl_calls)"
+}
+
+# Linear's answer to a key it does not know, with the key echoed in its
+# message, at HTTP 400.
+REJECTED_WITH_KEY="{\"errors\":[{\"message\":\"Authentication failed for $KEY\",\"extensions\":{\"type\":\"authentication error\",\"userError\":true}}]}"
+
+# A 401, and Linear's own word for a key it does not know.
+status_says_a_rejected_key_is_a_problem() {
+  status_machine; saved_key
+  linear_answers "$REJECTED"; linear_status 401
+  out=$("$E" status 2>&1) && fail "status exited zero for a 401: $out"
+  case $(key_line "$out") in
+    '  problem    Linear rejected the key. Make a new one in '*', then save it with: entourage linear key') ;;
+    *) fail "did not list the rejected key as a problem: $out" ;;
+  esac
+  case $out in *"$KEY"*) fail "printed the key: $out" ;; esac
+  case $out in *"Everything is in order."*) fail "said everything is in order: $out" ;; esac
+  rm -f "$TMP/linear/status"
+  linear_answers "$REJECTED_WITH_KEY"; linear_status 400
+  out=$("$E" status 2>&1) && fail "status exited zero for Linear's authentication error: $out"
+  case $(key_line "$out") in
+    '  problem    Linear rejected the key.'*'entourage linear key') ;;
+    *) fail "did not list the rejected key as a problem: $out" ;;
+  esac
+  case $out in *"$KEY"*) fail "printed the key Linear's error held: $out" ;; esac
+  case $(curl_calls) in *"$KEY"*) fail "passed the key to curl as an argument: $(curl_calls)" ;; esac
+}
+
+status_says_a_key_that_is_not_a_key_is_a_problem() {
+  status_machine
+  out=$(LINEAR_API_KEY='two words' "$E" status 2>&1) && fail "status exited zero for a key that is not one: $out"
+  case $(key_line "$out") in
+    '  problem    LINEAR_API_KEY does not hold a Linear API key.'*'entourage linear key') ;;
+    *) fail "did not list the key as a problem: $out" ;;
+  esac
+  case $out in *"Linear key: LINEAR_API_KEY, exported in your environment"*) ;; *) fail "did not say the key is exported: $out" ;; esac
+  case $out in *'two words'*) fail "printed the key: $out" ;; esac
+  [ "$(curl_count)" = 0 ] || fail "asked Linear about something that is not a key: $(curl_calls)"
+}
+
+status_says_the_key_works() {
+  status_machine; saved_key
+  linear_answers "$VIEWER"
+  out=$("$E" status 2>&1) || fail "status exited non-zero for a key that works: $out"
+  [ "$(key_line "$out")" = '  works      the key of Ada Lovelace' ] || fail "did not say the key works: $out"
+  case $out in *"Everything is in order."*) ;; *) fail "did not say everything is in order: $out" ;; esac
+  case $out in *"$KEY"*) fail "printed the key: $out" ;; esac
+  [ "$(key_given_to_curl)" = "$KEY" ] || fail "curl was not given the key on stdin: $(cat "$TMP/curl-stdin.log" 2>&1)"
+  case $(curl_calls) in *viewer*) ;; *) fail "did not ask Linear whose the key is: $(curl_calls)" ;; esac
+}
+
+# A key exported in the shell wins over the file, so it is the one checked.
+status_checks_the_exported_key_over_the_env_file() {
+  status_machine; saved_key lin_api_FromTheFile
+  linear_answers "$VIEWER"
+  out=$(LINEAR_API_KEY=$KEY "$E" status 2>&1) || fail "status exited non-zero: $out"
+  [ "$(key_given_to_curl)" = "$KEY" ] || fail "curl was given another key: $(key_given_to_curl)"
+  case $out in *"Linear key: LINEAR_API_KEY, exported in your environment"*) ;; *) fail "did not say the key is exported: $out" ;; esac
+  case $out in *"$KEY"* | *lin_api_FromTheFile*) fail "printed a key: $out" ;; esac
+}
+
+# A name is anyone's text: an escape sequence in it must not reach the
+# terminal, nor a newline forge a line.
+status_shows_the_owners_name_as_plain_text() {
+  status_machine; saved_key
+  linear_answers '{"data":{"viewer":{"id":"u-1","name":"Ada \u001b[31mLovelace\u0007\n  problem    forged"}}}'
+  out=$("$E" status 2>&1) || fail "status exited non-zero: $out"
+  [ "$(key_line "$out")" = '  works      the key of Ada  [31mLovelace    problem    forged' ] ||
+    fail "the name was not made plain: $(key_line "$out" | od -c | head -n 10)"
+  case $out in *$'\e'* | *$'\a'*) fail "printed a control character: $(printf '%s' "$out" | od -c | head -n 20)" ;; esac
+}
+
+# None of these says anything of the key, so none calls it bad or counts
+# against status. $1 is what the note has to say the key was not checked for.
+status_key_not_checked() {
+  out=$("$E" status 2>&1) || fail "status exited non-zero when the key could not be checked ($1): $out"
+  case $(key_line "$out") in
+    "  note       the key was not checked: "*"$1"*) ;;
+    *) fail "did not note that the key was not checked ($1): $out" ;;
+  esac
+  case $out in *rejected* | *"new one"*) fail "blamed the key ($1): $out" ;; esac
+  case $out in *"$KEY"*) fail "printed the key ($1): $out" ;; esac
+  case $out in *"Everything is in order."*) ;; *) fail "did not say everything is in order ($1): $out" ;; esac
+}
+
+status_notes_when_the_key_cannot_be_checked() {
+  status_machine; saved_key
+  # Linear out of reach.
+  echo 6 > "$TMP/linear/exit"
+  status_key_not_checked 'could not reach Linear (curl: (6) Could not resolve host: api.linear.app)'
+  rm "$TMP/linear/exit"
+  # A proxy's page in Linear's place.
+  linear_answers '<html><body>502 Bad Gateway</body></html>'; linear_status 502
+  status_key_not_checked 'something between this machine and Linear answered for it, with HTTP status 502'
+  rm "$TMP/linear/status"
+  # An answer that names nobody did not come from Linear.
+  linear_answers '{"data":{"viewer":null}}'
+  status_key_not_checked "Linear's answer did not say whose key it is"
+  # No jq. Only the key needs it once the settings file is gone.
+  rm "$HOME/.config/entourage/settings.json"
+  hide_jq
+  status_key_not_checked 'jq is not installed'
+  # No curl.
+  hide_curl
+  status_key_not_checked 'curl is not installed'
+}
+
+STATUS_KEY_CASES="status_notes_when_no_key_is_saved status_says_a_rejected_key_is_a_problem
+  status_says_a_key_that_is_not_a_key_is_a_problem status_says_the_key_works
+  status_checks_the_exported_key_over_the_env_file status_shows_the_owners_name_as_plain_text
+  status_notes_when_the_key_cannot_be_checked"
+
 # The same for anything there that is not a file, such as a folder: skipping
 # it would hide that the settings are not where entourage reads them.
 env_file_that_is_not_a_file_says_so() {
@@ -1574,7 +1712,7 @@ env_file_that_is_not_a_file_says_so() {
   case $out in *"$(env_file) is not a file"*) ;; *) fail "did not say the env file is not a file: $out" ;; esac
 }
 
-CASES="$CARD_LOOKUP_CASES $WRITE_CASES $MOVE_CASES
+CASES="$CARD_LOOKUP_CASES $WRITE_CASES $MOVE_CASES $STATUS_KEY_CASES
   linear_key_saves_the_key linear_key_keeps_the_env_file_private linear_key_closes_an_env_file_others_could_read
   linear_key_says_whose_key_it_is linear_key_never_shows_the_key linear_key_gives_curl_the_key_on_stdin
   linear_key_replaces_the_old_key_and_keeps_the_other_lines linear_key_says_when_an_exported_key_is_used_instead

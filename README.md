@@ -121,8 +121,11 @@ entourage project team my-project ABC # once: the team whose cards are ABC-122
 entourage task ls my-project
 ```
 
-It asks Linear itself, with no agent running. See
-[herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
+It asks Linear itself, with no agent running. `entourage status` checks the
+saved key with Linear each time it runs: it says whose the key is when it
+works, notes when no key is saved or when the key could not be checked, and
+lists a key Linear rejects as a problem, which makes `status` exit non-zero.
+See [herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
 
 `task new` writes the card up. It opens a tab in the project's Herdr space and
 starts an agent there, with the `entourage-write-up` profile on the

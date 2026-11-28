@@ -477,7 +477,8 @@ status_is_quiet_when_setup_exists() {
   printf 'setup:\n\techo\n' > "$HOME/Dev/api/justfile"
   printf 'build:\n\techo\nsetup: build\n\techo\n' > "$HOME/Dev/web/Justfile"
   out=$("$E" status) || fail "status exited non-zero"
-  case $out in *note*) fail "a note for repos that have setup: $out" ;; esac
+  # Up to the Linear key, which has a note of its own when none is saved.
+  case ${out%%Linear key:*} in *note*) fail "a note for repos that have setup: $out" ;; esac
 }
 
 # entourage's own repo provides what it asks of others: its justfile, copied
@@ -486,7 +487,7 @@ status_is_quiet_for_entourages_own_justfile() {
   stub_just; status_demo entourage
   cp "$ROOT/justfile" "$HOME/Dev/entourage/justfile" || fail "entourage has no justfile at its root"
   out=$("$E" status) || fail "status exited non-zero"
-  case $out in *note*) fail "a note for entourage's own justfile: $out" ;; esac
+  case ${out%%Linear key:*} in *note*) fail "a note for entourage's own justfile: $out" ;; esac
 }
 
 status_ignores_a_parent_justfile() {
