@@ -159,8 +159,8 @@ programs: the Steps panel in Herdr draws it. Run
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
 Skills are linked into ~/.claude/skills, and agent profiles into
-~/.claude/agents (CLAUDE_CONFIG_DIR picks another ~/.claude). The agent is
-claude (ENTOURAGE_AGENT picks another command).
+~/.claude/agents (CLAUDE_CONFIG_DIR picks another ~/.claude). The harness is
+claude (ENTOURAGE_HARNESS picks another command).
 Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage). Hand-offs are recorded beside them, in
 entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
@@ -171,7 +171,7 @@ for `task new` and entourage-build for `task build`, and with Linear's MCP
 server alone (agents/linear-mcp.json), not the servers of your own sessions.
 Claude Code asks once to sign in to Linear as linear-server on a machine
 where it is not signed in under that name. When the profile is not linked,
-both stop before starting anything; run `entourage update`. Another agent
+both stop before starting anything; run `entourage update`. Another harness
 starts as it is, with no profile, model or effort.
 
 Each profile runs on the model and effort that ~/.config/entourage/settings.json

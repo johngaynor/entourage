@@ -28,7 +28,7 @@ linear_key_keeps_the_env_file_private() {
 linear_key_closes_an_env_file_others_could_read() {
   stub_linear; linear_answers "$VIEWER"
   mkdir -p "$HOME/.config/entourage"
-  echo 'ENTOURAGE_AGENT=codex' > "$(env_file)"; chmod 644 "$(env_file)"
+  echo 'ENTOURAGE_HARNESS=codex' > "$(env_file)"; chmod 644 "$(env_file)"
   printf '%s\n' "$KEY" | "$E" linear key >/dev/null
   case $(ls -l "$(env_file)" 2>&1) in
     -rw-------*) ;;
@@ -62,9 +62,9 @@ linear_key_gives_curl_the_key_on_stdin() {
 linear_key_replaces_the_old_key_and_keeps_the_other_lines() {
   stub_linear; linear_answers "$VIEWER"
   mkdir -p "$HOME/.config/entourage"
-  printf '%s\n' '# mine' 'LINEAR_API_KEY=lin_api_old' 'ENTOURAGE_AGENT=codex' > "$(env_file)"
+  printf '%s\n' '# mine' 'LINEAR_API_KEY=lin_api_old' 'ENTOURAGE_HARNESS=codex' > "$(env_file)"
   printf '%s\n' "$KEY" | "$E" linear key >/dev/null || fail "linear key exited non-zero"
-  want=$(printf '%s\n' '# mine' 'ENTOURAGE_AGENT=codex' "LINEAR_API_KEY=$KEY")
+  want=$(printf '%s\n' '# mine' 'ENTOURAGE_HARNESS=codex' "LINEAR_API_KEY=$KEY")
   [ "$(cat "$(env_file)" 2>&1)" = "$want" ] || fail "the env file holds: $(cat "$(env_file)" 2>&1)"
 }
 
@@ -139,11 +139,11 @@ linear_key_refuses_an_answer_that_names_no_user() {
 linear_key_leaves_a_linked_env_file_alone() {
   stub_linear; linear_answers "$VIEWER"
   mkdir -p "$HOME/.config/entourage" "$TMP/dotfiles"
-  echo 'ENTOURAGE_AGENT=codex' > "$TMP/dotfiles/env"
+  echo 'ENTOURAGE_HARNESS=codex' > "$TMP/dotfiles/env"
   ln -s "$TMP/dotfiles/env" "$(env_file)"
   out=$(printf '%s\n' "$KEY" | "$E" linear key 2>&1) && fail "exited zero for a linked env file"
   is_link_to "$(env_file)" "$TMP/dotfiles/env" || fail "the link was replaced"
-  [ "$(cat "$TMP/dotfiles/env")" = 'ENTOURAGE_AGENT=codex' ] ||
+  [ "$(cat "$TMP/dotfiles/env")" = 'ENTOURAGE_HARNESS=codex' ] ||
     fail "the file it links to holds: $(cat "$TMP/dotfiles/env")"
   case $out in *link*) ;; *) fail "did not say the env file is a link: $out" ;; esac
   case $out in *"$KEY"*) fail "printed the key: $out" ;; esac
@@ -155,9 +155,9 @@ linear_key_leaves_a_linked_env_file_alone() {
 linear_key_keeps_the_other_lines_of_a_file_grep_calls_binary() {
   stub_linear; linear_answers "$VIEWER"
   mkdir -p "$HOME/.config/entourage"
-  printf 'ENTOURAGE_AGENT=codex\n# a\000b\nLINEAR_API_KEY=lin_api_old\nENTOURAGE_SQLITE=sqlite3\n' > "$(env_file)"
+  printf 'ENTOURAGE_HARNESS=codex\n# a\000b\nLINEAR_API_KEY=lin_api_old\nENTOURAGE_SQLITE=sqlite3\n' > "$(env_file)"
   printf '%s\n' "$KEY" | "$E" linear key >/dev/null 2>&1 || fail "linear key exited non-zero"
-  grep -a -q -x 'ENTOURAGE_AGENT=codex' "$(env_file)" || fail "lost a line: $(cat -v "$(env_file)")"
+  grep -a -q -x 'ENTOURAGE_HARNESS=codex' "$(env_file)" || fail "lost a line: $(cat -v "$(env_file)")"
   grep -a -q -x 'ENTOURAGE_SQLITE=sqlite3' "$(env_file)" || fail "lost a line: $(cat -v "$(env_file)")"
   ! grep -a -q 'Binary file' "$(env_file)" || fail "wrote grep's note into the file: $(cat -v "$(env_file)")"
   [ "$(key_in_file)" = "$KEY" ] || fail "the env file holds: $(cat -v "$(env_file)")"
@@ -183,9 +183,9 @@ linear_key_says_when_the_env_file_cannot_be_written() {
 linear_key_replaces_a_key_line_written_with_spaces() {
   stub_linear; linear_answers "$VIEWER"
   mkdir -p "$HOME/.config/entourage"
-  printf '%s\n' 'LINEAR_API_KEY = lin_api_old' 'ENTOURAGE_AGENT=codex' > "$(env_file)"
+  printf '%s\n' 'LINEAR_API_KEY = lin_api_old' 'ENTOURAGE_HARNESS=codex' > "$(env_file)"
   printf '%s\n' "$KEY" | "$E" linear key >/dev/null 2>&1 || fail "linear key exited non-zero"
-  want=$(printf '%s\n' 'ENTOURAGE_AGENT=codex' "LINEAR_API_KEY=$KEY")
+  want=$(printf '%s\n' 'ENTOURAGE_HARNESS=codex' "LINEAR_API_KEY=$KEY")
   [ "$(cat "$(env_file)" 2>&1)" = "$want" ] || fail "the env file holds: $(cat "$(env_file)" 2>&1)"
 }
 
@@ -196,11 +196,11 @@ linear_key_replaces_a_key_line_that_starts_with_a_bom() {
   stub_linear; linear_answers "$VIEWER"
   mkdir -p "$HOME/.config/entourage"
   for locale in C C.UTF-8; do
-    printf '\357\273\277LINEAR_API_KEY=lin_api_old\n# a\000b\nENTOURAGE_AGENT=codex\n' > "$(env_file)"
+    printf '\357\273\277LINEAR_API_KEY=lin_api_old\n# a\000b\nENTOURAGE_HARNESS=codex\n' > "$(env_file)"
     printf '%s\n' "$KEY" | LC_ALL=$locale "$E" linear key >/dev/null 2>&1 ||
       fail "linear key exited non-zero in the $locale locale"
     ! grep -a -q lin_api_old "$(env_file)" || fail "kept the old key in the $locale locale: $(cat -v "$(env_file)")"
-    grep -a -q -x 'ENTOURAGE_AGENT=codex' "$(env_file)" || fail "lost a line in the $locale locale: $(cat -v "$(env_file)")"
+    grep -a -q -x 'ENTOURAGE_HARNESS=codex' "$(env_file)" || fail "lost a line in the $locale locale: $(cat -v "$(env_file)")"
     [ "$(key_in_file)" = "$KEY" ] || fail "in the $locale locale the env file holds: $(cat -v "$(env_file)")"
   done
 }
@@ -212,10 +212,10 @@ linear_key_keeps_the_key_out_of_a_git_repo() {
   stub_linear; linear_answers "$VIEWER"
   mkdir -p "$TMP/dotfiles/entourage"
   git init -q -b main "$TMP/dotfiles"
-  echo 'ENTOURAGE_AGENT=codex' > "$TMP/dotfiles/entourage/.env"
+  echo 'ENTOURAGE_HARNESS=codex' > "$TMP/dotfiles/entourage/.env"
   ln -s "$TMP/dotfiles/entourage" "$HOME/.config/entourage"
   out=$(printf '%s\n' "$KEY" | "$E" linear key 2>&1) && fail "exited zero for a folder in a git repo"
-  [ "$(cat "$TMP/dotfiles/entourage/.env")" = 'ENTOURAGE_AGENT=codex' ] ||
+  [ "$(cat "$TMP/dotfiles/entourage/.env")" = 'ENTOURAGE_HARNESS=codex' ] ||
     fail "the file in the repo holds: $(cat "$TMP/dotfiles/entourage/.env")"
   case $out in *"$TMP/dotfiles"*) ;; *) fail "did not name the repo: $out" ;; esac
   case $out in *"LINEAR_API_KEY=<your key>"*) ;; *) fail "did not say how to add the line by hand: $out" ;; esac
