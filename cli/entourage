@@ -14,7 +14,7 @@ entourage: set up and maintain this machine from the entourage repo
 Usage:
   entourage install            first-time setup: link everything into the tools on this machine
   entourage update [--no-pull] get the latest entourage, link anything new, drop stale links, refresh Herdr
-  entourage status             show what is linked and what is not, and check your projects
+  entourage status             show what is linked and what is not, and check your projects and your Linear key
   entourage project new <name> [<path>...]  make a project from the template, with the repos at those paths
   entourage project add <name> <path>       add a repo that is already on this machine
   entourage project open <name>             show the project as a Herdr space
