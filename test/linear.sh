@@ -715,7 +715,549 @@ env_file_that_cannot_be_read_says_so() {
   case $out in *"line "[0-9]*) fail "gave bash's own message: $out" ;; esac
 }
 
-CASES="$CARD_LOOKUP_CASES
+# --- the card skills' writes: linear type and linear section ----------------
+
+# What a question to Linear held: the JSON body of the Nth call to curl.
+sent_body() {
+  curl_calls | sed -n "${1}p" | sed 's/.*--data-binary \(.*\) --write-out .*/\1/'
+}
+
+# Card ABC-122 with the labels given as JSON objects, and the Type labels
+# Linear has for that name: team ABC's, another team's, and one for the whole
+# workspace when $2 says so.
+type_read() {
+  local labels=$1 workspace=${2:-}
+  local found='{"id":"abc-feat","name":"feat","team":{"key":"ABC"}},{"id":"xyz-feat","name":"feat","team":{"key":"XYZ"}}'
+  [ -z "$workspace" ] || found='{"id":"xyz-feat","name":"feat","team":{"key":"XYZ"}},{"id":"all-feat","name":"feat","team":null}'
+  printf '{"data":{"issues":{"nodes":[{"id":"uuid-122","identifier":"ABC-122","labels":{"nodes":[%s]}}]},"issueLabels":{"nodes":[%s]}}}' "$labels" "$found"
+}
+BUG_LABEL='{"id":"abc-bug","name":"Bug","parent":null}'
+FIX_LABEL='{"id":"abc-fix","name":"fix","parent":{"name":"Type"}}'
+# Linear's answer to the change: the card's labels as they are now.
+type_saved() {
+  printf '{"data":{"issueUpdate":{"success":true,"issue":{"labels":{"nodes":[%s]}}}}}' "$1"
+}
+
+linear_type_sets_the_type_and_keeps_the_other_labels() {
+  saved_key; stub_linear
+  linear_answers "$(type_read "$BUG_LABEL,$FIX_LABEL")" \
+    "$(type_saved '{"name":"Bug","parent":null},{"name":"feat","parent":{"name":"Type"}}')"
+  out=$("$E" linear type abc-122 feat) || fail "linear type exited non-zero: $out"
+  case $out in *"ABC-122"*feat*fix*) ;; *) fail "did not say the type and the one it replaced: $out" ;; esac
+  [ "$(curl_count)" = 2 ] || fail "asked Linear $(curl_count) times, not twice"
+  # Only the type labels are named: the card's other labels are never sent.
+  got=$(sent_body 2 | jq -c '.variables | {id, add: .input.addedLabelIds, remove: .input.removedLabelIds, all: .input.labelIds}' 2>&1)
+  [ "$got" = '{"id":"uuid-122","add":["abc-feat"],"remove":["abc-fix"],"all":null}' ] ||
+    fail "sent: $got (all of it: $(sent_body 2))"
+}
+
+# A team with no Type group of its own uses the workspace's.
+linear_type_takes_a_workspace_label() {
+  saved_key; stub_linear
+  linear_answers "$(type_read "$BUG_LABEL" workspace)" \
+    "$(type_saved '{"name":"Bug","parent":null},{"name":"feat","parent":{"name":"Type"}}')"
+  "$E" linear type ABC-122 feat >/dev/null || fail "linear type exited non-zero"
+  got=$(sent_body 2 | jq -c '.variables.input.addedLabelIds' 2>&1)
+  [ "$got" = '["all-feat"]' ] || fail "added: $got"
+}
+
+linear_type_leaves_a_card_that_has_the_type_already() {
+  saved_key; stub_linear
+  linear_answers "$(type_read "$BUG_LABEL,"'{"id":"abc-feat","name":"feat","parent":{"name":"Type"}}')"
+  out=$("$E" linear type ABC-122 feat) || fail "linear type exited non-zero: $out"
+  case $out in *already*) ;; *) fail "did not say the card has the type already: $out" ;; esac
+  [ "$(curl_count)" = 1 ] || fail "changed a card that needed no change: $(curl_calls)"
+}
+
+# entourage creates nothing in Linear: a missing label is the human's to make.
+linear_type_refuses_a_team_without_the_label() {
+  saved_key; stub_linear
+  linear_answers '{"data":{"issues":{"nodes":[{"id":"uuid-122","identifier":"ABC-122","labels":{"nodes":[]}}]},"issueLabels":{"nodes":[{"id":"xyz-feat","name":"feat","team":{"key":"XYZ"}}]}}}'
+  out=$("$E" linear type ABC-122 feat 2>&1) && fail "exited zero with no feat label for team ABC"
+  case $out in *ABC*feat*Type* | *ABC*Type*feat*) ;; *) fail "did not name the team, the label and the group: $out" ;; esac
+  [ "$(curl_count)" = 1 ] || fail "changed the card anyway: $(curl_calls)"
+}
+
+linear_type_refuses_a_type_that_is_not_one() {
+  saved_key; stub_linear
+  "$E" linear type ABC-122 feature >/dev/null 2>&1 && fail "accepted the type 'feature'"
+  "$E" linear type ABC-122 >/dev/null 2>&1 && fail "accepted no type"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear about a type that is not one: $(curl_calls)"
+}
+
+linear_type_refuses_a_card_linear_does_not_have() {
+  saved_key; stub_linear; linear_answers '{"data":{"issues":{"nodes":[]},"issueLabels":{"nodes":[]}}}'
+  out=$("$E" linear type ABC-999 feat 2>&1) && fail "exited zero for a card Linear does not have"
+  case $out in *"Linear has no card ABC-999"*) ;; *) fail "did not say Linear has no such card: $out" ;; esac
+  [ "$(curl_count)" = 1 ] || fail "changed something: $(curl_calls)"
+}
+
+# What Linear says it saved is checked: one type, the one asked for.
+linear_type_fails_when_linear_keeps_another_type() {
+  saved_key; stub_linear
+  linear_answers "$(type_read "$FIX_LABEL")" \
+    "$(type_saved '{"name":"fix","parent":{"name":"Type"}},{"name":"feat","parent":{"name":"Type"}}')"
+  out=$("$E" linear type ABC-122 feat 2>&1) && fail "exited zero when the card was left with two types"
+  case $out in *fix*) ;; *) fail "did not say what Linear kept: $out" ;; esac
+}
+
+# Card ABC-122 with the description given, as JSON text.
+section_read() {
+  printf '{"data":{"issues":{"nodes":[{"id":"uuid-122","identifier":"ABC-122","description":%s}]}}}' "$1"
+}
+# Linear's answer to the change: the description as it now stands.
+section_saved() {
+  printf '{"data":{"issueUpdate":{"success":true,"issue":{"description":%s}}}}' "$(printf '%s' "$1" | jq -Rs .)"
+}
+ORIGINAL='Managers keep asking for the order list.
+
+Let them download it.'
+SPEC_BODY='**Why:** A manager can download the order list.
+
+**Done when:**
+- [ ] A Download CSV button is on the orders page.'
+
+linear_section_adds_a_collapsed_section_below_the_description() {
+  saved_key; stub_linear
+  want="$ORIGINAL
+
++++ ## Specification
+$SPEC_BODY
++++"
+  linear_answers "$(section_read "$(printf '%s' "$ORIGINAL" | jq -Rs .)")" "$(section_saved "$want")"
+  out=$(printf '%s\n' "$SPEC_BODY" | "$E" linear section ABC-122 Specification) || fail "linear section exited non-zero: $out"
+  case $out in *Specification*ABC-122*) ;; *) fail "did not say what it added: $out" ;; esac
+  got=$(sent_body 2 | jq -r '.variables.input.description')
+  [ "$got" = "$want" ] || fail "sent the description: $got"
+  [ "$(sent_body 2 | jq -r '.variables.id')" = uuid-122 ] || fail "did not change the card it read: $(sent_body 2)"
+}
+
+# The human reads the Breakdown to approve the card, so it is not folded away.
+linear_section_writes_the_breakdown_open() {
+  saved_key; stub_linear
+  want="$ORIGINAL
+
+## Breakdown
+One piece. Already small."
+  linear_answers "$(section_read "$(printf '%s' "$ORIGINAL" | jq -Rs .)")" "$(section_saved "$want")"
+  printf '%s\n' 'One piece. Already small.' | "$E" linear section ABC-122 Breakdown >/dev/null || fail "linear section exited non-zero"
+  [ "$(sent_body 2 | jq -r '.variables.input.description')" = "$want" ] ||
+    fail "sent the description: $(sent_body 2 | jq -r '.variables.input.description')"
+}
+
+linear_section_writes_into_an_empty_description() {
+  saved_key; stub_linear
+  want="+++ ## Plan
+**Approach:** Like the invoice export.
++++"
+  linear_answers "$(section_read null)" "$(section_saved "$want")"
+  printf '%s\n' '**Approach:** Like the invoice export.' | "$E" linear section ABC-122 Plan >/dev/null ||
+    fail "linear section exited non-zero"
+  [ "$(sent_body 2 | jq -r '.variables.input.description')" = "$want" ] ||
+    fail "sent the description: $(sent_body 2 | jq -r '.variables.input.description')"
+}
+
+# Linear keeps a folded section as +++, however it was written; one written
+# by hand as >>> counts too.
+linear_section_refuses_a_second_section_of_the_same_name() {
+  saved_key; stub_linear
+  for mark in '+++' '>>>'; do
+    : > "$TMP/curl-calls.log"
+    linear_answers "$(section_read "$(printf '%s\n\n%s ## Specification\n\nold\n\n%s' "$ORIGINAL" "$mark" "$mark" | jq -Rs .)")"
+    out=$(printf '%s\n' "$SPEC_BODY" | "$E" linear section ABC-122 Specification 2>&1) &&
+      fail "exited zero with a Specification already there, folded with $mark"
+    case $out in *"--replace"*) ;; *) fail "did not say how to replace it: $out" ;; esac
+    [ "$(curl_count)" = 1 ] || fail "changed the card anyway: $(curl_calls)"
+  done
+}
+
+# --replace swaps the section in place and leaves the sections around it.
+linear_section_replaces_a_section_in_place() {
+  saved_key; stub_linear
+  before='Intro.
+
++++ ## Specification
+
+old
+
++++
+
+>>> ## Plan
+
+The plan.
+
+>>>'
+  want='Intro.
+
++++ ## Specification
+new
++++
+
+>>> ## Plan
+
+The plan.
+
+>>>'
+  linear_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")" "$(section_saved "$want")"
+  printf '%s\n' new | "$E" linear section ABC-122 Specification --replace >/dev/null || fail "linear section exited non-zero"
+  got=$(sent_body 2 | jq -r '.variables.input.description')
+  [ "$got" = "$want" ] || fail "sent the description: $got"
+}
+
+linear_section_replaces_the_open_breakdown() {
+  saved_key; stub_linear
+  before='Intro.
+
+## Breakdown
+
+1. **The old slice**'
+  want='Intro.
+
+## Breakdown
+One piece.'
+  linear_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")" "$(section_saved "$want")"
+  printf '%s\n' 'One piece.' | "$E" linear section ABC-122 Breakdown --replace >/dev/null || fail "linear section exited non-zero"
+  got=$(sent_body 2 | jq -r '.variables.input.description')
+  [ "$got" = "$want" ] || fail "sent the description: $got"
+}
+
+# What Linear saved is read back: the text above the section must be as it was.
+linear_section_fails_when_the_text_above_changed() {
+  saved_key; stub_linear
+  linear_answers "$(section_read "$(printf '%s' "$ORIGINAL" | jq -Rs .)")" \
+    "$(section_saved "Someone else's words.
+
++++ ## Specification
+$SPEC_BODY
++++")"
+  out=$(printf '%s\n' "$SPEC_BODY" | "$E" linear section ABC-122 Specification 2>&1) && fail "exited zero with the text above changed"
+  case $out in *above*) ;; *) fail "did not say the text above changed: $out" ;; esac
+}
+
+# Linear rewrites a section as it saves it: a blank line after the heading and
+# before the end, * for -, and a mention as a link. Only the text above and
+# the heading are held to what was sent.
+linear_section_accepts_linears_rewriting_of_the_section() {
+  saved_key; stub_linear
+  linear_answers "$(section_read "$(printf '%s' "$ORIGINAL" | jq -Rs .)")" \
+    "$(section_saved "$ORIGINAL
+
++++ ## Specification
+
+**Why:** A manager can download the order list, as [ABC-1](https://linear.app/x/issue/ABC-1) asked.
+
+**Done when:**
+
+* [ ] A Download CSV button is on the orders page.
+
++++")"
+  printf '%s\n' "$SPEC_BODY" | "$E" linear section ABC-122 Specification >/dev/null || fail "linear section exited non-zero"
+}
+
+linear_section_refuses_what_is_not_a_section() {
+  saved_key; stub_linear
+  printf '%s\n' body | "$E" linear section ABC-122 Notes >/dev/null 2>&1 && fail "accepted the section 'Notes'"
+  printf '' | "$E" linear section ABC-122 Plan >/dev/null 2>&1 && fail "accepted an empty section"
+  printf '%s\n' 'one' '>>>' 'two' | "$E" linear section ABC-122 Plan >/dev/null 2>&1 &&
+    fail "accepted a body with a >>> line, which would end the section early"
+  printf '%s\n' 'one' '+++' 'two' | "$E" linear section ABC-122 Plan >/dev/null 2>&1 &&
+    fail "accepted a body with a +++ line, which would end the section early"
+  printf '%s\n' body | "$E" linear section ABC-122 Plan --force >/dev/null 2>&1 && fail "accepted --force"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear before refusing: $(curl_calls)"
+}
+
+# --- what the review of LAB-69 found ----------------------------------------
+
+# Start Linear's answers again, for a case that runs a command more than once.
+fresh_answers() {
+  rm -f "$TMP/linear/count" "$TMP/curl-calls.log" "$TMP/curl-stdin.log" "$TMP/linear/"*.json
+  linear_answers "$@"
+}
+
+# The command adds the heading itself, and a line that starts a heading or a
+# fold would end the section early, or put a second one on the card. A body
+# with either is refused before Linear is asked.
+linear_section_refuses_a_body_with_its_own_heading() {
+  saved_key; stub_linear
+  printf '%s\n' '## Breakdown' 'One piece.' | "$E" linear section ABC-122 Breakdown >/dev/null 2>&1 &&
+    fail "accepted a Breakdown body that starts with its own heading"
+  printf '%s\n' '+++ ## Plan' 'The plan.' | "$E" linear section ABC-122 Plan >/dev/null 2>&1 &&
+    fail "accepted a Plan body that starts with its own heading"
+  printf '%s\n' 'Why: x' '' '>>> ## Specification' '' 'more' | "$E" linear section ABC-122 Specification >/dev/null 2>&1 &&
+    fail "accepted a Specification body that holds its own heading"
+  printf '%s\n' '1. **Slice one**' '## Why this cut' 'Because.' | "$E" linear section ABC-122 Breakdown >/dev/null 2>&1 &&
+    fail "accepted a Breakdown body with a heading that would end it early"
+  printf '%s\n' '1. **Slice one**' '' '+++ Agent notes' '' 'Cut by layer.' '' '+++' |
+    "$E" linear section ABC-122 Breakdown >/dev/null 2>&1 &&
+    fail "accepted a Breakdown body with a fold that would end it early"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear before refusing: $(curl_count) calls"
+}
+
+# --replace takes the place of a section the command can read. With none, it
+# says so, rather than add a second one beside a section in another form.
+linear_section_replace_refuses_a_card_without_the_section() {
+  saved_key; stub_linear
+  linear_answers "$(section_read "$(printf '%s' 'Intro.
+
++++ Specification
+
+old
+
++++' | jq -Rs .)")"
+  out=$(printf '%s\n' new | "$E" linear section ABC-122 Specification --replace 2>&1) &&
+    fail "exited zero with no Specification to replace: $out"
+  [ "$(curl_count)" = 1 ] || fail "changed the card anyway: $(curl_count) calls"
+}
+
+# The open Breakdown is refused a second time too: the skills' retry after
+# "could not reach Linear" counts on it.
+linear_section_refuses_a_second_breakdown() {
+  saved_key; stub_linear
+  linear_answers "$(section_read "$(printf '%s\n\n## Breakdown\n\nOne piece.' "$ORIGINAL" | jq -Rs .)")"
+  out=$(printf '%s\n' 'One piece.' | "$E" linear section ABC-122 Breakdown 2>&1) &&
+    fail "exited zero with a Breakdown already there"
+  case $out in *"--replace"*) ;; *) fail "did not say how to replace it: $out" ;; esac
+  [ "$(curl_count)" = 1 ] || fail "changed the card anyway: $(curl_count) calls"
+}
+
+# What Linear saved must have the section once.
+linear_section_fails_when_linear_has_the_section_twice() {
+  saved_key; stub_linear
+  linear_answers "$(section_read "$(printf '%s' "$ORIGINAL" | jq -Rs .)")" \
+    "$(section_saved "$ORIGINAL
+
++++ ## Specification
+$SPEC_BODY
++++
+
++++ ## Specification
+$SPEC_BODY
++++")"
+  out=$(printf '%s\n' "$SPEC_BODY" | "$E" linear section ABC-122 Specification 2>&1) &&
+    fail "exited zero with the section twice in Linear's copy"
+  case $out in *once*) ;; *) fail "did not say the section is not there once: $out" ;; esac
+}
+
+# A section folded with >>> ends at its own >>> line: the Plan below stays.
+linear_section_replaces_a_section_folded_with_the_other_mark() {
+  saved_key; stub_linear
+  before='Intro.
+
+>>> ## Specification
+
+old
+
+>>>
+
++++ ## Plan
+
+The plan.
+
++++'
+  want='Intro.
+
++++ ## Specification
+new
++++
+
++++ ## Plan
+
+The plan.
+
++++'
+  linear_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")" "$(section_saved "$want")"
+  printf '%s\n' new | "$E" linear section ABC-122 Specification --replace >/dev/null || fail "linear section exited non-zero"
+  got=$(sent_body 2 | jq -r '.variables.input.description')
+  [ "$got" = "$want" ] || fail "sent the description: $got"
+}
+
+# An open Breakdown ends where the next section starts: what is below it stays.
+linear_section_replaces_an_open_breakdown_with_a_section_below() {
+  saved_key; stub_linear
+  before='Intro.
+
+## Breakdown
+
+1. **The old slice**
+
++++ ## Notes
+
+kept
+
++++'
+  want='Intro.
+
+## Breakdown
+One piece.
+
++++ ## Notes
+
+kept
+
++++'
+  linear_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")" "$(section_saved "$want")"
+  printf '%s\n' 'One piece.' | "$E" linear section ABC-122 Breakdown --replace >/dev/null || fail "linear section exited non-zero"
+  got=$(sent_body 2 | jq -r '.variables.input.description')
+  [ "$got" = "$want" ] || fail "sent the description: $got"
+}
+
+# A # heading ends the Breakdown too: the human's notes below it stay.
+linear_section_replaces_a_breakdown_with_a_top_heading_below() {
+  saved_key; stub_linear
+  before='Intro.
+
+## Breakdown
+
+One piece.
+
+# Notes
+
+A note the human added.'
+  want='Intro.
+
+## Breakdown
+Two pieces.
+
+# Notes
+
+A note the human added.'
+  linear_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")" "$(section_saved "$want")"
+  printf '%s\n' 'Two pieces.' | "$E" linear section ABC-122 Breakdown --replace >/dev/null || fail "linear section exited non-zero"
+  got=$(sent_body 2 | jq -r '.variables.input.description')
+  [ "$got" = "$want" ] || fail "sent the description: $got"
+}
+
+# A folded section that is never closed, with another one after it, cannot be
+# told apart from the next: replacing it is refused, not the next one deleted.
+linear_section_refuses_to_replace_a_fold_that_is_never_closed() {
+  saved_key; stub_linear
+  linear_answers "$(section_read "$(printf '%s' 'Intro.
+
++++ ## Specification
+
+old
+
++++ ## Plan
+
+The plan.
+
++++' | jq -Rs .)")"
+  out=$(printf '%s\n' new | "$E" linear section ABC-122 Specification --replace 2>&1) &&
+    fail "replaced a Specification that is never closed: $out"
+  [ "$(curl_count)" = 1 ] || fail "changed the card anyway: $(curl_count) calls"
+}
+
+# A heading line inside a code block is the card's text, not its section.
+linear_section_skips_a_heading_in_a_code_block() {
+  saved_key; stub_linear
+  before='How a card looks:
+
+```
++++ ## Specification
+body
++++
+```'
+  want="$before
+
++++ ## Specification
+$SPEC_BODY
++++"
+  linear_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")" "$(section_saved "$want")"
+  out=$(printf '%s\n' "$SPEC_BODY" | "$E" linear section ABC-122 Specification 2>&1) ||
+    fail "took the example in a code block for the card's Specification: $out"
+  [ "$(sent_body 2 | jq -r '.variables.input.description')" = "$want" ] ||
+    fail "sent the description: $(sent_body 2 | jq -r '.variables.input.description')"
+}
+
+# A description whose lines end with \r is read the same.
+linear_section_reads_a_description_with_cr_line_ends() {
+  saved_key; stub_linear
+  linear_answers "$(section_read "$(printf 'Intro.\r\n\r\n+++ ## Specification\r\n\r\nold\r\n\r\n+++' | jq -Rs .)")"
+  out=$(printf '%s\n' new | "$E" linear section ABC-122 Specification 2>&1) &&
+    fail "exited zero with a Specification already there"
+  case $out in *"--replace"*) ;; *) fail "did not say how to replace it: $out" ;; esac
+  [ "$(curl_count)" = 1 ] || fail "changed the card anyway: $(curl_count) calls"
+}
+
+# The text above is sent as it was, \r and all, and the check holds whether
+# Linear keeps the \r or drops it.
+linear_section_takes_a_description_with_crlf_line_ends() {
+  saved_key; stub_linear
+  want=$(printf 'Line one\r\nLine two\n\n+++ ## Specification\n%s\n+++' "$SPEC_BODY")
+  for saved in "$want" "$(printf '%s' "$want" | tr -d '\r')"; do
+    fresh_answers "$(section_read '"Line one\r\nLine two\r\n"')" "$(section_saved "$saved")"
+    out=$(printf '%s\n' "$SPEC_BODY" | "$E" linear section ABC-122 Specification 2>&1) || fail "exited non-zero: $out"
+    [ "$(sent_body 2 | jq -r '.variables.input.description')" = "$want" ] || fail "sent: $(sent_body 2)"
+  done
+}
+
+linear_section_says_when_jq_is_missing() {
+  saved_key; stub_linear; hide_jq
+  out=$(printf '%s\n' body | "$E" linear section ABC-122 Plan 2>&1) && fail "exited zero without jq"
+  case $out in *"jq is not installed"*) ;; *) fail "did not say jq is missing: $out" ;; esac
+  case $out in *"command not found"*) fail "gave bash's own message: $out" ;; esac
+}
+
+# The team's label wins over the workspace's, whichever Linear lists first.
+linear_type_prefers_the_teams_label_to_the_workspaces() {
+  saved_key; stub_linear
+  linear_answers '{"data":{"issues":{"nodes":[{"id":"uuid-122","identifier":"ABC-122","labels":{"nodes":[]}}]},"issueLabels":{"nodes":[{"id":"all-feat","name":"feat","team":null},{"id":"abc-feat","name":"feat","team":{"key":"ABC"}}]}}}' \
+    "$(type_saved '{"name":"feat","parent":{"name":"Type"}}')"
+  "$E" linear type ABC-122 feat >/dev/null || fail "linear type exited non-zero"
+  got=$(sent_body 2 | jq -c '.variables.input.addedLabelIds' 2>&1)
+  [ "$got" = '["abc-feat"]' ] || fail "added: $got"
+}
+
+# Only the card's team's label and the workspace's are asked for, so the
+# card's own is never past the first page, however many teams there are.
+linear_type_asks_only_for_the_teams_and_the_workspaces_labels() {
+  saved_key; stub_linear
+  linear_answers "$(type_read "$BUG_LABEL")" "$(type_saved '{"name":"Bug","parent":null},{"name":"feat","parent":{"name":"Type"}}')"
+  "$E" linear type ABC-122 feat >/dev/null || fail "linear type exited non-zero"
+  case $(sent_body 1 | jq -r '.query') in
+    *'or: [{team: {key: {eq: $team}}}, {team: {null: true}}]'*) ;;
+    *) fail "did not narrow the labels to the team's and the workspace's: $(sent_body 1)" ;;
+  esac
+}
+
+# A card with two type labels ends with one: both others come off.
+linear_type_takes_off_every_other_type() {
+  saved_key; stub_linear
+  linear_answers "$(type_read "$FIX_LABEL"',{"id":"abc-chore","name":"chore","parent":{"name":"Type"}}')" \
+    "$(type_saved '{"name":"feat","parent":{"name":"Type"}}')"
+  "$E" linear type ABC-122 feat >/dev/null || fail "linear type exited non-zero"
+  got=$(sent_body 2 | jq -c '.variables.input.removedLabelIds' 2>&1)
+  [ "$got" = '["abc-fix","abc-chore"]' ] || fail "removed: $got"
+}
+
+# What Linear saved is checked for the card's other labels too.
+linear_type_fails_when_linear_drops_another_label() {
+  saved_key; stub_linear
+  linear_answers "$(type_read "$BUG_LABEL,$FIX_LABEL")" "$(type_saved '{"name":"feat","parent":{"name":"Type"}}')"
+  out=$("$E" linear type ABC-122 feat 2>&1) && fail "exited zero with the card's Bug label gone"
+  case $out in *Bug*) ;; *) fail "did not name the label Linear dropped: $out" ;; esac
+}
+
+REVIEW_CASES="linear_section_refuses_a_body_with_its_own_heading linear_section_replace_refuses_a_card_without_the_section
+  linear_section_refuses_a_second_breakdown linear_section_fails_when_linear_has_the_section_twice
+  linear_section_replaces_a_section_folded_with_the_other_mark linear_section_replaces_an_open_breakdown_with_a_section_below
+  linear_section_replaces_a_breakdown_with_a_top_heading_below linear_section_refuses_to_replace_a_fold_that_is_never_closed
+  linear_section_skips_a_heading_in_a_code_block linear_section_reads_a_description_with_cr_line_ends
+  linear_section_takes_a_description_with_crlf_line_ends linear_section_says_when_jq_is_missing
+  linear_type_prefers_the_teams_label_to_the_workspaces linear_type_asks_only_for_the_teams_and_the_workspaces_labels
+  linear_type_takes_off_every_other_type linear_type_fails_when_linear_drops_another_label"
+
+WRITE_CASES="$REVIEW_CASES linear_type_sets_the_type_and_keeps_the_other_labels linear_type_takes_a_workspace_label
+  linear_type_leaves_a_card_that_has_the_type_already linear_type_refuses_a_team_without_the_label
+  linear_type_refuses_a_type_that_is_not_one linear_type_refuses_a_card_linear_does_not_have
+  linear_type_fails_when_linear_keeps_another_type
+  linear_section_adds_a_collapsed_section_below_the_description linear_section_writes_the_breakdown_open
+  linear_section_writes_into_an_empty_description linear_section_refuses_a_second_section_of_the_same_name
+  linear_section_replaces_a_section_in_place linear_section_replaces_the_open_breakdown
+  linear_section_fails_when_the_text_above_changed linear_section_accepts_linears_rewriting_of_the_section
+  linear_section_refuses_what_is_not_a_section"
+
+CASES="$CARD_LOOKUP_CASES $WRITE_CASES
   linear_key_saves_the_key linear_key_keeps_the_env_file_private linear_key_closes_an_env_file_others_could_read
   linear_key_says_whose_key_it_is linear_key_never_shows_the_key linear_key_gives_curl_the_key_on_stdin
   linear_key_replaces_the_old_key_and_keeps_the_other_lines linear_key_says_when_an_exported_key_is_used_instead

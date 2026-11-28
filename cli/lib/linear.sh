@@ -333,9 +333,271 @@ linear_key() {
   fi
 }
 
+# --- the card skills' writes ------------------------------------------------
+#
+# The card skills write two things to a card: its type label, and a section
+# of its description. Each is one command here, so that it goes the same way
+# on every run, and each reads back what Linear saved before it says it is
+# done. Nothing else in Linear is changed, and nothing is created.
+
+# The types a card can have. Each is the start of the card's branch name.
+CARD_TYPES='feat fix chore'
+
+# Change a card: its fields as Linear's IssueUpdateInput names them, in $2 as
+# JSON. Linear's answer gives back what is asked for in $3.
+#   linear_update <key> <the card's id> <input, as JSON> <fields to read back>
+linear_update() {
+  local key=$1 id=$2 input=$3 fields=$4 vars
+  vars=$(jq -cn --arg id "$id" --argjson input "$input" '{id: $id, input: $input}') ||
+    die "could not put the change to Linear together."
+  linear_ask "$key" "mutation(\$id: String!, \$input: IssueUpdateInput!) {
+  issueUpdate(id: \$id, input: \$input) { success issue { $fields } }
+}" "$vars"
+}
+
+# The card's own question for linear type: the card, its labels, and the
+# labels of the name asked for in a group of the name asked for, the card's
+# team's and the workspace's only, so that other teams' never crowd them out.
+TYPE_QUERY='query($team: String!, $number: Float!, $type: String!, $group: String!) {
+  issues(first: 1, filter: {team: {key: {eq: $team}}, number: {eq: $number}}) {
+    nodes { id identifier labels(first: 100) { nodes { id name parent { name } } } }
+  }
+  issueLabels(first: 50, filter: {name: {eq: $type}, parent: {name: {eq: $group}},
+      or: [{team: {key: {eq: $team}}}, {team: {null: true}}]}) {
+    nodes { id name team { key } }
+  }
+}'
+
+# Set a card's type: its one label in the Type group. The label is the card's
+# team's, or the workspace's when the team has none. Any other label of the
+# group comes off; the card's other labels are never sent, so they stay.
+#   entourage linear type <card> <feat|fix|chore>
+linear_type() {
+  local card=${1:-} type=${2:-} key vars data plan add remove was saved lost
+  [ "$#" -eq 2 ] || die "usage: entourage linear type <card> <feat|fix|chore>, like: entourage linear type ABC-122 feat"
+  [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
+  card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
+  in_list "$type" "$CARD_TYPES" ||
+    die "'$type' is not a card type. A card's type is one of: $CARD_TYPES (see https://conventionalbranch.org)."
+  linear_tools
+  key=$(linear_saved_key) || exit 1
+  vars=$(jq -cn --arg team "${card%-*}" --arg number "${card##*-}" --arg type "$type" --arg group "$TYPE_GROUP" \
+    '{team: $team, number: ($number | tonumber), type: $type, group: $group}') ||
+    die "'$card' is not a card ID like ABC-122."
+  data=$(linear_ask "$key" "$TYPE_QUERY" "$vars") || exit 1
+  # What to add and take off, or why there is nothing to do.
+  plan=$(printf '%s' "$data" | jq -c --arg team "${card%-*}" --arg type "$type" --arg group "$TYPE_GROUP" '
+    if (.issues.nodes | type) != "array" then error("no list of cards")
+    elif (.issues.nodes | length) == 0 then {state: "none"}
+    else .issues.nodes[0] as $card
+      | ([.issueLabels.nodes[]? | select(.name == $type)]) as $named
+      | (([$named[] | select(.team.key? == $team)] + [$named[] | select(.team == null)]) | .[0]) as $label
+      | if $label == null then {state: "nolabel"}
+        else ([$card.labels.nodes[]? | select(.parent.name? == $group)]) as $types
+          | {state: "ok", id: $card.id,
+             add: (if any($types[]; .id == $label.id) then [] else [$label.id] end),
+             remove: [$types[] | select(.id != $label.id) | .id],
+             was: [$types[] | select(.id != $label.id) | .name],
+             keep: [$card.labels.nodes[]? | select(.parent.name? != $group) | .name]}
+        end
+    end' 2>/dev/null) || plan=
+  case $(printf '%s' "$plan" | jq -r '.state' 2>/dev/null) in
+    ok) ;;
+    none) die "Linear has no card $card that the saved key can see. Check the ID, then run this again." ;;
+    nolabel) die "team ${card%-*} has no label '$type' in a label group called $TYPE_GROUP, and nor does the workspace, so the type was not set. entourage makes no labels: make the $TYPE_GROUP group and its labels ($CARD_TYPES) in Linear, then run this again." ;;
+    *) die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it." ;;
+  esac
+  add=$(printf '%s' "$plan" | jq -c '.add')
+  remove=$(printf '%s' "$plan" | jq -c '.remove')
+  was=$(printf '%s' "$plan" | jq -r '.was | join(", ")')
+  if [ "$add" = '[]' ] && [ "$remove" = '[]' ]; then
+    say "$card's type is already $type"
+    return
+  fi
+  data=$(linear_update "$key" "$(printf '%s' "$plan" | jq -r '.id')" \
+    "$(jq -cn --argjson add "$add" --argjson remove "$remove" \
+      '{} + (if $add == [] then {} else {addedLabelIds: $add} end) + (if $remove == [] then {} else {removedLabelIds: $remove} end)')" \
+    'labels(first: 100) { nodes { name parent { name } } }') || exit 1
+  # What Linear says the card now has: one type, the one asked for.
+  saved=$(printf '%s' "$data" | jq -r --arg group "$TYPE_GROUP" \
+    '[.issueUpdate.issue.labels.nodes[]? | select(.parent.name? == $group) | .name] | join(", ")' 2>/dev/null) || saved=
+  [ "$saved" = "$type" ] ||
+    die "Linear did not save $card's type as $type alone: its $TYPE_GROUP labels are now '${saved:-none}'. Look at the card in Linear."
+  # And the card's other labels are all still there.
+  lost=$(printf '%s' "$data" | jq -r --argjson keep "$(printf '%s' "$plan" | jq -c '.keep')" \
+    '$keep - [.issueUpdate.issue.labels.nodes[]?.name] | join(", ")' 2>/dev/null) || lost='its other labels'
+  [ -z "$lost" ] ||
+    die "Linear set $card's type to $type, but its answer shows the card without $lost. Look at the card in Linear."
+  say "Set $card's type to $type${was:+ (it was $was)}"
+}
+
+# The sections the card skills write, in the order they come on a card.
+# Specification and Plan are folded away; the human reads the Breakdown to
+# approve the card, so it is left open.
+CARD_SECTIONS='Specification Plan Breakdown'
+
+# The question for linear section: the card and its description.
+SECTION_QUERY='query($team: String!, $number: Float!) {
+  issues(first: 1, filter: {team: {key: {eq: $team}}, number: {eq: $number}}) {
+    nodes { id identifier description }
+  }
+}'
+
+# Place a section in a description, on stdin, and print
+#   {"before": <the text above it>, "new": <the description with it>}
+# A folded section is "+++ ## <name>", its body, then a line "+++": the form
+# Linear's API keeps it in, whatever it was written with. One written as
+# ">>>", the form Linear's own tools show, is read the same. An open section
+# is "## <name>" and its body, up to the next section or the end. $open,
+# $replace: "true" or "false". Linear's own copy of a description can end its
+# lines with \r and its sections with blank lines, so both are allowed for.
+#   - A line inside a fenced code block is the card's text, never a section:
+#     a card about entourage itself may show these forms as examples.
+#   - An open section ends at the next heading of level 1 or 2, or the next
+#     fold. A folded one ends at its closing line, and only there: a folded
+#     section that meets another fold before it is closed cannot be told
+#     apart from the next one, so it is not replaced.
+SECTION_FORMS='
+  def trim_end: sub("\\s+\\z"; "");
+  def trim_start: sub("\\A\\s+"; "");
+  def is_heading: if $open == "true" then . == "## " + $name
+    else . == "+++ ## " + $name or . == ">>> ## " + $name end;
+  def is_close: . == "+++" or . == ">>>";
+  def is_fold: test("^(\\+\\+\\+|>>>)( |$)");
+  def ends_open: is_fold or test("^##? ");
+  def is_fence: test("^ {0,3}(```|~~~)");
+  def in_code: . as $l
+    | [foreach range(0; $l | length) as $i ({in: false, out: false};
+        if ($l[$i] | is_fence) then {in: (.in | not), out: true} else {in: .in, out: .in} end;
+        .out)];'
+SECTION_PLACE=$SECTION_FORMS'
+  def section: if $open == "true" then "## " + $name + "\n" + $body
+    else "+++ ## " + $name + "\n" + $body + "\n+++" end;
+  def join_parts: map(select(. != "")) | join("\n\n");
+  (. // "") as $d
+  | ($d | split("\n")) as $raw
+  | ($raw | map(rtrimstr("\r"))) as $lines
+  | ($lines | in_code) as $code
+  | [range(0; $lines | length) | select(($code[.] | not) and ($lines[.] | is_heading))] as $at
+  | if ($at | length) > 1 then error("twice")
+    elif ($at | length) == 1 and $replace != "true" then error("there")
+    elif ($at | length) == 0 and $replace == "true" then error("missing")
+    elif ($at | length) == 0 then
+      ($d | trim_end) as $before
+      | {before: $before, new: ([$before, section] | join_parts)}
+    else $at[0] as $start
+      | [range($start + 1; $lines | length) | select($code[.] | not)] as $later
+      | (if $open == "true"
+           then {at: ([$later[] | select($lines[.] | ends_open)] | .[0] // ($lines | length)), skip: 0}
+           else ([$later[] | select($lines[.] | is_fold)] | .[0]) as $fold
+             | {at: (if $fold != null and ($lines[$fold] | is_close) then $fold else null end), skip: 1}
+         end) as $end
+      | if $end.at == null then error("open") else . end
+      | ($raw[0:$start] | join("\n") | trim_end) as $before
+      | ($raw[($end.at + $end.skip):] | join("\n") | trim_start | trim_end) as $after
+      | {before: $before, new: ([$before, section, $after] | join_parts)}
+    end'
+
+# Check a description Linear saved, on stdin: it has the section once, and
+# the text above it is $before. Prints ok, or what is wrong. Line ends are
+# compared without their \r, which Linear may keep or drop.
+SECTION_CHECK=$SECTION_FORMS'
+  ((.issueUpdate.issue.description // "") | split("\n") | map(rtrimstr("\r"))) as $lines
+  | ($lines | in_code) as $code
+  | [range(0; $lines | length) | select(($code[.] | not) and ($lines[.] | is_heading))] as $at
+  | if ($at | length) != 1 then "count"
+    elif ($lines[0:$at[0]] | join("\n") | trim_end)
+      != ($before | split("\n") | map(rtrimstr("\r")) | join("\n") | trim_end) then "above"
+    else "ok" end'
+
+# Whether a section body, on stdin, has a line that would end the section
+# early or start a second one: a fold line in a folded section, and a heading
+# of level 1 or 2 or a fold line in an open one. Prints true or false.
+SECTION_BODY_CHECK=$SECTION_FORMS'
+  split("\n") | map(rtrimstr("\r")) | . as $l | ($l | in_code) as $code
+  | any(range(0; $l | length);
+      ($code[.] | not) and ($l[.] | if $open == "true" then ends_open else is_fold end))'
+
+# Add a section to a card's description, below what is there, or with
+# --replace put it in place of the one of that name. The body is on stdin;
+# the heading and the folding are added here. The whole description is sent
+# back, then what Linear saved is read: the text above the section must be as
+# it was, and the section there once.
+#   entourage linear section <card> <Specification|Plan|Breakdown> [--replace]
+linear_section() {
+  local card=${1:-} name=${2:-} replace=false open=false body key vars data id placed new before check
+  [ "$#" -ge 2 ] && [ "$#" -le 3 ] ||
+    die "usage: entourage linear section <card> <$(printf '%s' "$CARD_SECTIONS" | tr ' ' '|')> [--replace], with the section's body on stdin"
+  case ${3:-} in
+    --replace) replace=true ;;
+    '') ;;
+    *) die "unknown option for linear section: $3" ;;
+  esac
+  [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
+  card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
+  in_list "$name" "$CARD_SECTIONS" ||
+    die "'$name' is not a section entourage writes. The sections are: $CARD_SECTIONS."
+  [ "$name" != Breakdown ] || open=true
+  [ ! -t 0 ] || die "give the section's body on stdin, like: entourage linear section $card $name <<'EOF'"
+  # jq reads the body, so it is checked for before the body is.
+  linear_tools
+  body=$(cat)
+  # Blank lines at either end are dropped: the heading and the folding come
+  # with their own.
+  body=$(printf '%s' "$body" | jq -Rs 'sub("\\A\\s+"; "") | sub("\\s+\\z"; "")') ||
+    die "could not read the section's body."
+  [ "$body" != '""' ] || die "the $name has no body. Give it on stdin."
+  # Judged by what jq prints: some versions exit zero on an empty answer.
+  case $(printf '%s' "$body" | jq -r --arg open "$open" --arg name "$name" "$SECTION_BODY_CHECK" 2>/dev/null) in
+    false) ;;
+    true)
+      if [ "$open" = true ]; then
+        die "the $name's body has a line that starts a heading (# or ##) or a folded section (+++ or >>>), which would end the $name early. Make it a ### heading, or take it out. The command adds the $name's own heading."
+      else
+        die "the $name's body has a line that starts or ends a folded section (+++ or >>>), which would end the $name early. Take that line out. The command adds the $name's own heading and closing line."
+      fi ;;
+    *) die "could not read the section's body." ;;
+  esac
+  key=$(linear_saved_key) || exit 1
+  vars=$(jq -cn --arg team "${card%-*}" --arg number "${card##*-}" '{team: $team, number: ($number | tonumber)}') ||
+    die "'$card' is not a card ID like ABC-122."
+  data=$(linear_ask "$key" "$SECTION_QUERY" "$vars") || exit 1
+  case $(printf '%s' "$data" | jq -r 'if (.issues.nodes | type) != "array" then "unreadable" elif (.issues.nodes | length) == 0 then "none" else "ok" end' 2>/dev/null) in
+    ok) ;;
+    none) die "Linear has no card $card that the saved key can see. Check the ID, then run this again." ;;
+    *) die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it." ;;
+  esac
+  id=$(printf '%s' "$data" | jq -r '.issues.nodes[0].id')
+  placed=$(printf '%s' "$data" | jq -c --arg name "$name" --arg open "$open" --arg replace "$replace" \
+    --argjson body "$body" '.issues.nodes[0].description | '"$SECTION_PLACE" 2>&1) || {
+    case $placed in
+      *there*) die "$card already has a $name. To put this one in its place, run it again with --replace." ;;
+      *twice*) die "$card has two sections called $name, so entourage cannot tell which to change. Make it one in Linear, then run this again." ;;
+      *missing*) die "$card has no $name that entourage can read, so there is none to replace. Look at the card in Linear: a $name written in another form needs putting right by hand." ;;
+      *open*) die "$card's $name is not closed before the next folded section, so entourage cannot tell where it ends. Close it in Linear, then run this again." ;;
+      *) die "could not place the $name in $card's description." ;;
+    esac
+  }
+  new=$(printf '%s' "$placed" | jq -c '.new')
+  before=$(printf '%s' "$placed" | jq -r '.before')
+  data=$(linear_update "$key" "$id" "$(jq -cn --argjson d "$new" '{description: $d}')" 'description') || exit 1
+  check=$(printf '%s' "$data" | jq -r --arg name "$name" --arg open "$open" --arg before "$before" "$SECTION_CHECK" 2>/dev/null) || check=
+  case $check in
+    ok) ;;
+    above) die "the $name was written to $card, but the text above it changed on the way: Linear's copy is not what was there before. Look at the card in Linear." ;;
+    count) die "the $name was written to $card, but Linear's copy does not have it once. Look at the card in Linear." ;;
+    *) die "the $name was written to $card, but Linear's answer could not be read to check it. Look at the card in Linear." ;;
+  esac
+  if [ "$replace" = true ]; then say "Wrote the $name on $card"
+  else say "Added the $name to $card"
+  fi
+}
+
 cmd_linear() {
   case ${1:-} in
     key) shift; linear_key "$@" ;;
-    *) die "usage: entourage linear key (see: entourage help)" ;;
+    type) shift; linear_type "$@" ;;
+    section) shift; linear_section "$@" ;;
+    *) die "usage: entourage linear key, or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace] (see: entourage help)" ;;
   esac
 }
