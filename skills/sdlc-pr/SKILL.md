@@ -1,11 +1,11 @@
 ---
 name: sdlc-pr
-description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, moving the card to In Review once they are all open, waiting for the human to merge them while watching them on GitHub and making in the same pull requests any change they ask for in the tab, recording the merge once GitHub shows it, without being told, and then finishing the task. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
+description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, moving the card to In Review once they are all open, waiting for the human to merge them while watching them on GitHub, making in the same pull requests any change they ask for in the tab and bringing one that comes to conflict with its default branch up to date, recording the merge once GitHub shows it, without being told, and then finishing the task. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
 ---
 
 # Open the pull request
 
-Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, moves the card to In Review once they are all open, watches them on GitHub while the human merges them, makes in the same pull requests any change they ask for in the tab while they wait, records the merge once GitHub shows it, without the human having to say so, and then finishes the task, which removes its worktrees and closes its tab.
+Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, moves the card to In Review once they are all open, watches them on GitHub while the human merges them, makes in the same pull requests any change they ask for in the tab while they wait, brings a pull request up to date when it comes to conflict with its default branch, records the merge once GitHub shows it, without the human having to say so, and then finishes the task, which removes its worktrees and closes its tab.
 
 The human reads the pull request, not this session. So each pull request has to name the card and say, for each Done when item, how the review showed that it is met and what is left to the human to check.
 
@@ -47,6 +47,8 @@ Read the guidance in each worktree with commits: its `CLAUDE.md`, `AGENTS.md`, `
 
 ## 4. Push the branch and open the pull request
 
+**Back from section 8.** When this step runs again after section 8 brought a pull request up to date and the review passed the work again, the pull requests are open already: `entourage task log <project> <card ID>` shows the last `pr` hand-off as `done`, with `review` next. Push only a branch that moved. In each worktree with commits, run `git fetch origin`, then `git log --oneline origin/<branch>..HEAD`: when it shows nothing, GitHub has every commit already, so push nothing in that worktree and leave its pull request as it is, open or merged. A branch that moved goes through the steps below, but its pull request keeps the title and the description it has, **Changes asked for:** lines and all. Read the description with `gh pr view <url> --json body`, add a line at its end under **Brought up to date:**, putting that heading in the first time, and give it to `gh pr edit` in step 5. The line says what the hand-off of section 8 said in its summary: the merge commit, the files that conflicted and what the fix changed.
+
 For each worktree with commits, and no other:
 
 1. Push the task's branch: `git push -u origin <branch>`. It is never forced: no `--force` and no `--force-with-lease`. If the push is refused, for example because the branch on GitHub has commits this one doesn't, don't force it, pull or rebase. Hand off as `failed`, with what git said, and name any repo already pushed.
@@ -81,7 +83,7 @@ options: merged | a change you want made | stop here
 EOF
 ```
 
-Then start `entourage task watch <project> <card ID>` in the background, the way your tools run a long command without waiting for it to end, such as `run_in_background` in Claude Code. You are told when it ends, and can answer the human meanwhile. It asks GitHub about each pull request for the card on a schedule: every minute for the first 10 minutes after the newest was opened, every 5 minutes for the hour after that, then every 30 minutes. Each check prints a line for each pull request, `merged`, `open` or `closed` and its URL, and it ends only once every one has merged or one is closed. It costs nothing while it sleeps. Start it once: an answer from the human, or a change made as section 6 says, leaves it running. When it ends:
+Then start `entourage task watch <project> <card ID>` in the background, the way your tools run a long command without waiting for it to end, such as `run_in_background` in Claude Code. You are told when it ends, and can answer the human meanwhile. It asks GitHub about each pull request for the card on a schedule: every minute for the first 10 minutes after the newest was opened, every 5 minutes for the hour after that, then every 30 minutes. Each check prints a line for each pull request, `merged`, `open` or `closed` and its URL, and it ends only once every one has merged or one is closed. It costs nothing while it sleeps. Start it once: an answer from the human, or a change made as section 6 says, leaves it running. A watch that has ended, as it does with 4, is started again when you come back here from section 4 once the pull request is brought up to date. It counts from when the pull request was opened, so it goes on where it was. When it ends:
 
 - **It ends with 0: every pull request for the card has merged.** Its last lines say `merged` for each. The human typed nothing, but the merge is their answer, so record it as one. That way `entourage task log` shows how long the pull requests waited on them, as it does for an answer typed in the tab:
 
@@ -105,11 +107,22 @@ Then start `entourage task watch <project> <card ID>` in the background, the way
   ```
 
   Then ask the human whether to stop here, as `needs-human`, naming it. If they want it stopped, hand off as `failed`, with the pull request that was closed in `reason`. Run no `task finish`, whatever they answer. A card whose pull request was closed never reaches section 7, so its task stays as it is, with its work. If they reopen it, start the watch again.
+- **It ends with 4: a pull request is in conflict with its default branch.** Its last lines name it, with `conflict`: GitHub cannot merge it as it is. A closed one would have ended it with 3 instead, since the human is asked about that first. Record the conflict first, as the answer:
+
+  ```
+  entourage task handoff <project> <card ID> <<'EOF'
+  phase: pr
+  status: answered
+  answer: in conflict on GitHub, <its link>
+  EOF
+  ```
+
+  Then bring it up to date as section 8, "Bring a pull request up to date", says, without asking the human first.
 - **It ends with 1, or keeps saying it could not ask GitHub.** See the table in "If something goes wrong".
 
 When the human answers in the tab, record the answer first, as the handoff block section says. Then:
 
-- **They say it has merged.** Check at once with `entourage task watch <project> <card ID> --once`, which checks once and does not wait: it exits with 0 when every pull request for the card has merged, 2 while one is still open, and 3 when one was closed. With 0, stop the watch in the background, and hand off as section 7 says. With 2, hand off as `needs-human` again, naming the one that has not merged, and leave the watch in the background running. With 3, ask whether to stop, as for a watch that ends with 3.
+- **They say it has merged.** Check at once with `entourage task watch <project> <card ID> --once`, which checks once and does not wait: it exits with 0 when every pull request for the card has merged, 2 while one is still open, and 3 when one was closed. With 0, stop the watch in the background, and hand off as section 7 says. With 2, hand off as `needs-human` again, naming the one that has not merged, and leave the watch in the background running. With 3, ask whether to stop, as for a watch that ends with 3. With 4, one is in conflict: stop the watch in the background, and bring it up to date as section 8, "Bring a pull request up to date", says.
 - **They ask for a change.** Make it as section 6 says, then wait again. The watch in the background goes on: don't start another.
 - **They say to stop.** Stop the watch in the background, and hand off as `failed`, with the pull requests that are still open in `reason`. Leave them open, as they are.
 
@@ -168,6 +181,47 @@ It removes the task's worktrees, deletes the task's branch in each repo, removes
 
 `task finish` checks every repo before it removes anything. If removing the task would lose work, it removes nothing, and names each thing that would be lost under the repo it is in: changes that are not committed, commits that are not in the default branch, such as a fix pushed after the merge, and ignored files that the repo's setup does not make again, such as a design doc or an `.env`. Then tell the human everything it named, as it said it, and that the task is left as it is. The merge is recorded already, so record no other hand-off. Change nothing more. Don't commit, push or remove anything to get `task finish` through, and don't remove the task by hand. What to keep is the human's call. The same goes for any other stop. It may find no task for the card, or stop partway and name what it removed. Tell the human what it said. When it finishes the task but leaves the tab open, because Herdr is not running or has no such tab, tell the human that too.
 
+## 8. Bring a pull request up to date
+
+The watch ends with 4 when a pull request is in conflict with its default branch: the default branch has moved on since the task started, and GitHub cannot merge the two as they are. Bring it up to date without asking the human, so that it is ready to merge when they come to it. Bring up to date only each pull request the watch named `conflict`: a pull request with no conflict gets no push.
+
+Take the default branch by a merge, never a rebase. A rebase rewrites the branch, and only a forced push would put it on GitHub, which this step never makes.
+
+In the worktree of each repo whose pull request is in conflict, on the task's branch:
+
+1. Run `git fetch origin`, then `git merge origin/<default branch>`, with the default branch section 2 found. git stops with the files in conflict, and `git status` lists them. Note them: the hand-off and the pull request name them. When git merges it with no conflict, as it does when the default branch has moved again since GitHub looked, it commits the merge itself: go on to step 3.
+2. Resolve each one, keeping both what the card's work does and what the default branch has done since. `git log HEAD..origin/<default branch> -- <file>` lists the commits that changed it there.
+3. Run the repo's whole test suite, as section 6 does. If a test fails, find out why and fix it. Change a test only when the default branch changed what that test checks.
+4. Commit the merge with `git commit`, by the repo's rules for commits. Where they say nothing of a merge, keep the message git wrote for it, with `git commit --no-edit`. Don't skip its commit hooks. A fix the tests needed goes in the merge, or in a commit after it. `git status` shows no changes after.
+5. Push nothing yet. The review checks the merge first, and section 4 pushes it once the review has passed the work again.
+
+Ask the human only when you cannot settle the conflict: when the tests cannot be made to pass, or when a resolution would change what a Done when item says, such as when the default branch now does what an item asks for in another way, or has taken away something the work builds on. Then leave the merge in the worktree as it is, and hand off as `needs-human`, naming the pull request and the files in conflict:
+
+```
+entourage task handoff <project> <card ID> <<'EOF'
+phase: pr
+status: needs-human
+summary: <why it cannot be settled: the tests that fail and what you tried, or the Done when item a resolution would change, and how>
+question: <the pull request> is in conflict with <the default branch> in <the files in conflict>. <the resolution you recommend>?
+options: <your recommendation> | <another resolution> | stop here
+EOF
+```
+
+Until they answer, commit and push nothing. When they answer, record the answer first, as the handoff block section says, then settle the conflict the way they say, from step 2 above. If they say to stop, hand off as `failed`, with the pull request and the files in conflict in `reason`, and leave the merge in the worktree as it is, for them.
+
+Once the merge is committed and the tests pass, record the hand-off:
+
+```
+entourage task handoff <project> <card ID> <<'EOF'
+phase: pr
+status: done
+next: review
+summary: <the pull request brought up to date, the merge commit, the files that conflicted and what the fix changed, and that the tests pass>
+EOF
+```
+
+The step that follows is the `sdlc-review` skill. It checks each Done when item again, now with the merge commit, revises the card's Review, and hands back to this step with `pr` next. This step then runs again from the top. Section 4 finds the pull requests open, pushes only the branch that moved, never forced, and adds the **Brought up to date:** line to its description. Section 5 waits for the merge again, with the watch started again.
+
 ## The handoff block
 
 Every step of the lifecycle ends the same way, so whoever is driving it, a person or a script, can tell how the step ended without reading the whole session.
@@ -219,6 +273,7 @@ EOF
 | `entourage linear move` exits non-zero | The card was not moved. Say so, and why, in the summary of the hand-off that waits, and in `flags` when the step hands off `done`, and go on to wait for the merge. Don't move it with the Linear tools |
 | The human says it has merged, and the watch's `--once` says it is open | Name the pull request that has not merged, and ask again. Leave the watch in the background running |
 | A pull request was closed without merging | Ask the human whether to stop. Don't reopen it or open another, and run no `task finish`: the task stays |
+| A pull request is in conflict, and the tests cannot be made to pass or a resolution would change what a Done when item says | Hand off as `needs-human`, naming the pull request and the files in conflict, as section 8 says. Commit and push nothing until the human answers. Never rebase, and never force a push to get past it |
 | The watch ends with 1, or keeps saying it could not ask GitHub | Hand off as `needs-human`, with what it said and what would put it right, such as `gh auth login`. Start the watch again once the human says it is right. Never merge to get past it |
 | `task finish` refuses, or stops partway | Tell the human everything it named, and that the task is left as it is. Record no other hand-off, and change nothing to get it through |
 | The human asks for a change | Make it as section 6 says, push it and wait again. Ask first if it would alter what they approved on the card |

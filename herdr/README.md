@@ -313,7 +313,17 @@ to its team's first completed status (Done), whatever recorded it: your
 answer, or a watch on the pull requests. A card that is done or canceled
 already stays as it is. When a pull request is closed without merging, it
 records that the same way and asks you whether to stop, and the card is not
-moved. What happened to the
+moved. When one is in conflict with its default branch, it records that the
+same way and brings it up to date without asking you: it merges the default
+branch in, never by a rebase, fixes what the tests find, commits the merge and
+hands off `done` with `review` next. The review checks each Done when item
+again, with the merge, and hands back to `pr`, which pushes only the branch
+that moved, never forced, adds a **Brought up to date:** line to its pull
+request's description, with the files that conflicted and what the fix
+changed, and waits as `needs-human` again. It asks you about a conflict, as
+`needs-human` naming the pull request and the files in conflict, only when the
+tests cannot be made to pass or the fix would change what a Done when item
+says, and pushes nothing until you answer. What happened to the
 card is said on stderr, so the block printed is the one recorded; when the
 card cannot be moved, the hand-off is still recorded, and the note says why.
 Right after that hand-off, as the run's last command, the agent finishes the
@@ -462,9 +472,10 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   <project> <card>` in the background. The watch asks GitHub every minute
   for the first 10 minutes after the newest pull request was opened, every 5
   minutes for the hour after that, then every 30 minutes, printing a line for
-  each pull request (`merged`, `open` or `closed`, and its URL), and ends once
-  every one has merged (exit 0) or one is closed without merging (exit 3). It
-  changes nothing, and wakes the agent only when it ends. Telling the agent in
+  each pull request (`merged`, `open`, `closed` or `conflict`, and its URL),
+  and ends once every one has merged (exit 0), one is closed without merging
+  (exit 3) or one is in conflict with its default branch (exit 4), which the
+  agent then brings up to date. A closed one comes first. It changes nothing, and wakes the agent only when it ends. Telling the agent in
   the tab that they have merged makes it check at once, with `--once`, which
   checks once and exits 2 while one is still open. Once it hands off with
   `merged` next, it finishes the task with `task finish`, which closes the

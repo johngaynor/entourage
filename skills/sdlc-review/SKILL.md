@@ -5,7 +5,7 @@ description: Review a built Linear card in its task before anything is pushed, b
 
 # Review a card
 
-Review is the step after build. Build made the change the Plan describes and committed it on the task's branch. Review checks that work against the card's Done when before anyone else sees it, and sends what falls short back to build.
+Review is the step after build. Build made the change the Plan describes and committed it on the task's branch. Review checks that work against the card's Done when before anyone else sees it, and sends what falls short back to build. It also comes after the `sdlc-pr` skill when that step has merged the default branch into the task's branch, to bring a pull request in conflict up to date: the merge is checked before it is pushed.
 
 The human is not watching while it runs. They read the card's Review and the hand-off afterwards, so the Review has to say of each Done when item whether it is met and how that was shown, and the hand-off has to say plainly how the review ended.
 
@@ -73,7 +73,7 @@ Round <n>, on <the commit each worktree was at>. The tests <pass, or which fail>
 >>>
 ```
 
-The round is 1 the first time, and one more each time build has been sent back before. After writing, read the card back. Check that nothing above the Review changed and that the Review shows as a collapsed section.
+The round is 1 the first time, and one more each time build has been sent back before. When `sdlc-pr` sent the work here after the default branch was merged in, the round is one more than the last as well, and its round line says why: `Round <n>, on <the commit each worktree was at>, after the default branch was merged in.` Check each Done when item again with the merge commit, as for any round. After writing, read the card back. Check that nothing above the Review changed and that the Review shows as a collapsed section.
 
 ## 6. Hand off
 

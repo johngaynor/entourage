@@ -1663,7 +1663,7 @@ task_watch_sleeps_on_the_schedule() {
     [ "$(sleeps)" = "$want" ] || fail "opened ${ago}s ago, it slept '$(sleeps)', not $want"
     [ "$(gh_count)" = 2 ] || fail "opened ${ago}s ago, gh was asked $(gh_count) times in two checks: $(gh_calls)"
   done
-  [ "$(gh_calls | sort -u)" = "api pr list --head feat/abc-1-x --state all --json url,state,createdAt" ] ||
+  [ "$(gh_calls | sort -u)" = "api pr list --head feat/abc-1-x --state all --json url,state,mergeable,createdAt" ] ||
     fail "did not ask gh for the branch's pull request in the worktree: $(gh_calls)"
 }
 
@@ -1710,6 +1710,68 @@ task_watch_ends_when_a_pull_request_is_closed() {
   [ "$WATCH_CODE" = 3 ] || fail "exited $WATCH_CODE, not 3, with one closed: $WATCH_OUT $WATCH_ERR"
   case $WATCH_OUT in *"open $API_PR"$'\n'"closed $WEB_PR") ;; *) fail "did not end with the closed one: $WATCH_OUT" ;; esac
   [ "$(sleeps)" = 60 ] || fail "slept '$(sleeps)', not once"
+}
+
+# A pull request in conflict with its default branch ends it with 4 and a
+# conflict line, though another is still open. UNKNOWN, which GitHub answers
+# while it works out whether one can be merged, counts as open. With --once
+# it is 4 too, and UNKNOWN alone is still 2.
+task_watch_ends_on_a_conflict() {
+  watch_demo api web
+  # Both merge at the third check, so a watch that missed the conflict ends
+  # there, with 0, rather than running on.
+  gh_answers api "$(pr_answer OPEN "$API_PR" 60 UNKNOWN)" "$(pr_answer OPEN "$API_PR" 60 UNKNOWN)" \
+    "$(pr_answer MERGED "$API_PR" 60)"
+  gh_answers web "$(pr_answer OPEN "$WEB_PR" 60)" "$(pr_answer OPEN "$WEB_PR" 60 CONFLICTING)" \
+    "$(pr_answer MERGED "$WEB_PR" 60)"
+  watch
+  [ "$WATCH_CODE" = 4 ] || fail "exited $WATCH_CODE, not 4, with one in conflict: $WATCH_OUT $WATCH_ERR"
+  [ "$WATCH_OUT" = "open $API_PR
+open $WEB_PR
+open $API_PR
+conflict $WEB_PR" ] || fail "did not print each check, ending with the conflict: $WATCH_OUT"
+  [ "$(sleeps)" = 60 ] || fail "slept '$(sleeps)', not once"
+  gh_reset
+  gh_answers api "$(pr_answer OPEN "$API_PR" 60 UNKNOWN)"
+  gh_answers web "$(pr_answer OPEN "$WEB_PR" 60 CONFLICTING)"
+  watch --once
+  [ "$WATCH_CODE" = 4 ] || fail "with --once, exited $WATCH_CODE, not 4, with one in conflict: $WATCH_OUT $WATCH_ERR"
+  [ "$WATCH_OUT" = "open $API_PR
+conflict $WEB_PR" ] || fail "with --once, did not print the conflict: $WATCH_OUT"
+  # web, with no answer, has no pull request, so api is the only one.
+  gh_reset
+  gh_answers api "$(pr_answer OPEN "$API_PR" 60 UNKNOWN)"
+  watch --once
+  [ "$WATCH_CODE" = 2 ] || fail "with --once, exited $WATCH_CODE, not 2, with UNKNOWN alone: $WATCH_OUT $WATCH_ERR"
+  [ "$WATCH_OUT" = "open $API_PR" ] || fail "did not count UNKNOWN as open: $WATCH_OUT"
+}
+
+# A pull request closed without merging comes before one in conflict, in
+# either repo: the human is asked about it first. A closed one that GitHub
+# also calls conflicting is closed.
+task_watch_puts_a_closed_one_first() {
+  watch_demo api web
+  local order closed conflict closed_pr conflict_pr once
+  for order in "api $API_PR web $WEB_PR" "web $WEB_PR api $API_PR"; do
+    read -r closed closed_pr conflict conflict_pr <<< "$order"
+    gh_reset
+    gh_answers "$closed" "$(pr_answer CLOSED "$closed_pr" 60 CONFLICTING)"
+    gh_answers "$conflict" "$(pr_answer OPEN "$conflict_pr" 60 CONFLICTING)"
+    for once in '' --once; do
+      watch $once
+      [ "$WATCH_CODE" = 3 ] ||
+        fail "closed in $closed, in conflict in $conflict${once:+, $once}: exited $WATCH_CODE, not 3: $WATCH_OUT $WATCH_ERR"
+      case $WATCH_OUT in
+        *"closed $closed_pr"*) ;;
+        *) fail "closed in $closed${once:+, $once}: did not print it as closed: $WATCH_OUT" ;;
+      esac
+      case $WATCH_OUT in
+        *"conflict $conflict_pr"*) ;;
+        *) fail "in conflict in $conflict${once:+, $once}: did not print the conflict: $WATCH_OUT" ;;
+      esac
+    done
+    [ -z "$(sleeps)" ] || fail "closed in $closed: slept '$(sleeps)'"
+  done
 }
 
 # When gh fails, it says so and asks again at the next check. With --once
@@ -1788,6 +1850,7 @@ task_watch_stops_while_it_sleeps() {
 
 WATCH_CASES="task_watch_sleeps_on_the_schedule task_watch_once_checks_once
   task_watch_ends_when_every_pull_request_has_merged task_watch_ends_when_a_pull_request_is_closed
+  task_watch_ends_on_a_conflict task_watch_puts_a_closed_one_first
   task_watch_tries_again_when_gh_fails task_watch_reads_each_branchs_newest_pull_request
   task_watch_needs_a_pull_request task_watch_stops_while_it_sleeps"
 

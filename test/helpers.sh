@@ -366,10 +366,11 @@ gh_fails_at() { mkdir -p "$TMP/gh/$1"; echo 1 > "$TMP/gh/$1/$2.exit"; }
 gh_reset() { rm -rf "$TMP/gh" "$TMP/gh-calls.log" "$TMP/sleep-calls.log"; mkdir -p "$TMP/gh"; }
 
 # `gh pr list`'s answer for one pull request: state $1 (OPEN, MERGED or
-# CLOSED), URL $2, opened $3 seconds ago.
+# CLOSED), URL $2, opened $3 seconds ago, and whether it can be merged, $4
+# (MERGEABLE when left out, CONFLICTING, or UNKNOWN while GitHub works it out).
 pr_answer() {
-  jq -cn --arg state "$1" --arg url "$2" --argjson ago "$3" \
-    '[{url: $url, state: $state, createdAt: ((now | floor) - $ago | todate)}]'
+  jq -cn --arg state "$1" --arg url "$2" --argjson ago "$3" --arg mergeable "${4:-MERGEABLE}" \
+    '[{url: $url, state: $state, mergeable: $mergeable, createdAt: ((now | floor) - $ago | todate)}]'
 }
 
 # Every call made to gh, one line each, and how many there were.
