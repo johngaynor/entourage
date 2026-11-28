@@ -33,7 +33,9 @@ is_worktree_copy() {
 # read. Each of these leaves the machine as it was, the hand-off store
 # included; `task ls` asks Linear, and `task watch` asks GitHub, and both
 # only read. `profile ls` reads the settings file; `profile set` changes it,
-# and the review subagents in Claude Code's agents folder.
+# and the review subagents in Claude Code's agents folder. `linear archive`
+# alone, or with --json, reads whether archiving is on; with on or off it
+# changes the settings file.
 is_read() {
   case ${1:-help} in
     help | -h | --help | status) return 0 ;;
@@ -48,6 +50,14 @@ is_read() {
     profile)
       case ${2:-} in
         ls | list) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
+    linear)
+      [ "${2:-}" = archive ] || return 1
+      case $# in
+        2) return 0 ;;
+        3) [ "$3" = --json ] ;;
         *) return 1 ;;
       esac
       ;;
@@ -81,7 +91,7 @@ guard_worktree() {
   [ "${ENTOURAGE_LIVE:-}" != 1 ] || return 0
   GUARDED=1
   ! is_read "$@" || return 0
-  die "this is the copy of entourage in the worktree $REPO. It runs only the commands that read (help, status, project ls, project team <name>, profile ls, task ls, task log and task watch), so \`$(shell_words "$@")\` was not run: it could change this machine's Herdr, projects and tasks, hand-offs, Linear key or cards, or Claude Code's skills, agents and trust file.
+  die "this is the copy of entourage in the worktree $REPO. It runs only the commands that read (help, status, project ls, project team <name>, profile ls, linear archive, task ls, task log and task watch), so \`$(shell_words "$@")\` was not run: it could change this machine's Herdr, projects and tasks, hand-offs, Linear key or cards, or Claude Code's skills, agents and trust file.
   - For the card's own steps, such as recording a hand-off, run plain \`entourage\`: the copy this machine runs, not this one.
   - To try a command that changes the machine, write a test case for it, in test/.
   - To run it on this machine for real, only when that is wanted:

@@ -235,11 +235,15 @@ task_handoff() {
   #     its sub-issues, moves to its team's first not-started status.
   #   - Every pull request for the card has merged, so its work is finished.
   #     Whatever records the merge, a human's answer or a watch on the pull
-  #     requests, moves the card to its team's first completed status.
+  #     requests, moves the card to its team's first completed status. Then,
+  #     with archiving on, the card is archived, and so is every other closed
+  #     card of the project's teams (archive.sh); with it off, Linear is
+  #     asked nothing more. A card that is not archived is a note too.
   if [ "$status" = done ] && [ "$step" = breakdown ] && [ "$next" = start ]; then
     linear_move_note "$card" approved >&2 || true
   elif [ "$status" = done ] && [ "$next" = merged ]; then
     linear_move_note "$card" completed >&2 || true
+    linear_archive_note "$name" "$card" >&2 || true
   fi
 }
 

@@ -143,6 +143,8 @@ project ls --json
 project team demo
 profile ls
 profile ls --json
+linear archive
+linear archive --json
 task ls demo
 task ls demo --json
 task log demo
@@ -186,6 +188,7 @@ guard_runs_the_reads_and_changes_nothing() {
     fail "a worktree's copy read otherwise: $(diff <(printf '%s\n' "$usual") <(printf '%s\n' "$worktree"))"
   case $usual in *'ABC-2  Second card'*'build done, then review'*'Built the export.'*) ;; *) fail "the reads did not show the cards and the hand-off: $usual" ;; esac
   case $usual in *'open https://github.com/acme/api/pull/7'$'\n''[exit 2]'*) ;; *) fail "the watch did not show the open pull request: $usual" ;; esac
+  case $usual in *'$ entourage linear archive'$'\n''Archiving is off'*'"archive":false'*) ;; *) fail "linear archive did not say archiving is off: $usual" ;; esac
   # `task log` asks Herdr whether it is running and what tabs it has open, and
   # hc what each of a card's terminals is doing. Each of those only reads, and
   # no read asks Herdr or hc for anything else.
@@ -248,6 +251,16 @@ profile_set_is_refused_in_a_worktree() {
   refused profile set reviewer model sonnet
   refused profile
   refused profile nonsense
+}
+
+# Whether archiving is on is read in a worktree; turning it on or off changes
+# the settings file, so it is refused, and so is anything else after it.
+linear_archive_is_refused_in_a_worktree() {
+  guard_machine
+  refused linear archive on
+  refused linear archive off
+  refused linear archive on --json
+  refused linear archive nonsense
 }
 
 # --- asked, a worktree's copy acts on the machine ---------------------------
@@ -367,7 +380,7 @@ guard_refuses_task_new guard_refuses_task_start guard_refuses_task_build
 guard_refuses_task_handoff guard_refuses_linear_key guard_refuses_linear_type guard_refuses_linear_section
 guard_refuses_linear_move
 guard_refuses_a_command_it_does_not_know
-profile_ls_runs_in_a_worktree profile_set_is_refused_in_a_worktree
+profile_ls_runs_in_a_worktree profile_set_is_refused_in_a_worktree linear_archive_is_refused_in_a_worktree
 guard_knows_a_worktree_git_made
 guard_runs_the_reads_and_changes_nothing guard_opens_the_store_read_only
 guard_runs_project_new_when_asked guard_runs_task_start_when_asked guard_records_a_handoff_when_asked

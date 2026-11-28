@@ -1,13 +1,17 @@
-# The model and effort each agent profile runs on, kept in entourage's
-# settings file. Sourced by cli/entourage.
+# The model and effort each agent profile runs on, and whether a merged card
+# is archived, kept in entourage's settings file. Sourced by cli/entourage.
 
 # The file is $SETTINGS, ~/.config/entourage/settings.json, beside the
 # projects. It is JSON, not lines of the env file: the Agent settings mod in
 # Herdr reads and changes it through `entourage profile`, and the env file
 # holds the Linear key.
-#   {"profiles": {"write-up": {"model": "opus", "effort": "xhigh"}, ...}}
+#   {"profiles": {"write-up": {"model": "opus", "effort": "xhigh"}, ...},
+#    "archive": true}
 # `install` and `update` make it when it is missing, and never change one
 # that is there. A profile or a value the file leaves out is the default.
+# "archive" is true or false, and off when the file leaves it out; neither
+# `install` nor `update` writes it, so archiving is on only once the human
+# turns it on with `entourage linear archive on` (archive.sh).
 #
 # Each profile's values reach claude in their own way:
 #   write-up, build     `task new` and `task build` start claude with
@@ -70,27 +74,33 @@ profile_for() {
 # --- reading the file -------------------------------------------------------
 
 # What settings_load read: each profile's model and effort, in the order of
-# PROFILES, the default where the file names none. When the file cannot be
-# read, SETTINGS_WHY says why, as a message that stops a command.
-SET_MODELS=() SET_EFFORTS=() SETTINGS_WHY='' SETTINGS_LOADED=0
+# PROFILES, the default where the file names none, and whether archiving is
+# on, true or false. When the file cannot be read, SETTINGS_WHY says why, as
+# a message that stops a command.
+SET_MODELS=() SET_EFFORTS=() SET_ARCHIVE=false SETTINGS_WHY='' SETTINGS_LOADED=0
 
 # Every value the file holds, read with jq: one line for each profile it
 # names, holding the profile, what its value is, its model and its effort,
 # each as JSON and separated by tabs, so that no text in the file can add a
-# line or a field. A line starting with ! says what is wrong with the file as
-# a whole. -s reads every value in the file, so that an empty file, or one
-# with two values, is caught.
+# line or a field. When the file has an "archive", a line @archive and its
+# value, as JSON, comes first: a profile's name is a JSON string, so it never
+# starts with @. A line starting with ! says what is wrong with the file as a
+# whole. -s reads every value in the file, so that an empty file, or one with
+# two values, is caught.
 SETTINGS_JQ='
   if length == 0 then "!it is empty"
   elif length > 1 then "!it holds more than one JSON value"
   else .[0] |
     if type != "object" then "!it is not a JSON object"
-    elif .profiles == null then empty
-    elif (.profiles | type) != "object" then "!its \"profiles\" is not an object"
-    else .profiles | to_entries[] |
-      [(.key | tojson), (.value | type),
-       (if (.value | type) == "object" then (.value.model | tojson), (.value.effort | tojson)
-        else "null", "null" end)] | join("\t")
+    else
+      (if has("archive") then "@archive\t" + (.archive | tojson) else empty end),
+      (if .profiles == null then empty
+       elif (.profiles | type) != "object" then "!its \"profiles\" is not an object"
+       else .profiles | to_entries[] |
+         [(.key | tojson), (.value | type),
+          (if (.value | type) == "object" then (.value.model | tojson), (.value.effort | tojson)
+           else "null", "null" end)] | join("\t")
+       end)
     end
   end'
 
@@ -104,12 +114,12 @@ json_plain() {
   esac
 }
 
-# Read the settings file into SET_MODELS and SET_EFFORTS, or return 1 with
-# SETTINGS_WHY saying what is wrong. With no file there is nothing to read,
-# and no jq is needed.
+# Read the settings file into SET_MODELS, SET_EFFORTS and SET_ARCHIVE, or
+# return 1 with SETTINGS_WHY saying what is wrong. With no file there is
+# nothing to read, and no jq is needed.
 settings_load() {
   local out name kind model effort p i why=''
-  SET_MODELS=() SET_EFFORTS=() SETTINGS_WHY='' SETTINGS_LOADED=0
+  SET_MODELS=() SET_EFFORTS=() SET_ARCHIVE=false SETTINGS_WHY='' SETTINGS_LOADED=0
   for p in $PROFILES; do SET_MODELS+=("$DEFAULT_MODEL"); SET_EFFORTS+=("$DEFAULT_EFFORT"); done
   if [ ! -e "$SETTINGS" ] && [ ! -L "$SETTINGS" ]; then SETTINGS_LOADED=1; return 0; fi
   if [ ! -f "$SETTINGS" ]; then
@@ -130,6 +140,13 @@ settings_load() {
     while IFS=$'\t' read -r name kind model effort; do
       [ -n "$name" ] || continue
       case $name in '!'*) why=${name#!}; break ;; esac
+      if [ "$name" = @archive ]; then
+        case $kind in
+          true | false) SET_ARCHIVE=$kind ;;
+          *) why="its \"archive\" is $kind, which is not true or false"; break ;;
+        esac
+        continue
+      fi
       p=$(json_plain "$name")
       if ! is_profile "$p"; then why="it names the profile $name, which is not one of $TAKES_PROFILE"; break; fi
       if [ "$kind" != object ]; then why="its profile $name is a $kind, not an object holding a model and an effort"; break; fi

@@ -190,6 +190,119 @@ profile_needs_jq() {
   refuses_set 'jq is not installed' build effort high
 }
 
+# --- archiving merged cards -------------------------------------------------
+
+# Whether `linear archive` and its --json form both say archiving is $1 (on
+# or off), the JSON naming the settings file.
+archive_says() {
+  local want=$1 json=false out
+  [ "$want" = off ] || json=true
+  out=$("$E" linear archive 2>&1) || { fail "linear archive exited non-zero: $out"; return; }
+  case $out in "Archiving is $want"*) ;; *) fail "linear archive did not say archiving is $want: $out" ;; esac
+  out=$("$E" linear archive --json 2>&1) || { fail "linear archive --json exited non-zero: $out"; return; }
+  [ "$(printf '%s\n' "$out" | grep -c '')" = 1 ] || fail "linear archive --json is not one line: $out"
+  printf '%s' "$out" | jq -e --arg f "$(settings)" --argjson on "$json" '.file == $f and .archive == $on' >/dev/null ||
+    fail "linear archive --json does not say $json for $(settings): $out"
+}
+
+# Run `linear archive` with the arguments given, which it must refuse with a
+# message holding $1, leaving the settings file byte for byte as it was.
+refuses_archive() {
+  local want=$1 before out
+  shift
+  before=$(cksum < "$(settings)")
+  if out=$("$E" linear archive "$@" 2>&1); then fail "linear archive $* exited zero: $out"; fi
+  case $out in *"$want"*) ;; *) fail "linear archive $* did not say $want: $out" ;; esac
+  [ "$(cksum < "$(settings)")" = "$before" ] || fail "linear archive $* changed the file: $(cat "$(settings)")"
+}
+
+# Archiving is off with no file, and with the file install makes, which has
+# no "archive" in it; update adds none either.
+linear_archive_is_off_by_default() {
+  archive_says off
+  [ ! -e "$(settings)" ] || fail "linear archive made the file"
+  "$E" install >/dev/null
+  archive_says off
+  jq -e 'has("archive") | not' "$(settings)" >/dev/null || fail "install wrote \"archive\": $(cat "$(settings)")"
+  "$E" update --no-pull >/dev/null || fail "update exited non-zero"
+  archive_says off
+  jq -e 'has("archive") | not' "$(settings)" >/dev/null || fail "update wrote \"archive\": $(cat "$(settings)")"
+}
+
+# on and off set "archive" in the file, and every profile stays as it was.
+linear_archive_on_and_off_keep_the_profiles() {
+  "$E" install >/dev/null
+  "$E" profile set build effort high >/dev/null || fail "could not set the build's effort to start from"
+  "$E" profile set reviewer model sonnet >/dev/null || fail "could not set the reviewer's model to start from"
+  local before
+  before=$(jq -c '.profiles' "$(settings)")
+  out=$("$E" linear archive on) || fail "linear archive on exited non-zero: $out"
+  case $out in "Archiving is on"*) ;; *) fail "linear archive on did not say archiving is on: $out" ;; esac
+  [ "$(jq -c '.archive' "$(settings)")" = true ] || fail "the file does not hold \"archive\": true: $(cat "$(settings)")"
+  [ "$(jq -c '.profiles' "$(settings)")" = "$before" ] || fail "linear archive on changed the profiles: $(cat "$(settings)")"
+  archive_says on
+  out=$("$E" linear archive off) || fail "linear archive off exited non-zero: $out"
+  case $out in "Archiving is off"*) ;; *) fail "linear archive off did not say archiving is off: $out" ;; esac
+  [ "$(jq -c '.archive' "$(settings)")" = false ] || fail "the file does not hold \"archive\": false: $(cat "$(settings)")"
+  [ "$(jq -c '.profiles' "$(settings)")" = "$before" ] || fail "linear archive off changed the profiles: $(cat "$(settings)")"
+  archive_says off
+  "$E" profile ls >/dev/null || fail "profile ls exited non-zero after the changes"
+}
+
+# With no file yet, turning it on makes one, with every profile on the
+# defaults.
+linear_archive_on_makes_a_missing_file() {
+  "$E" linear archive on >/dev/null || fail "linear archive on exited non-zero with no file"
+  [ "$(jq -c '.archive' "$(settings)" 2>&1)" = true ] || fail "the file made does not hold \"archive\": true: $(cat "$(settings)" 2>&1)"
+  [ "$(all_values)" = "$(printf '%s\n' 'build opus xhigh' 'reviewer opus xhigh' 'verifier opus xhigh' 'write-up opus xhigh')" ] ||
+    fail "the file made does not name every profile on the defaults: $(cat "$(settings)" 2>&1)"
+  archive_says on
+}
+
+# Anything but on or off, or nothing, is refused, and the file is left as it
+# was.
+linear_archive_refuses_anything_else() {
+  "$E" install >/dev/null
+  local v
+  for v in yes true ON On 1 '' 'on off' --on; do refuses_archive 'on or off' "$v"; done
+  refuses_archive 'usage: entourage linear archive' on --json
+  refuses_archive 'usage: entourage linear archive' --json on
+  refuses_archive 'usage: entourage linear archive' on off
+  "$E" linear archive on >/dev/null
+  refuses_archive 'on or off' yes
+  [ "$(jq -c '.archive' "$(settings)")" = true ] || fail "a refusal undid the setting: $(cat "$(settings)")"
+}
+
+# An "archive" that is not true or false makes the file not valid settings:
+# linear archive and status say so, and nothing mends it on top.
+linear_archive_says_a_broken_value() {
+  "$E" install >/dev/null
+  local body want
+  while IFS='|' read -r body want; do
+    settings_file "$body"
+    if out=$("$E" linear archive 2>&1); then fail "linear archive exited zero with the file '$body': $out"; continue; fi
+    case $out in *"$(settings) is not valid settings: $want"*) ;; *) fail "the file '$body' did not give '$want': $out" ;; esac
+    if out=$("$E" status 2>&1); then fail "status exited zero with the file '$body'"; fi
+    case $out in *"problem    $(settings) is not valid settings: $want"*) ;; *) fail "status did not report '$want': $out" ;; esac
+    refuses_archive "$want" on
+  done <<'EOF'
+{"archive":"yes"}|its "archive" is "yes", which is not true or false
+{"archive":1,"profiles":{}}|its "archive" is 1, which is not true or false
+{"archive":null}|its "archive" is null, which is not true or false
+EOF
+  settings_file '{"archive":true,"profiles":{"build":{"effort":"high"}}}'
+  "$E" status >/dev/null || fail "status reported a file with \"archive\": true"
+  "$E" profile ls >/dev/null || fail "profile ls refused a file with \"archive\": true"
+}
+
+linear_archive_needs_jq() {
+  "$E" install >/dev/null
+  hide_jq
+  out=$("$E" linear archive 2>&1) && fail "linear archive exited zero without jq: $out"
+  case $out in *"jq is not installed"*) ;; *) fail "did not say jq is missing: $out" ;; esac
+  refuses_archive 'jq is not installed' on
+}
+
 # --- in Herdr ---------------------------------------------------------------
 
 # Both layouts put the Agent settings button at the right end of the tab bar:
@@ -237,4 +350,8 @@ CASES="profile_ls_shows_each_profile profile_ls_json_lists_profiles_models_and_e
   profile_set_changes_one_value profile_set_makes_a_missing_file profile_set_takes_a_full_model_name
   profile_set_refuses_an_unknown_effort profile_set_refuses_an_unknown_model
   profile_set_refuses_an_unknown_profile profile_set_refuses_a_broken_file profile_needs_jq
-  profile_set_rewrites_the_reviewer layouts_place_agent_settings agent_settings_mod_asks_entourage"
+  profile_set_rewrites_the_reviewer
+  linear_archive_is_off_by_default linear_archive_on_and_off_keep_the_profiles
+  linear_archive_on_makes_a_missing_file linear_archive_refuses_anything_else
+  linear_archive_says_a_broken_value linear_archive_needs_jq
+  layouts_place_agent_settings agent_settings_mod_asks_entourage"

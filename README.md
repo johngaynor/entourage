@@ -84,6 +84,28 @@ wrong, and `entourage status` says so too. The file is read with `jq`. In
 Herdr, the Agents button at the right end of the tab bar shows and changes the
 same values; see [herdr/README.md](herdr/README.md#agent-settings).
 
+The same file says whether a merged card is archived in Linear, as
+`"archive": true` or `false`. It is off until you turn it on: with no
+`"archive"` in the file, or no file, and `install` and `update` never write
+one.
+
+```sh
+entourage linear archive         # say whether archiving is on (--json for programs)
+entourage linear archive on      # turn it on
+entourage linear archive off     # turn it off
+```
+
+`on` and `off` leave the profiles as they are, and anything else is refused,
+with the file left as it was; an `"archive"` that is not `true` or `false`
+makes the file not valid settings. With archiving on, recording a card's merge
+archives the card, once its move has put it in Done, and every other card of
+the project's teams that is done, canceled or a duplicate. On Linear's free
+plan, which makes no new card once 250 are not archived, closed cards then stop
+counting against that. Archiving is not deleting: an archived card still opens
+by its ID, and can be restored from its team's archive. A card with a parent or
+sub-issues is never archived, whether it is the merged card or another one,
+since archiving a card archives its sub-issues with it.
+
 ## Projects
 
 A project groups the repos that belong together, with a `PROJECT.md` saying
@@ -302,7 +324,14 @@ as your approval moved it to Todo, `task start` moved it to In Progress and
 opening the pull requests moved it to In Review. Each move picks the team's
 own status of that kind, goes only forward, never touches a card that is done
 or canceled, and needs your Linear key to have Write permission. A move that
-cannot be made is a note saying why, and the step goes on. Telling the agent
+cannot be made is a note saying why, and the step goes on. With archiving on
+(`entourage linear archive on`, see above), recording the merge then archives
+the card in Linear, and every other done, canceled or duplicate card of the
+project's teams, leaving a card with a parent or sub-issues as it is. A card
+that is not archived never stops the merge either: the note names it and says
+why, such as no key saved, a key that cannot write, Linear out of reach, or a
+card that is not closed. The first call Linear refuses or cannot answer ends
+the archiving, and the next merge goes on with it. Telling the agent
 in the tab that they have merged makes it check at once, with
 `task watch --once`; if one has not merged yet, it names it and asks again.
 When one is closed without merging, it asks you whether to stop. No agent
@@ -383,8 +412,8 @@ that the work was done in, deletes its branch and updates the clone; see
 A git worktree of the repo, such as the one `task start` makes for one of
 entourage's own cards, holds a copy of the CLI that is a change being built.
 Its `./cli/entourage` runs only the commands that read: `help`, `status`,
-`project ls`, `project team <name>`, `profile ls`, `task ls`, `task log` and
-`task watch`.
+`project ls`, `project team <name>`, `profile ls`, `linear archive` (alone or
+with `--json`), `task ls`, `task log` and `task watch`.
 Any other command stops before it does anything, says that it is a
 worktree's copy, and gives the command that runs it for real:
 `ENTOURAGE_LIVE=1 ./cli/entourage …`, for that one run. The installed `entourage` is never stopped, whatever folder

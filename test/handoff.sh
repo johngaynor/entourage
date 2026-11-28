@@ -628,6 +628,211 @@ handoff_records_the_merge_with_no_key_saved() {
     fail "did not say why the card was not moved: $(cat "$TMP/err")"
 }
 
+# --- closed cards are archived on the merge, when archiving is on -----------
+
+# The settings file, with "archive" set to $1 (true or false).
+archiving() {
+  mkdir -p "$HOME/.config/entourage"
+  printf '{"archive": %s}\n' "$1" > "$HOME/.config/entourage/settings.json"
+}
+# The demo project, with the Linear teams given (ABC when none is), archiving
+# on, and the move to Done answered: the card goes from In Review to Done.
+archive_demo() {
+  demo
+  "$E" project team demo "${@:-ABC}" >/dev/null || fail "could not set the project's teams"
+  archiving true
+}
+# The Linear answers for the merge: the move to Done, then those given.
+linear_for_archive() { linear_for_moves "$(move_answer ABC-122 'In Review')" "$(moved_answer Done)" "$@"; }
+# Record the merge, which has to exit zero, print the block as it is and be
+# recorded, whatever happens to the cards. What it said of them is in
+# $TMP/err.
+merge_recorded() {
+  out=$(hand "$MERGE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$MERGE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(rows)" = 1 ] || fail "expected one row, got $(rows)"
+}
+# Fail unless the hand-off said the line $1, as it is.
+said() { grep -qxF -- "$1" "$TMP/err" || fail "did not say '$1': $(cat "$TMP/err")"; }
+# The ids of the cards Linear was asked to archive, in order, on one line.
+archived_ids() { archives_sent | sed -n 's/.*"variables":{"id":"\([^"]*\)"}.*/\1/p' | tr '\n' ' ' | sed 's/ $//'; }
+
+# With archiving off, the merge asks Linear for the move alone, as before.
+handoff_archives_nothing_with_archiving_off() {
+  archive_demo
+  archiving false
+  linear_for_archive
+  merge_recorded
+  [ "$(curl_count)" = 2 ] || fail "asked Linear $(curl_count) times, not 2: $(curl_calls)"
+  [ -z "$(archives_sent)" ] || fail "asked Linear to archive a card: $(archives_sent)"
+  [ "$(cat "$TMP/err")" = 'ABC-122 moved to Done in Linear (it was In Review)' ] ||
+    fail "said something of archiving: $(cat "$TMP/err")"
+}
+
+# With archiving on, the merged card is archived once the move has put it in
+# Done: archived, not deleted, so no trash is asked for.
+handoff_archives_the_merged_card() {
+  archive_demo
+  linear_for_archive "$(archive_card_answer ABC-122 Done)" "$ARCHIVED" "$(closed_page '[]')"
+  merge_recorded
+  [ "$(curl_count)" = 5 ] || fail "asked Linear $(curl_count) times, not 5: $(curl_calls)"
+  [ "$(archived_ids)" = id-ABC-122 ] || fail "did not archive the card alone: $(archives_sent)"
+  case $(archives_sent) in *trash*) fail "asked Linear to put the card in the trash: $(archives_sent)" ;; esac
+  curl_calls | sed -n 3p | grep -qF '"variables":{"team":"ABC","number":122}' ||
+    fail "did not ask Linear about ABC-122: $(curl_calls | sed -n 3p)"
+  [ "$(cat "$TMP/err")" = 'ABC-122 moved to Done in Linear (it was In Review)
+ABC-122 archived in Linear
+Archived 0 other closed cards of ABC in Linear' ] || fail "did not say what was archived: $(cat "$TMP/err")"
+}
+
+# Every other card of the project's teams that is done, canceled or a
+# duplicate is archived too, from every page Linear has, one call each.
+handoff_archives_the_teams_other_closed_cards() {
+  archive_demo ABC XYZ
+  linear_for_archive "$(archive_card_answer ABC-122 Done)" "$ARCHIVED" \
+    "$(closed_page "[$(closed_card ABC-1 Done),$(closed_card ABC-2 Canceled),$(closed_card XYZ-3 Duplicate)]" cursor-1)" \
+    "$(closed_page "[$(closed_card ABC-4 Done)]")" "$ARCHIVED"
+  merge_recorded
+  [ "$(curl_count)" = 10 ] || fail "asked Linear $(curl_count) times, not 10: $(curl_calls)"
+  [ "$(archived_ids)" = 'id-ABC-122 id-ABC-1 id-ABC-2 id-XYZ-3 id-ABC-4' ] ||
+    fail "did not archive each card once, in order: $(archived_ids)"
+  local page
+  page=$(curl_calls | sed -n 5p)
+  case $page in
+    *'"teams":["ABC","XYZ"]'*'"types":["completed","canceled"]'*'"after":null'*) ;;
+    *) fail "the first page did not ask for the closed cards of ABC and XYZ: $page" ;;
+  esac
+  curl_calls | sed -n 6p | grep -qF '"after":"cursor-1"' || fail "did not ask for the second page: $(curl_calls | sed -n 6p)"
+  said 'ABC-122 archived in Linear'
+  said 'Archived 4 other closed cards of ABC, XYZ in Linear'
+}
+
+# A card with a parent or sub-issues is left as it is, whether it is the
+# merged card or another closed one; the note names each, and why.
+handoff_archives_no_card_with_a_parent_or_sub_issues() {
+  archive_demo
+  linear_for_archive "$(archive_card_answer ABC-122 Done ABC-100)" \
+    "$(closed_page "[$(closed_card ABC-7 Done '' '["ABC-8"]'),$(closed_card ABC-9 Canceled ABC-7),$(closed_card ABC-10 Done)]")" \
+    "$ARCHIVED"
+  merge_recorded
+  [ "$(archived_ids)" = id-ABC-10 ] || fail "archived a card with a parent or sub-issues: $(archives_sent)"
+  [ "$(cat "$TMP/err")" = 'ABC-122 moved to Done in Linear (it was In Review)
+ABC-122 was not archived in Linear: it is a sub-issue of ABC-100, and a card with a parent or sub-issues is never archived
+ABC-7 was not archived in Linear: it has sub-issues, and a card with a parent or sub-issues is never archived
+ABC-9 was not archived in Linear: it is a sub-issue of ABC-7, and a card with a parent or sub-issues is never archived
+Archived 1 other closed card of ABC in Linear' ] || fail "did not say what happened to each card: $(cat "$TMP/err")"
+}
+
+# A merged card the move left open is not archived, and the other closed
+# cards still are.
+handoff_archives_no_merged_card_left_open() {
+  archive_demo
+  linear_for_moves "$(move_answer ABC-122 'In Review')" "$NO_WRITE" "$(archive_card_answer ABC-122 'In Review')" \
+    "$(closed_page "[$(closed_card ABC-1 Done)]")" "$ARCHIVED"
+  linear_status_at 2 400
+  merge_recorded
+  [ "$(archived_ids)" = id-ABC-1 ] || fail "did not archive the closed card alone: $(archives_sent)"
+  said 'ABC-122 was not archived in Linear: it is in In Review, which is not closed'
+  said 'Archived 1 other closed card of ABC in Linear'
+}
+
+# With no key saved there is no Linear to ask, which is a note.
+handoff_archives_nothing_with_no_key_saved() {
+  archive_demo
+  stub_linear
+  merge_recorded
+  [ "$(curl_count)" = 0 ] || fail "asked Linear with no key: $(curl_calls)"
+  said 'ABC-122 was not archived in Linear: no Linear key is saved, so entourage cannot read Linear'
+  said 'The other closed cards were not archived in Linear: archiving stopped at ABC-122, and the next merge tries again'
+}
+
+# A key that cannot write is refused at the first archive, and archiving
+# stops there: the others would be refused the same way.
+handoff_archives_nothing_when_the_key_cannot_write() {
+  archive_demo
+  linear_for_archive "$(archive_card_answer ABC-122 Done)" "$NO_WRITE"
+  linear_status_at 4 400
+  merge_recorded
+  [ "$(curl_count)" = 4 ] || fail "asked Linear $(curl_count) times, not 4: $(curl_calls)"
+  said 'ABC-122 was not archived in Linear: Linear answered with an error: Invalid scope: `write` required'
+  said 'The other closed cards were not archived in Linear: archiving stopped at ABC-122, and the next merge tries again'
+}
+
+# Linear going out of reach part way through stops archiving at the card it
+# was on, and says how many were archived.
+handoff_archives_until_linear_is_out_of_reach() {
+  archive_demo
+  linear_for_archive "$(archive_card_answer ABC-122 Done)" "$ARCHIVED" \
+    "$(closed_page "[$(closed_card ABC-1 Done),$(closed_card ABC-2 Done),$(closed_card ABC-3 Done)]")" "$ARCHIVED"
+  linear_gone_from 7
+  merge_recorded
+  [ "$(curl_count)" = 7 ] || fail "asked Linear $(curl_count) times, not 7: $(curl_calls)"
+  [ "$(archived_ids)" = 'id-ABC-122 id-ABC-1 id-ABC-2' ] || fail "did not stop at ABC-2: $(archived_ids)"
+  said 'ABC-2 was not archived in Linear: could not reach Linear (curl: (6) Could not resolve host: api.linear.app)'
+  said 'Archived 1 other closed card of ABC in Linear, and stopped at ABC-2: the next merge tries the rest'
+}
+
+# Linear out of reach while the closed cards are listed archives none of
+# them, and says so.
+handoff_archives_none_when_the_list_cannot_be_had() {
+  archive_demo
+  linear_for_archive "$(archive_card_answer ABC-122 Done)" "$ARCHIVED" \
+    "$(closed_page "[$(closed_card ABC-1 Done)]" cursor-1)"
+  linear_gone_from 6
+  merge_recorded
+  [ "$(archived_ids)" = id-ABC-122 ] || fail "archived a card from a list cut short: $(archives_sent)"
+  said 'The other closed cards of ABC were not archived in Linear: could not reach Linear (curl: (6) Could not resolve host: api.linear.app)'
+}
+
+# A project with no Linear team has no other cards to archive.
+handoff_archives_only_the_card_with_no_team() {
+  demo
+  archiving true
+  linear_for_archive "$(archive_card_answer ABC-122 Done)" "$ARCHIVED"
+  merge_recorded
+  [ "$(curl_count)" = 4 ] || fail "asked Linear $(curl_count) times, not 4: $(curl_calls)"
+  [ "$(archived_ids)" = id-ABC-122 ] || fail "did not archive the card: $(archives_sent)"
+  said "The other closed cards were not archived in Linear: project 'demo' has no Linear team"
+}
+
+# Linear lists so many closed cards a time. Past that many pages, the cards
+# listed are archived, and the rest wait for the next merge.
+handoff_archives_what_linear_lists_at_most() {
+  archive_demo
+  local answers=() i
+  for i in $(seq 1 50); do answers+=("$(closed_page "[$(closed_card ABC-1 Done)]" "cursor-$i")"); done
+  linear_for_archive "$(archive_card_answer ABC-122 Done ABC-100)" "${answers[@]}" "$ARCHIVED"
+  merge_recorded
+  [ "$(curl_count)" = 54 ] || fail "asked Linear $(curl_count) times, not 54: $(curl_calls | tail -n 3)"
+  [ "$(archived_ids)" = id-ABC-1 ] || fail "did not archive the card listed once: $(archived_ids)"
+  said 'Archived 1 other closed card of ABC in Linear; Linear has more, which the next merge archives'
+}
+
+# A page with a card on it that cannot be read did not come from Linear, so
+# no card on it is archived. A status's name is anyone's text: a line break
+# in it is a space in the note.
+handoff_archives_nothing_from_an_unreadable_answer() {
+  archive_demo
+  linear_for_archive \
+    '{"data":{"issues":{"nodes":[{"id":"id-ABC-122","identifier":"ABC-122","state":{"name":"In\nReview","type":"started"},"parent":null,"children":{"nodes":[]}}]}}}' \
+    '{"data":{"issues":{"nodes":[{"id":"id-ABC-1","identifier":"ABC-1","state":{"name":"Done","type":"completed"},"parent":null,"children":{"nodes":[]}},{"id":"id-ABC-2","identifier":"ABC-2","state":"Done","parent":null,"children":{"nodes":[]}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}' \
+    "$ARCHIVED"
+  merge_recorded
+  [ -z "$(archives_sent)" ] || fail "archived a card from an answer that cannot be read: $(archives_sent)"
+  said 'ABC-122 was not archived in Linear: it is in In Review, which is not closed'
+  said "The other closed cards of ABC were not archived in Linear: Linear's answer was not one entourage can read"
+}
+
+# Settings that cannot be read archive nothing, and say why.
+handoff_archives_nothing_when_the_settings_are_broken() {
+  archive_demo
+  printf '{"archive": "yes"}\n' > "$HOME/.config/entourage/settings.json"
+  linear_for_archive
+  merge_recorded
+  [ "$(curl_count)" = 2 ] || fail "asked Linear $(curl_count) times, not 2: $(curl_calls)"
+  said "ABC-122 was not archived in Linear: $HOME/.config/entourage/settings.json is not valid settings: its \"archive\" is \"yes\", which is not true or false"
+}
+
 # --- the card and its slices move to not-started on approval ----------------
 
 APPROVE_BLOCK='step: breakdown
@@ -1657,6 +1862,13 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_moves_the_card_to_done_on_the_merge handoff_moves_no_closed_card_on_the_merge
   handoff_moves_the_card_only_on_the_merge handoff_records_the_merge_when_linear_refuses_the_move
   handoff_records_the_merge_with_no_key_saved
+  handoff_archives_nothing_with_archiving_off handoff_archives_the_merged_card
+  handoff_archives_the_teams_other_closed_cards handoff_archives_no_card_with_a_parent_or_sub_issues
+  handoff_archives_no_merged_card_left_open handoff_archives_nothing_with_no_key_saved
+  handoff_archives_nothing_when_the_key_cannot_write handoff_archives_until_linear_is_out_of_reach
+  handoff_archives_none_when_the_list_cannot_be_had handoff_archives_only_the_card_with_no_team
+  handoff_archives_what_linear_lists_at_most handoff_archives_nothing_from_an_unreadable_answer
+  handoff_archives_nothing_when_the_settings_are_broken
   handoff_moves_the_card_to_todo_on_approval handoff_moves_a_triage_card_to_ready_for_dev_on_approval
   handoff_moves_the_card_and_its_slices_on_approval handoff_moves_no_slice_back_on_approval
   handoff_records_the_approval_when_linear_is_out_of_reach
