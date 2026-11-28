@@ -53,8 +53,8 @@ no_skill_says_then_stop() {
   done
 }
 
-# task start takes the card, and names the branch from it. The command the
-# human is given after approval is the card's, not a branch put together.
+# task start takes the card, and names the branch from it. The command that
+# starts the work after approval is the card's, not a branch put together.
 task_new_prompt_gives_task_start_the_card() {
   local prompt=$REPO/prompts/task-new.md
   grep -qF 'entourage task start {project} {card}' "$prompt" ||
@@ -80,6 +80,32 @@ breakdown_hands_on_to_start() {
   found=$(grep -rnF 'next: setup' "$REPO/skills" "$REPO/prompts") &&
     fail "the step after breakdown is still called setup: $found"
   return 0
+}
+
+# Approving the card starts its build, unless the human holds it for later:
+# breakdown asks which, and the task-new prompt has the agent run task start
+# itself only for an approval to start now.
+approval_starts_the_build_unless_held() {
+  local skill=$REPO/skills/sdlc-breakdown/SKILL.md prompt=$REPO/prompts/task-new.md section want
+  grep -qxF 'question: Approve <card ID> as specified, planned and broken down, and start its build now?' "$skill" ||
+    fail "the approval's question does not ask whether to start the build now"
+  grep -qxF 'options: approve and start | approve, start later | change breakdown | change plan | change specification' "$skill" ||
+    fail "sdlc-breakdown does not offer to start now or later"
+  grep -qF 'Go by what they mean, not by the exact words.' "$skill" ||
+    fail "sdlc-breakdown does not tell a start now from a start later by what the human means"
+  section=$(sed -n '/^### Start the build/,/^## /p' "$skill")
+  [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build section"; return; }
+  for want in 'the first sub-issue in order that is not already started, done or canceled' \
+      'start later:** give them the command, `entourage task start <project> <ID>`, and run nothing' \
+      'start now:** run that command yourself, once, after the hand-off above is recorded' \
+      'every `agent` and `note` line' "If it stops, don't run it again." \
+      'it says `made the task at <folder>`' 'run `entourage task build <project> <ID>` there'; do
+    case $section in *"$want"*) ;; *) fail "sdlc-breakdown's Start the build does not say: $want" ;; esac
+  done
+  ! grep -qF 'which the human runs' "$skill" || fail "sdlc-breakdown still says the human always runs task start"
+  ! grep -qF "don't run it yourself" "$prompt" || fail "the task-new prompt still has the agent never run task start"
+  grep -qF 'Run it yourself only when I approved to start now. When I chose to start later, give it to me and' "$prompt" ||
+    fail "the task-new prompt does not say when the agent runs task start and when it holds it"
 }
 
 # Recording the approval moves the card, and its slices, to the team's
@@ -913,6 +939,7 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   review_profiles_carry_the_review_rules write_up_profile_has_only_its_tools
   build_profile_has_only_its_tools every_profile_runs_on_opus no_profile_names_a_person
   no_skill_names_a_person a_routed_change_returns_to_breakdown
+  approval_starts_the_build_unless_held
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
   task_build_prompt_drives_build_and_review breakdown_hands_on_to_start

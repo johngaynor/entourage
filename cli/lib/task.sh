@@ -1,12 +1,13 @@
 # Tasks: a card an agent writes up, then a worktree of each repo on one
 # branch. Sourced by cli/entourage.
 
-# A task is one piece of work in a project, usually a Linear card. A person
-# runs two commands, in this order:
+# A task is one piece of work in a project, usually a Linear card. Two
+# commands make it, in this order:
 #   task new    an agent writes the card up, in a tab in the project's space
 #   task start  a worktree of each repo on the card's branch, in a tab of its
 #               own, where it types `task build` to start the agent that
-#               builds the card
+#               builds the card. The write-up agent runs it once the human
+#               approves the card, unless they hold it; then they run it.
 # The agent runs `task handoff` as each step ends, and `task log` shows what
 # it recorded. Both are in handoff.sh. While the pull requests wait on the
 # human, `task watch` watches them on GitHub; it is in watch.sh. Once the work
