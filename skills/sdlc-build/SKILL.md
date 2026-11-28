@@ -14,7 +14,7 @@ The build step ends with commits on the task's branch. Push nothing and open no 
 ## Before you change anything
 
 1. Get the card. If you weren't given a card ID, ask for one.
-2. Read the card with the Linear tools: the original description, the Specification, the Plan, the Breakdown, the Review if there is one, and the comments.
+2. Read the card with `entourage linear read <card ID>`: the original description, the Specification, the Plan, the Breakdown, the Review if there is one, and the comments.
 3. If the card has no Plan, plan hasn't run, and the card was not approved to build. Change nothing, and hand off as `failed`, saying so.
 4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a Plan of its own. Build the sub-issue, not this card. Change nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Check where you are. The work goes in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, change nothing and hand off as `failed`, saying where you are.
@@ -77,7 +77,7 @@ When the commits are made and the tests pass, record the hand-off. The build ste
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: build
+step: build
 status: done
 next: review
 summary: <what was built, in which repos, how many commits, and that the tests pass; any detail where you followed the code rather than the Plan>
@@ -97,7 +97,7 @@ Record a hand-off every time this step ends or pauses: when the step is finished
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: <this step>
+step: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
 summary: <one to three sentences on what you did>
@@ -109,14 +109,14 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The `phase:` line names this step, not a phase. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<project>` is the entourage project this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
-| `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
-| `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
-| `answered` | The human has replied to a `needs-human` hand-off | `phase`, `status`, `answer` |
-| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
+| `done` | This step's work is on the card and you have read it back | `step`, `status`, `next`, `summary`, and `flags` if there are any |
+| `needs-human` | You can't go on without an answer or an approval | `step`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `answered` | The human has replied to a `needs-human` hand-off | `step`, `status`, `answer` |
+| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `step`, `status`, `reason` |
 
 - **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage project, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a project or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
@@ -132,6 +132,7 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Hand off as `failed`. Don't build from memory of the card or from its title |
+| `entourage linear read` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card with the Linear tools instead, and say so in `flags` when you hand off |
 | A repo the Plan changes has no worktree in the task | Ask the human. The task may have been started with targets that left it out |
 | A path in the Plan doesn't exist | Find the real one. If there isn't one, and the file isn't marked as new, ask the human |
 | The worktree lacks what the tests need, and the repo's docs don't say how to install it | Ask the human what to install. Don't guess |
@@ -158,7 +159,7 @@ If something fails that isn't on this list, stop and tell the human what happene
 
 ```
 entourage task handoff shop ABC-122 <<'EOF'
-phase: build
+step: build
 status: done
 next: review
 summary: Installed each worktree's dependencies as its README says, then built the CSV export in api and the Download CSV button in web, in two commits. Both test suites pass. The CSV helper is csv_rows in shop/api/app/common/export.py, not csv_stream as the Plan said.

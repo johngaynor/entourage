@@ -950,6 +950,39 @@ section_read() {
 section_saved() {
   printf '{"data":{"issueUpdate":{"success":true,"issue":{"description":%s}}}}' "$(printf '%s' "$1" | jq -Rs .)"
 }
+# Linear's answer when card ABC-122 is read whole, for linear read: its type
+# and another label, a parent, a description with a folded section and an
+# open one, two comments, the newer first and the older made by an app, and
+# two sub-issues. $1, a jq filter, changes the card before it is sent.
+READ_DESCRIPTION='Managers keep asking for the order list.
+
++++ ## Specification
+**Why:** A manager can download the order list.
++++
+
+## Breakdown
+One piece.'
+read_answer() {
+  jq -cn --arg description "$READ_DESCRIPTION" '
+    {identifier: "ABC-122", title: "Export orders as CSV",
+     url: "https://linear.app/x/issue/ABC-122/export-orders-as-csv",
+     description: $description,
+     state: {name: "In Progress", type: "started"},
+     labels: {nodes: [{name: "feat", parent: {name: "Type"}}, {name: "urgent", parent: null}],
+              pageInfo: {hasNextPage: false}},
+     parent: {identifier: "ABC-100", title: "Orders"},
+     comments: {nodes: [
+       {body: "Approved.", createdAt: "2024-03-02T10:00:00.000Z", user: {name: "Ada Lovelace"}, botActor: null},
+       {body: "Opened a pull request.\n\nhttps://github.com/x/y/pull/1", createdAt: "2024-03-01T09:30:00.000Z",
+        user: null, botActor: {name: "GitHub"}}],
+       pageInfo: {hasNextPage: false}},
+     children: {nodes: [
+       {identifier: "ABC-123", title: "Slice one", state: {name: "Todo", type: "unstarted"}},
+       {identifier: "ABC-124", title: "Slice two", state: {name: "Backlog", type: "backlog"}}],
+       pageInfo: {hasNextPage: false}}}
+    | '"${1:-.}"'
+    | {data: {issues: {nodes: [.]}}}'
+}
 ORIGINAL='Managers keep asking for the order list.
 
 Let them download it.'
@@ -1379,6 +1412,195 @@ linear_type_fails_when_linear_drops_another_label() {
   case $out in *Bug*) ;; *) fail "did not name the label Linear dropped: $out" ;; esac
 }
 
+# --- reading a card: linear read --------------------------------------------
+
+# The card laid out as it is in Linear: its head, the description as written,
+# its comments oldest first, and its sub-issues. Linear is asked once, for
+# the card by its team and number, with the key on stdin.
+linear_read_prints_the_card_laid_out() {
+  saved_key; stub_linear; linear_answers "$(read_answer)"
+  out=$("$E" linear read abc-122) || fail "linear read exited non-zero: $out"
+  want="ABC-122  Export orders as CSV
+Status: In Progress
+Labels: feat, urgent
+Parent: ABC-100  Orders
+URL:    https://linear.app/x/issue/ABC-122/export-orders-as-csv
+
+$READ_DESCRIPTION
+
+Comments (2)
+  GitHub, 2024-03-01T09:30:00Z
+    Opened a pull request.
+
+    https://github.com/x/y/pull/1
+  Ada Lovelace, 2024-03-02T10:00:00Z
+    Approved.
+
+Sub-issues (2)
+  ABC-123  Todo  Slice one
+  ABC-124  Backlog  Slice two"
+  [ "$out" = "$want" ] || fail "printed: $out"
+  [ "$(curl_count)" = 1 ] || fail "asked Linear $(curl_count) times, not once: $(curl_calls)"
+  [ "$(sent_body 1 | jq -c '.variables')" = '{"team":"ABC","number":122}' ] || fail "asked for: $(sent_body 1)"
+  [ "$(key_given_to_curl)" = "$KEY" ] || fail "curl was not given the key on stdin"
+}
+
+# A card with no labels, parent, description, comments or sub-issues still
+# shows each part, so a reader can tell it has none.
+linear_read_says_what_a_card_has_none_of() {
+  saved_key; stub_linear
+  linear_answers "$(read_answer '.labels.nodes = [] | .parent = null | .description = null | .comments.nodes = [] | .children.nodes = []')"
+  out=$("$E" linear read ABC-122) || fail "linear read exited non-zero: $out"
+  want='ABC-122  Export orders as CSV
+Status: In Progress
+Labels: none
+URL:    https://linear.app/x/issue/ABC-122/export-orders-as-csv
+
+No description.
+
+Comments (0)
+
+Sub-issues (0)'
+  [ "$out" = "$want" ] || fail "printed: $out"
+}
+
+# The card is anyone's text. A newline in a title must not forge a line, and
+# an escape sequence must not reach the terminal, so a control character
+# becomes a space, as in task ls. The description's and the comments' own line
+# breaks are kept, without the \r Linear may end a line with.
+linear_read_keeps_control_characters_out_of_the_text() {
+  saved_key; stub_linear
+  linear_answers "$(read_answer '.title = "Real\nStatus: Done"
+    | .description = "One \u001b[31mred\u0007 line\r\nTwo\r\n"
+    | .comments.nodes = [{body: "Bell\u0007rings\nSecond line", createdAt: "2024-03-01T09:30:00.000Z", user: {name: "Ada\nLovelace"}, botActor: null}]
+    | .children.nodes = [{identifier: "ABC-123", title: "Slice\u009bone", state: {name: "To\tdo", type: "unstarted"}}]')"
+  out=$("$E" linear read ABC-122) || fail "linear read exited non-zero: $out"
+  want='ABC-122  Real Status: Done
+Status: In Progress
+Labels: feat, urgent
+Parent: ABC-100  Orders
+URL:    https://linear.app/x/issue/ABC-122/export-orders-as-csv
+
+One  [31mred  line
+Two
+
+Comments (1)
+  Ada Lovelace, 2024-03-01T09:30:00Z
+    Bell rings
+    Second line
+
+Sub-issues (1)
+  ABC-123  To do  Slice one'
+  [ "$out" = "$want" ] || fail "printed: $(printf '%s' "$out" | od -c | head -n 30)"
+}
+
+# Linear gives so many comments, sub-issues or labels at a time. When it says
+# there are more, printing what came would pass part of the card for the
+# whole, so nothing is printed, and it says what there was more of.
+linear_read_says_when_linear_has_more_than_it_read() {
+  local more
+  saved_key; stub_linear
+  for more in comments children labels; do
+    rm -f "$TMP/linear/"*.json
+    linear_answers "$(read_answer ".$more.pageInfo.hasNextPage = true")"
+    out=$("$E" linear read ABC-122 --json 2>"$TMP/err") && fail "exited zero with more $more in Linear"
+    [ -z "$out" ] || fail "printed part of the card with more $more in Linear: $out"
+    case $more in children) more=sub-issues ;; esac
+    case $(cat "$TMP/err") in *"more than"*"$more"*) ;; *) fail "did not say Linear has more $more: $(cat "$TMP/err")" ;; esac
+  done
+  case $(sent_body 1 | jq -r '.query') in
+    *'comments(first: 100)'*'children(first: 50)'*) ;;
+    *) fail "did not ask for 100 comments and 50 sub-issues: $(sent_body 1 | jq -r '.query')" ;;
+  esac
+}
+
+linear_read_refuses_a_card_linear_does_not_have() {
+  saved_key; stub_linear; linear_answers "$NO_CARD"
+  out=$("$E" linear read ABC-999 2>&1) && fail "exited zero for a card Linear does not have"
+  case $out in *"Linear has no card ABC-999"*) ;; *) fail "did not say Linear has no such card: $out" ;; esac
+}
+
+# An answer with no card in a form entourage knows is not one it prints.
+linear_read_refuses_an_answer_it_cannot_read() {
+  saved_key; stub_linear
+  for answer in '{"data":{"issues":null}}' "$(read_answer '.comments.nodes = null')" "$(read_answer '.state = null')"; do
+    rm -f "$TMP/linear/"*.json
+    linear_answers "$answer"
+    out=$("$E" linear read ABC-122 2>"$TMP/err") && fail "exited zero on the answer: $answer"
+    [ -z "$out" ] || fail "printed on the answer $answer: $out"
+    grep -q 'not one entourage can read' "$TMP/err" || fail "did not say the answer cannot be read: $(cat "$TMP/err")"
+  done
+}
+
+linear_read_refuses_what_is_not_a_read() {
+  saved_key; stub_linear; linear_answers "$(read_answer)"
+  "$E" linear read >/dev/null 2>&1 && fail "accepted no card"
+  "$E" linear read ABC >/dev/null 2>&1 && fail "accepted 'ABC'"
+  "$E" linear read ABC-122 --yaml >/dev/null 2>&1 && fail "accepted --yaml"
+  "$E" linear read ABC-122 --json extra >/dev/null 2>&1 && fail "accepted a third word"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear before refusing: $(curl_calls)"
+}
+
+# --json is one line, for a mod. The whole document is compared, keys in
+# order: a program reads it, and a key the contract does not have must not
+# slip in. The text comes as Linear gave it.
+linear_read_json_is_one_line_a_program_can_read() {
+  local card
+  saved_key; stub_linear
+  linear_answers "$(read_answer '.title = "Export orders\nas CSV"')"
+  out=$("$E" linear read ABC-122 --json) || fail "linear read --json exited non-zero: $out"
+  [ "$(printf '%s\n' "$out" | grep -c '')" = 1 ] || fail "the JSON is not one line: $out"
+  card=$(jq -cn --arg description "$READ_DESCRIPTION" '{
+    id: "ABC-122", title: "Export orders\nas CSV",
+    url: "https://linear.app/x/issue/ABC-122/export-orders-as-csv",
+    status: {name: "In Progress", type: "started"}, type: "feat", labels: ["feat", "urgent"],
+    parent: {id: "ABC-100", title: "Orders"}, description: $description,
+    comments: [
+      {author: "GitHub", createdAt: "2024-03-01T09:30:00.000Z", body: "Opened a pull request.\n\nhttps://github.com/x/y/pull/1"},
+      {author: "Ada Lovelace", createdAt: "2024-03-02T10:00:00.000Z", body: "Approved."}],
+    subIssues: [
+      {id: "ABC-123", title: "Slice one", status: {name: "Todo", type: "unstarted"}},
+      {id: "ABC-124", title: "Slice two", status: {name: "Backlog", type: "backlog"}}]}')
+  [ "$out" = "$card" ] || fail "the JSON is: $out"
+  [ "$(printf '%s' "$out" | jq -r '.description')" = "$READ_DESCRIPTION" ] ||
+    fail "the description changed: $(printf '%s' "$out" | jq -r '.description')"
+  [ "$(printf '%s' "$out" | jq -r '.title')" = "$(printf 'Export orders\nas CSV')" ] ||
+    fail "the title changed: $(printf '%s' "$out" | jq -r '.title')"
+}
+
+# A card with no parent and no type gives null for each, and no description
+# gives an empty one.
+linear_read_json_gives_null_for_what_a_card_has_none_of() {
+  saved_key; stub_linear
+  linear_answers "$(read_answer '.labels.nodes = [{name: "urgent", parent: null}] | .parent = null | .description = null')"
+  out=$("$E" linear read ABC-122 --json) || fail "linear read --json exited non-zero: $out"
+  [ "$(printf '%s' "$out" | jq -c '[.type, .parent, .description, .labels]')" = '[null,null,"",["urgent"]]' ] ||
+    fail "the JSON is: $out"
+}
+
+# The skills fall back to the Linear tools on the words these two say.
+linear_read_without_a_key_says_how_to_save_one() {
+  stub_linear; linear_answers "$(read_answer)"
+  out=$("$E" linear read ABC-122 --json 2>"$TMP/err") && fail "exited zero with no key saved"
+  [ -z "$out" ] || fail "printed on stdout: $out"
+  case $(cat "$TMP/err") in *"no Linear key is saved"*"entourage linear key"*) ;; *) fail "did not say how to save a key: $(cat "$TMP/err")" ;; esac
+  [ "$(curl_count)" = 0 ] || fail "asked Linear with no key: $(curl_calls)"
+}
+
+linear_read_with_a_rejected_key_says_so() {
+  saved_key; stub_linear; linear_answers "$REJECTED"; linear_status 401
+  out=$("$E" linear read ABC-122 2>&1) && fail "exited zero with a rejected key"
+  case $out in *"Linear rejected the key"*) ;; *) fail "did not say Linear rejected the key: $out" ;; esac
+  case $out in *"$KEY"*) fail "printed the key: $out" ;; esac
+}
+
+READ_CASES="linear_read_prints_the_card_laid_out linear_read_says_what_a_card_has_none_of
+  linear_read_keeps_control_characters_out_of_the_text linear_read_says_when_linear_has_more_than_it_read
+  linear_read_refuses_a_card_linear_does_not_have linear_read_refuses_an_answer_it_cannot_read
+  linear_read_refuses_what_is_not_a_read
+  linear_read_json_is_one_line_a_program_can_read linear_read_json_gives_null_for_what_a_card_has_none_of
+  linear_read_without_a_key_says_how_to_save_one linear_read_with_a_rejected_key_says_so"
+
 # --- moving a card: linear move ---------------------------------------------
 
 # A team with one started status, which is both its first and its last.
@@ -1712,7 +1934,7 @@ env_file_that_is_not_a_file_says_so() {
   case $out in *"$(env_file) is not a file"*) ;; *) fail "did not say the env file is not a file: $out" ;; esac
 }
 
-CASES="$CARD_LOOKUP_CASES $WRITE_CASES $MOVE_CASES $STATUS_KEY_CASES
+CASES="$CARD_LOOKUP_CASES $WRITE_CASES $READ_CASES $MOVE_CASES $STATUS_KEY_CASES
   linear_key_saves_the_key linear_key_keeps_the_env_file_private linear_key_closes_an_env_file_others_could_read
   linear_key_says_whose_key_it_is linear_key_never_shows_the_key linear_key_gives_curl_the_key_on_stdin
   linear_key_replaces_the_old_key_and_keeps_the_other_lines linear_key_says_when_an_exported_key_is_used_instead

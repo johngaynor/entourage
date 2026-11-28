@@ -15,7 +15,7 @@ This skill has two parts. Proposing, and asking the human to approve, happens on
 
 ## Before you write anything
 
-1. Read the card with the Linear tools: the Specification and the Plan.
+1. Read the card with `entourage linear read <card ID>`: the Specification and the Plan.
 2. If either is missing, the earlier step hasn't run. Say so and stop.
 3. If the card is itself a sub-issue, don't slice it again. Slices go one level deep. If it looks too big, say so when you ask the human to approve.
 4. If the card already has a Breakdown section, don't write a second one. If the human has asked for it to be revised, revise it in place. Otherwise tell the human and ask whether they want it revised, and if they don't, go on to ask them to approve the card.
@@ -108,7 +108,7 @@ Then ask them to approve or say what to change. Record the ask as a hand-off wit
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: breakdown
+step: breakdown
 status: needs-human
 question: Approve <card ID> as specified, planned and broken down?
 options: approve | change breakdown | change plan | change specification
@@ -153,7 +153,7 @@ Breakdown is finished when the human has approved the card and, if it was sliced
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: breakdown
+step: breakdown
 status: done
 next: start
 summary: <that the card is approved, and whether it is one piece or sliced; if sliced, the sub-issues in order with their IDs, and which one is first>
@@ -175,7 +175,7 @@ Record a hand-off every time this step ends or pauses: when the step is finished
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
-phase: <this step>
+step: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
 summary: <one to three sentences on what you did>
@@ -187,14 +187,14 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The `phase:` line names this step, not a phase. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<project>` is the entourage project this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
-| `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
-| `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
-| `answered` | The human has replied to a `needs-human` hand-off | `phase`, `status`, `answer` |
-| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
+| `done` | This step's work is on the card and you have read it back | `step`, `status`, `next`, `summary`, and `flags` if there are any |
+| `needs-human` | You can't go on without an answer or an approval | `step`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `answered` | The human has replied to a `needs-human` hand-off | `step`, `status`, `answer` |
+| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `step`, `status`, `reason` |
 
 - **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage project, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a project or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
@@ -210,7 +210,7 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
-| `entourage linear` says no Linear key is saved, or the command isn't there | Write the Breakdown, set the sub-issues' types and write their sections with the Linear tools instead, in the same form: the Breakdown under the heading `## Breakdown`, and a sub-issue's Specification and Plan each between `>>> ## <name>` and a closing `>>>`. Say so in `flags` |
+| `entourage linear` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card, write the Breakdown, set the sub-issues' types and write their sections with the Linear tools instead, in the same form: the Breakdown under the heading `## Breakdown`, and a sub-issue's Specification and Plan each between `>>> ## <name>` and a closing `>>>`. Say so in `flags` |
 | `entourage linear` says it could not reach Linear | Run it once more. It checks the card before it writes, so it can't add the section twice. If it then says the card already has a Breakdown, the first try got through |
 | `entourage linear section` says the text above the section changed | Put it back from what you read at the start of this run, with the Linear tools, and tell the human |
 | `entourage linear type` says the label it needs doesn't exist | Don't create it. Finish the sub-issues, and tell the human which label is missing |

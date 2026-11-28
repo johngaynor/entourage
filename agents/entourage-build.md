@@ -16,7 +16,8 @@ it: it says what to read, what to change, and how its step ends. Record each
 hand-off with `entourage task handoff`, as the skill shows, before you start
 the next skill.
 
-Read the card with the Linear tools. Read each repo's own docs before you
-change it, and follow its rules for tests and commits. Never merge a pull
-request, and never turn on auto-merge: the human merges. Do every step
-yourself, in this session.
+Read the card with `entourage linear read <card>`. Use the Linear tools when
+entourage cannot read it, as the skills say, and for other reads, such as a
+related card. Read each repo's own docs before you change it, and follow its
+rules for tests and commits. Never merge a pull request, and never turn on
+auto-merge: the human merges. Do every step yourself, in this session.

@@ -425,6 +425,142 @@ linear_key() {
   fi
 }
 
+# --- reading a card ---------------------------------------------------------
+#
+# The card skills read a card here, so that the read goes the same way on
+# every run, with the card's sections, comments and sub-issues. A mod reads
+# it too, with --json.
+
+# Linear's text as a line of a list or of a card: every control character
+# becomes a space, so that a newline cannot start what looks like another line
+# and an escape sequence cannot reach the terminal. No regex, so any jq does
+# it. `task ls` uses it too.
+PLAIN_DEF='def plain: explode | map(if . < 32 or (. > 126 and . < 160) then 32 else . end) | implode;'
+
+# How many labels, comments and sub-issues a read asks Linear for. A card
+# with more than that is not printed, since what was read would pass for the
+# whole of it.
+READ_LABELS=100
+READ_COMMENTS=100
+READ_SUBS=50
+
+# The question for linear read: the card whole.
+READ_QUERY='query($team: String!, $number: Float!) {
+  issues(first: 1, filter: {team: {key: {eq: $team}}, number: {eq: $number}}) {
+    nodes {
+      identifier title url description
+      state { name type }
+      labels(first: '$READ_LABELS') { nodes { name parent { name } } pageInfo { hasNextPage } }
+      parent { identifier title }
+      comments(first: '$READ_COMMENTS') { nodes { body createdAt user { name } botActor { name } } pageInfo { hasNextPage } }
+      children(first: '$READ_SUBS') { nodes { identifier title state { name type } } pageInfo { hasNextPage } }
+    }
+  }
+}'
+
+# From the answer to READ_QUERY, on stdin, print "none" when Linear has no
+# such card, {"more": <what>} when it has more comments, sub-issues or labels
+# than were asked for, or {"card": <the card>}, the card as linear read --json
+# prints it. A comment's author is the app Linear credits with it, or else
+# the user who wrote it. Comments come oldest first. An answer with a card in
+# it that is not in this form did not come from Linear. $group is TYPE_GROUP.
+READ_SHAPE='
+  def text: if type == "string" then . else error("unreadable") end;
+  def list: if (.nodes | type) == "array" then .nodes[] else error("unreadable") end;
+  def status: if type == "object" then {name: (.name | text), type: (.type | text)} else error("unreadable") end;
+  if (.issues.nodes | type) != "array" then error("no list of cards")
+  elif (.issues.nodes | length) == 0 then "none"
+  else .issues.nodes[0]
+    | if .comments.pageInfo.hasNextPage? == true then {more: "comments"}
+      elif .children.pageInfo.hasNextPage? == true then {more: "sub-issues"}
+      elif .labels.pageInfo.hasNextPage? == true then {more: "labels"}
+      else {card: {
+        id: (.identifier | text),
+        title: (.title | text),
+        url: (.url // "" | text),
+        status: (.state | status),
+        type: ([.labels | list | select(.parent.name? == $group) | .name] | first),
+        labels: [.labels | list | .name | text],
+        parent: (if .parent == null then null else {id: (.parent.identifier | text), title: (.parent.title | text)} end),
+        description: (.description // "" | text),
+        comments: ([.comments | list
+          | {author: (.botActor.name? // .user.name? // "unknown" | text),
+             createdAt: (.createdAt | text), body: (.body // "" | text)}] | sort_by(.createdAt)),
+        subIssues: [.children | list | {id: (.identifier | text), title: (.title | text), status: (.state | status)}]
+      }}
+      end
+  end'
+
+# The card from READ_SHAPE, on stdin, laid out like the card: its head, the
+# description as written, the comments, each with its body indented under who
+# wrote it and when, and the sub-issues. Every field is made plain, but the
+# description and the comments keep their line breaks, without the \r Linear
+# may end a line with, and lose only the blank lines at either end.
+READ_TEXT=$PLAIN_DEF'
+  def blank: explode | all(. == 32);
+  def trim_blank: if length > 0 and (.[0] | blank) then .[1:] | trim_blank
+    elif length > 0 and (.[-1] | blank) then .[:-1] | trim_blank else . end;
+  def lines: split("\n") | map(rtrimstr("\r") | plain) | trim_blank;
+  "\(.id | plain)  \(.title | plain)",
+  "Status: \(.status.name | plain)",
+  "Labels: \(if .labels == [] then "none" else .labels | map(plain) | join(", ") end)",
+  (.parent // empty | "Parent: \(.id | plain)  \(.title | plain)"),
+  "URL:    \(.url | plain)",
+  "",
+  ((.description | lines) as $lines | if $lines == [] then "No description." else $lines[] end),
+  "",
+  "Comments (\(.comments | length))",
+  (.comments[]
+    | "  \(.author | plain), \(.createdAt | sub("\\.[0-9]+Z$"; "Z") | plain)",
+      (.body | lines[] | if blank then "" else "    " + . end)),
+  "",
+  "Sub-issues (\(.subIssues | length))",
+  (.subIssues[] | "  \(.id | plain)  \(.status.name | plain)  \(.title | plain)")'
+
+# Print a card whole, laid out like the card, or with --json as one line of
+# JSON, for a mod:
+#   {"id":"ABC-122","title":"…","url":"…","status":{"name":"In Progress","type":"started"},
+#    "type":"feat","labels":["feat"],"parent":{"id":"ABC-100","title":"…"},"description":"…",
+#    "comments":[{"author":"…","createdAt":"…","body":"…"}],
+#    "subIssues":[{"id":"ABC-123","title":"…","status":{"name":"Todo","type":"unstarted"}}]}
+# type is the card's label in the Type group, or null; parent is null for a
+# card with none. When it fails it prints nothing on stdout.
+#   entourage linear read <card> [--json]
+linear_read() {
+  local card=${1:-} json=0 key vars data shape more=''
+  [ "$#" -ge 1 ] && [ "$#" -le 2 ] ||
+    die "usage: entourage linear read <card> [--json], like: entourage linear read ABC-122"
+  case ${2:-} in
+    --json) json=1 ;;
+    '') ;;
+    *) die "unknown option for linear read: $2" ;;
+  esac
+  [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
+  card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
+  linear_tools
+  key=$(linear_saved_key) || exit 1
+  vars=$(jq -cn --arg team "${card%-*}" --arg number "${card##*-}" '{team: $team, number: ($number | tonumber)}') ||
+    die "'$card' is not a card ID like ABC-122."
+  data=$(linear_ask "$key" "$READ_QUERY" "$vars") || exit 1
+  # Judged by what jq prints: some versions exit zero on an empty answer.
+  shape=$(printf '%s' "$data" | jq -c --arg group "$TYPE_GROUP" "$READ_SHAPE" 2>/dev/null) || shape=
+  case $shape in
+    '{"card":'*) ;;
+    '"none"') die "Linear has no card $card that the saved key can see. Check the ID, then run this again." ;;
+    '{"more":"comments"}') more="$READ_COMMENTS comments" ;;
+    '{"more":"sub-issues"}') more="$READ_SUBS sub-issues" ;;
+    '{"more":"labels"}') more="$READ_LABELS labels" ;;
+    *) die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it." ;;
+  esac
+  [ -z "$more" ] ||
+    die "$card has more than $more, more than entourage reads, so it printed none of the card: what it read would pass for the whole. Read the card in Linear, or with an agent's Linear tools."
+  if [ "$json" = 1 ]; then
+    printf '%s' "$shape" | jq -c '.card'
+  else
+    printf '%s' "$shape" | jq -r '.card | '"$READ_TEXT"
+  fi
+}
+
 # --- the card skills' writes ------------------------------------------------
 #
 # The card skills write two things to a card: its type label, and a section
@@ -924,6 +1060,7 @@ cmd_linear() {
     type) shift; linear_type "$@" ;;
     section) shift; linear_section "$@" ;;
     move) shift; linear_move_cmd "$@" ;;
-    *) die "usage: entourage linear key, or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <approved|started|review|done> (see: entourage help)" ;;
+    read) shift; linear_read "$@" ;;
+    *) die "usage: entourage linear key, or: entourage linear read <card> [--json], or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <approved|started|review|done> (see: entourage help)" ;;
   esac
 }
