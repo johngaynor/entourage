@@ -2,16 +2,16 @@
 
 # A copy of the runner and its helpers with tiny areas of its own, so that the
 # runner can be run on cases that fail, die or wait on purpose. The copy sits
-# beside links to the real cli/, herdr/, skills/ and prompts/, which its
-# cases' setup copies from. Every area starts with no cases, which the runner
-# refuses, so a case here writes the areas it wants and names them when it
-# runs the copy. A case in the copy can leave notes in $FAKE.
+# beside links to the real cli/, herdr/, skills/, prompts/ and agents/, which
+# its cases' setup copies from. Every area starts with no cases, which the
+# runner refuses, so a case here writes the areas it wants and names them when
+# it runs the copy. A case in the copy can leave notes in $FAKE.
 fake_suite() {
   local area d
   R=$TMP/suite
   mkdir -p "$R/test"
   cp "$ROOT/test/run.sh" "$ROOT/test/helpers.sh" "$R/test/"
-  for d in cli herdr skills prompts; do ln -s "$ROOT/$d" "$R/$d"; done
+  for d in cli herdr skills prompts agents; do ln -s "$ROOT/$d" "$R/$d"; done
   for area in $AREAS; do echo 'CASES=' > "$R/test/$area.sh"; done
   export FAKE=$TMP/notes
   mkdir -p "$FAKE"

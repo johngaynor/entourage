@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # entourage: set up and maintain this machine's copy of the software factory.
-# It links the Herdr mods and layouts under herdr/ and the agent skills under
-# skills/, and manages projects (groups of repos that show up in Herdr as
+# It links the Herdr mods and layouts under herdr/, the agent skills under
+# skills/ and the agent profiles under agents/, and manages projects (groups of repos that show up in Herdr as
 # spaces) and their tasks (a card an agent writes up, then a worktree of each
 # repo on one branch, each shown as a tab in the project's space).
 set -euo pipefail
@@ -58,6 +58,7 @@ with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
+claude starts with the entourage-write-up profile (see below).
 With a Linear key saved, it first checks that Linear has the card, and stops
 on a mistyped ID; when Linear cannot be asked, it starts the card anyway.
 `task start` takes the card's ID too, once the card is written up. It asks
@@ -78,7 +79,8 @@ Targets after the card narrow the task: `app` takes only that repo, and
 `app:athlete` sets it up for its athlete group (`just setup athlete`).
 Join several groups with a comma: `app:athlete,coach`.
 `task build` starts the agent in the folder it is run in, which has to be the
-card's task, with the first message in prompts/task-build.md: build the card
+card's task, with the entourage-build profile when it is claude (see below),
+and with the first message in prompts/task-build.md: build the card
 with the sdlc-build skill, review the build with the sdlc-review skill, then
 put it up as a pull request with the sdlc-pr skill.
 Run it again in the tab if the agent stops. The build makes the change the
@@ -119,11 +121,21 @@ programs: the Steps panel in Herdr draws it. Run
 `entourage task handoff <project> <card>` with no block to see the rules.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
-Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another
-~/.claude). The agent is claude (ENTOURAGE_AGENT picks another command).
+Skills are linked into ~/.claude/skills, and agent profiles into
+~/.claude/agents (CLAUDE_CONFIG_DIR picks another ~/.claude). The agent is
+claude (ENTOURAGE_AGENT picks another command).
 Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage). Hand-offs are recorded beside them, in
 entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
+
+A profile is a Claude Code agent definition: the tools a session has and the
+model it runs on, whatever your own sessions use. claude starts with one,
+entourage-write-up for `task new` and entourage-build for `task build`, and
+with Linear's MCP server alone (agents/linear-mcp.json), not the servers of
+your own sessions. Claude Code asks once to sign in to Linear as
+linear-server on a machine where it is not signed in under that name. When
+the profile is not linked, both stop before starting anything; run
+`entourage update`. Another agent starts as it is, with no profile.
 
 These variables, and your Linear key as LINEAR_API_KEY, can be exported in
 your shell or written as NAME=value lines in ~/.config/entourage/.env, which
@@ -245,6 +257,9 @@ load_env
 APP_HOME=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
 # Where Claude Code looks for a person's own skills.
 SKILLS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
+# Where Claude Code looks for a person's own agent definitions: the profiles
+# `task new` and `task build` start claude with.
+AGENTS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/agents
 # Claude Code's own record for this machine. Among much else it holds the
 # folders Claude Code starts in without asking.
 CLAUDE_STATE=${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json

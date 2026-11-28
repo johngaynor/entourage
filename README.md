@@ -35,8 +35,18 @@ entourage install
 ```
 
 `entourage install` links this repo into the tools on a machine, and
-`entourage update` keeps it current. That covers the Herdr setup and the
-skills; see [herdr/README.md](herdr/README.md) for the full walkthrough.
+`entourage update` keeps it current. That covers the Herdr setup, the skills,
+and the two agent profiles in [agents/](agents/), which it links into
+`~/.claude/agents`; see [herdr/README.md](herdr/README.md) for the full
+walkthrough.
+
+A profile is a Claude Code agent definition: the tools a session has and the
+model it runs on. When the agent is `claude`, `task new` starts it with
+`entourage-write-up`, and `task build` with `entourage-build`, so each runs on
+Opus with only the tools its steps use, whatever your own sessions have. Each also gets Linear's MCP
+server alone, from [agents/linear-mcp.json](agents/linear-mcp.json), not the
+servers of your own sessions. Claude Code asks once to sign in to Linear as
+`linear-server` on a machine where it is not signed in under that name.
 
 ## Projects
 
@@ -85,8 +95,8 @@ It asks Linear itself, with no agent running. See
 [herdr/README.md](herdr/README.md#seeing-a-projects-cards) for the details.
 
 `task new` writes the card up. It opens a tab in the project's Herdr space and
-starts an agent there, which runs the three skills on the card and then asks
-you to approve it:
+starts an agent there, with the `entourage-write-up` profile, which runs the
+three skills on the card and then asks you to approve it:
 
 ```sh
 entourage task new my-project ABC-122
@@ -156,11 +166,15 @@ entourage task build my-project ABC-122
 ```
 
 `task build` starts the agent, `claude` unless `ENTOURAGE_AGENT` names
-another, with a first message that has it build the card with the
+another, with the `entourage-build` profile and a first message that has it
+build the card with the
 `sdlc-build` skill, review the build with the `sdlc-review` skill, and then
 put it up as a pull request with the `sdlc-pr` skill. If the agent stops, run
 the same command again in the tab. It runs only in the
-card's own task folder. When the task has one repo and Claude Code has not
+card's own task folder. When a profile is not linked, `task new` and
+`task build` stop before they start anything, and say to run
+`entourage update`. Another agent, named by `ENTOURAGE_AGENT`, starts as it
+always has, with no profile. When the task has one repo and Claude Code has not
 trusted that repo yet, `task start` says so: Claude Code asks once in the tab,
 and not again for that repo. `task log` shows when the work was started.
 
@@ -231,7 +245,10 @@ Each skill also runs on its own in any agent, as `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122` or `/sdlc-pr ABC-122`.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
-from the clone instead. Run the CLI's tests with `npm test`. The cases run
+from the clone instead. A session in the clone, or in any worktree of it, can
+start the `reviewer` and `verifier` subagents in
+[.claude/agents/](.claude/agents/) by name, to review a change or check what a
+review found; see [CLAUDE.md](CLAUDE.md#reviewing-a-change). Run the CLI's tests with `npm test`. The cases run
 side by side, one per processor; `ENTOURAGE_TEST_JOBS=1 npm test` runs them
 one at a time. Once a pull request merges, `scripts/after-merge <name>`, run
 from the clone, removes the Claude Code worktree under `.claude/worktrees/`
