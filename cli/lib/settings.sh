@@ -2,7 +2,7 @@
 # settings file. Sourced by cli/entourage.
 
 # The file is $SETTINGS, ~/.config/entourage/settings.json, beside the
-# projects. It is JSON, not lines of the env file: the Agent settings mod in
+# spaces. It is JSON, not lines of the env file: the Agent settings mod in
 # Herdr reads and changes it through `entourage profile`, and the env file
 # holds the Linear key.
 #   {"profiles": {"write-up": {"model": "opus", "effort": "xhigh"}, ...}}
@@ -279,8 +279,8 @@ profile_set() {
 # rather than linked as the other profiles are: a subagent runs on the model
 # and effort of its own frontmatter, the Agent tool takes no effort, and the
 # files in the repo are the same in every checkout and worktree. They are out
-# of .claude/agents/, because Claude Code prefers a project's agent to a
-# person's of the same name. Only a clone writes them, since only a clone
+# of .claude/agents/, because Claude Code prefers the agent of the repo it
+# runs in to a person's of the same name. Only a clone writes them, since only a clone
 # works on entourage.
 REVIEW_SOURCES=$REPO/.claude/profiles
 # The comment that marks a file in $AGENTS_HOME as one entourage wrote,

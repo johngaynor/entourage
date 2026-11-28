@@ -98,7 +98,7 @@ PASS: after
 runner_runs_only_the_areas_named() {
   fake_suite
   echo 'a() { :; }; CASES=a' > "$R/test/install.sh"
-  echo 'b() { :; }; CASES=b' > "$R/test/project.sh"
+  echo 'b() { :; }; CASES=b' > "$R/test/space.sh"
   echo 'c() { :; }; CASES=c' > "$R/test/task.sh"
   run_suite task install
   [ "$out" = "PASS: c

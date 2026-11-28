@@ -7,7 +7,7 @@ build under the npm tag `next`, which such a machine gets only when asked. A
 machine running from a clone gets whatever `git pull` brings.
 
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
-are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
+are the files in `test/`: `install`, `space`, `task`, `skills`, `handoff`,
 `linear`, `runner`, `release`, `guard`, `after-merge`, `profile`). The
 `handoff` tests use the real `sqlite3` and `jq`, the `install`, `linear`,
 `task`, `skills` and `profile` tests the real `jq`, the `release` tests the
@@ -49,7 +49,7 @@ being built. Which copy to run for what:
   it is run from.
 - **`./cli/entourage` to try the change.** It runs the worktree's code against
   the real machine, so it runs only the commands that read: `help`, `status`,
-  `project ls`, `project team <name>` with no teams, `profile ls`, `task ls`,
+  `space ls`, `space team <name>` with no teams, `profile ls`, `task ls`,
   `task log` and `task watch`. Any other command stops before it does
   anything and says so, and the hand-off store is opened read-only.
 - **A test case to try a command that changes the machine.** Each case has a

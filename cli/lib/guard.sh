@@ -4,7 +4,7 @@
 # the copy this machine runs. Run without being asked to act on the real
 # machine, it runs only the commands that read, and stops before any other
 # does anything: a slip must not open a real tab, make a real task, change a
-# card in Linear, or change the human's projects, hand-offs, links or skills.
+# card in Linear, or change the human's spaces, hand-offs, links or skills.
 # ENTOURAGE_LIVE=1, set for the run, lets it act on the machine for real. The
 # file cannot set it (see load_env in cli/entourage), so it is never left on
 # for every run. The main checkout and an npm install are never guarded.
@@ -37,10 +37,11 @@ is_worktree_copy() {
 is_read() {
   case ${1:-help} in
     help | -h | --help | status) return 0 ;;
-    project)
+    # `project` is the old name of `space`, and runs the same commands.
+    space | project)
       case ${2:-} in
         ls | list) return 0 ;;
-        # With keys after the name it writes the project's teams.
+        # With keys after the name it writes the space's teams.
         team) [ "$#" -le 3 ] ;;
         *) return 1 ;;
       esac
@@ -81,7 +82,7 @@ guard_worktree() {
   [ "${ENTOURAGE_LIVE:-}" != 1 ] || return 0
   GUARDED=1
   ! is_read "$@" || return 0
-  die "this is the copy of entourage in the worktree $REPO. It runs only the commands that read (help, status, project ls, project team <name>, profile ls, task ls, task log and task watch), so \`$(shell_words "$@")\` was not run: it could change this machine's Herdr, projects and tasks, hand-offs, Linear key or cards, or Claude Code's skills, agents and trust file.
+  die "this is the copy of entourage in the worktree $REPO. It runs only the commands that read (help, status, space ls, space team <name>, profile ls, task ls, task log and task watch), so \`$(shell_words "$@")\` was not run: it could change this machine's Herdr, spaces and tasks, hand-offs, Linear key or cards, or Claude Code's skills, agents and trust file.
   - For the card's own steps, such as recording a hand-off, run plain \`entourage\`: the copy this machine runs, not this one.
   - To try a command that changes the machine, write a test case for it, in test/.
   - To run it on this machine for real, only when that is wanted:

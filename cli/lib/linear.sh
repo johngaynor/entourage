@@ -126,7 +126,8 @@ LIST_QUERY='query($teams: [String!], $types: [String!], $first: Int, $after: Str
 # Turn the pages Linear answered with (one line of JSON each, on stdin) into
 # the list: every open status, in Linear's order, with its cards. Teams often
 # share a status name; a status of one name and kind is one group, whichever
-# teams have it. $project, $teams and $types are given by the caller.
+# teams have it. $project (the space, which the JSON names under the key
+# project), $teams and $types are given by the caller.
 #   - Under each status the card changed last comes first. Cards changed at
 #     the same moment keep the order Linear gave them in.
 #   - Should a card come on two pages, the first copy is kept.
@@ -168,7 +169,8 @@ LIST_SHAPE='
 #   {"project":"demo","teams":["ABC"],"statuses":[
 #     {"name":"Backlog","type":"backlog","cards":[{"id":"ABC-1","title":"…","url":"…"}]}]}
 # Every open status of the teams is there, with no cards when it has none.
-#   linear_open_cards <project> <team key>...
+# The space is under the key project.
+#   linear_open_cards <space> <team key>...
 linear_open_cards() {
   local project=$1 key teams vars data pages='' after='' more asked=0 list missing
   shift
@@ -199,7 +201,7 @@ linear_open_cards() {
     die "Linear's answer was not one entourage can read."
   missing=$(printf '%s' "$list" | jq -r '.missing | join(", ")')
   [ -z "$missing" ] ||
-    die "Linear has no team with the key $missing that the saved key can see. See the project's teams with: entourage project team $project"
+    die "Linear has no team with the key $missing that the saved key can see. See the space's teams with: entourage space team $project"
   printf '%s' "$list" | jq -c 'del(.missing)'
 }
 

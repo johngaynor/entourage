@@ -3,7 +3,7 @@
 # run only those:
 #   test/run.sh            everything
 #   test/run.sh task       only test/task.sh
-#   npm test -- project    the same, through npm
+#   npm test -- space      the same, through npm
 #
 # Cases run side by side, each in a process of its own, and are reported in
 # the order they are listed. ENTOURAGE_TEST_JOBS is how many run at a time;
@@ -11,7 +11,7 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-AREAS="install project task skills handoff linear runner release guard after-merge profile"
+AREAS="install space task skills handoff linear runner release guard after-merge profile"
 # shellcheck source=/dev/null
 . "$HERE/helpers.sh"
 

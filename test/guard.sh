@@ -18,7 +18,7 @@ plain_repo() {
 }
 
 # A machine with something in each place entourage changes, made by the usual
-# copy: Herdr's links and the skills, a project with a repo and a team, a
+# copy: Herdr's links and the skills, a space with a repo and a team, a
 # hand-off, a saved Linear key, Claude Code's own file, an agent, and
 # stand-ins for hc and Linear. Linear has the card ABC-122, of type feat. Then
 # every call to a stand-in so far is forgotten.
@@ -26,8 +26,8 @@ guard_machine() {
   claude_state
   "$E" install >/dev/null
   plain_repo "$HOME/Dev/api"
-  "$E" project new demo "$HOME/Dev/api" >/dev/null
-  "$E" project team demo ABC >/dev/null
+  "$E" space new demo "$HOME/Dev/api" >/dev/null
+  "$E" space team demo ABC >/dev/null
   "$E" task handoff demo ABC-122 <<< "$BLOCK" >/dev/null || fail "could not record a hand-off to start from"
   saved_key
   stub claude
@@ -61,14 +61,20 @@ refused() {
 
 guard_refuses_install() { guard_machine; refused install; }
 guard_refuses_update() { guard_machine; refused update; refused update --no-pull; }
-guard_refuses_project_new() { guard_machine; refused project new other; }
-guard_refuses_project_add() {
+# Each is refused under its old name too, `entourage project`.
+guard_refuses_space_new() { guard_machine; refused space new other; refused project new other; }
+guard_refuses_space_add() {
   guard_machine
   plain_repo "$HOME/Dev/web"
+  refused space add demo "$HOME/Dev/web"
   refused project add demo "$HOME/Dev/web"
 }
-guard_refuses_project_open() { guard_machine; refused project open demo; }
-guard_refuses_setting_a_projects_teams() { guard_machine; refused project team demo XYZ; }
+guard_refuses_space_open() { guard_machine; refused space open demo; refused project open demo; }
+guard_refuses_setting_a_spaces_teams() {
+  guard_machine
+  refused space team demo XYZ
+  refused project team demo XYZ
+}
 guard_refuses_task_new() { guard_machine; refused task new demo ABC-122; }
 guard_refuses_task_start() { guard_machine; refused task start demo ABC-122; }
 guard_refuses_task_build() {
@@ -104,6 +110,7 @@ guard_refuses_a_command_it_does_not_know() {
   guard_machine
   refused linear nonsense ABC-122
   refused task nonsense demo
+  refused space nonsense
   refused project nonsense
   refused nonsense
 }
@@ -116,7 +123,7 @@ guard_knows_a_worktree_git_made() {
   cp -R "$REPO/cli" "$REPO/herdr" "$REPO/skills" "$REPO/prompts" "$TMP/wt/"
   local before out
   before=$(machine_snapshot)
-  if out=$("$TMP/wt/cli/entourage" project new other 2>&1); then fail "project new exited zero: $out"; fi
+  if out=$("$TMP/wt/cli/entourage" space new other 2>&1); then fail "space new exited zero: $out"; fi
   case $out in *"copy of entourage in the worktree $TMP/wt."*) ;; *) fail "did not stop with the guard's message: $out" ;; esac
   [ "$(machine_snapshot)" = "$before" ] || fail "changed the machine"
 }
@@ -137,6 +144,9 @@ TEAM_CARDS='{"data":{
 # Every command that only reads, one to a line.
 READS='help
 status
+space ls
+space ls --json
+space team demo
 project ls
 project ls --json
 project team demo
@@ -184,6 +194,29 @@ guard_runs_the_reads_and_changes_nothing() {
   case $usual in *'ABC-2  Second card'*'build done, then review'*'Built the export.'*) ;; *) fail "the reads did not show the cards and the hand-off: $usual" ;; esac
   case $usual in *'open https://github.com/acme/api/pull/7'$'\n''[exit 2]'*) ;; *) fail "the watch did not show the open pull request: $usual" ;; esac
   [ ! -s "$TMP/herdr-calls.log" ] || fail "a read called Herdr: $(cat "$TMP/herdr-calls.log")"
+}
+
+# The space commands that read run in a worktree, and so do their old names,
+# with the note that names the space command. Making a space is refused.
+guard_runs_the_space_reads() {
+  guard_machine
+  as_worktree
+  local out err before
+  before=$(machine_snapshot)
+  out=$("$E" space ls 2>"$TMP/err") || fail "space ls exited non-zero: $(cat "$TMP/err")"
+  case $out in "demo"$'\n'"  $HOME/Dev/api") ;; *) fail "space ls printed: $out" ;; esac
+  [ ! -s "$TMP/err" ] || fail "space ls said something on stderr: $(cat "$TMP/err")"
+  out=$("$E" space team demo 2>"$TMP/err") || fail "space team exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = ABC ] || fail "space team printed: $out"
+  out=$("$E" project ls 2>"$TMP/err") || fail "project ls exited non-zero: $(cat "$TMP/err")"
+  case $out in "demo"$'\n'"  $HOME/Dev/api") ;; *) fail "project ls printed: $out" ;; esac
+  err=$(cat "$TMP/err")
+  case $err in *"entourage space ls"*) ;; *) fail "project ls did not name the space command: $err" ;; esac
+  out=$("$E" project team demo 2>/dev/null) || fail "project team exited non-zero"
+  [ "$out" = ABC ] || fail "project team printed: $out"
+  [ "$(machine_snapshot)" = "$before" ] || fail "the reads changed the machine"
+  [ ! -s "$TMP/herdr-calls.log" ] || fail "a read called Herdr: $(cat "$TMP/herdr-calls.log")"
+  refused space new other
 }
 
 # A stand-in for sqlite3 that passes each call on to the real one, and notes
@@ -242,12 +275,12 @@ profile_set_is_refused_in_a_worktree() {
 
 # --- asked, a worktree's copy acts on the machine ---------------------------
 
-guard_runs_project_new_when_asked() {
+guard_runs_space_new_when_asked() {
   guard_machine
   as_worktree
-  ENTOURAGE_LIVE=1 "$E" project new other >/dev/null 2>"$TMP/err" || fail "project new exited non-zero: $(cat "$TMP/err")"
-  [ -f "$P/other/PROJECT.md" ] || fail "made no project"
-  is_trusted "$P/other" || fail "did not trust the project's folder"
+  ENTOURAGE_LIVE=1 "$E" space new other >/dev/null 2>"$TMP/err" || fail "space new exited non-zero: $(cat "$TMP/err")"
+  [ -f "$P/other/PROJECT.md" ] || fail "made no space"
+  is_trusted "$P/other" || fail "did not trust the space's folder"
 }
 
 guard_runs_task_start_when_asked() {
@@ -272,8 +305,8 @@ guard_records_a_handoff_when_asked() {
 # Only 1 asks.
 guard_takes_only_1_as_asking() {
   guard_machine
-  ENTOURAGE_LIVE=yes refused project new other
-  ENTOURAGE_LIVE=0 refused project new other
+  ENTOURAGE_LIVE=yes refused space new other
+  ENTOURAGE_LIVE=0 refused space new other
 }
 
 # Asking is for one run. A line in the env file would leave it on for every
@@ -281,7 +314,7 @@ guard_takes_only_1_as_asking() {
 guard_does_not_take_asking_from_the_env_file() {
   guard_machine
   printf 'ENTOURAGE_LIVE=1\n' >> "$(env_file)"
-  refused project new other
+  refused space new other
 }
 
 # --- the copy this machine runs is never stopped ----------------------------
@@ -296,7 +329,7 @@ worktree_folder() {
 guard_never_stops_the_main_checkout() {
   worktree_folder
   cd "$TMP/wt" || return
-  "$E" project new demo >/dev/null 2>"$TMP/err" || fail "project new exited non-zero: $(cat "$TMP/err")"
+  "$E" space new demo >/dev/null 2>"$TMP/err" || fail "space new exited non-zero: $(cat "$TMP/err")"
   "$E" task handoff demo ABC-122 <<< "$BLOCK" >/dev/null 2>"$TMP/err" || fail "task handoff exited non-zero: $(cat "$TMP/err")"
   [ "$(handoff_rows)" = 1 ] || fail "the store has $(handoff_rows) hand-offs, not 1"
 }
@@ -306,7 +339,7 @@ guard_never_stops_an_npm_install() {
   rm -rf "$REPO/.git"
   worktree_folder
   cd "$TMP/wt" || return
-  "$E" project new demo >/dev/null 2>"$TMP/err" || fail "project new exited non-zero: $(cat "$TMP/err")"
+  "$E" space new demo >/dev/null 2>"$TMP/err" || fail "space new exited non-zero: $(cat "$TMP/err")"
   "$E" task handoff demo ABC-122 <<< "$BLOCK" >/dev/null 2>"$TMP/err" || fail "task handoff exited non-zero: $(cat "$TMP/err")"
   [ "$(handoff_rows)" = 1 ] || fail "the store has $(handoff_rows) hand-offs, not 1"
 }
@@ -316,9 +349,9 @@ guard_never_stops_an_npm_install() {
 guard_leaves_other_git_files_alone() {
   rm -rf "$REPO/.git"
   printf 'gitdir: %s\n' "$TMP/super/.git/modules/repo" > "$REPO/.git"
-  "$E" project new demo >/dev/null 2>"$TMP/err" || fail "with a submodule's .git: $(cat "$TMP/err")"
+  "$E" space new demo >/dev/null 2>"$TMP/err" || fail "with a submodule's .git: $(cat "$TMP/err")"
   printf 'gitdir: %s\n' "$TMP/worktrees/super/.git/modules/repo" > "$REPO/.git"
-  "$E" project new other >/dev/null 2>"$TMP/err" || fail "under a folder called worktrees: $(cat "$TMP/err")"
+  "$E" space new other >/dev/null 2>"$TMP/err" || fail "under a folder called worktrees: $(cat "$TMP/err")"
 }
 
 # --- what the message says --------------------------------------------------
@@ -330,16 +363,16 @@ guard_says_which_copy_to_run() {
   guard_machine
   as_worktree
   local out want live
-  out=$("$E" project new other 2>&1)
-  for want in 'run plain `entourage`' 'write a test case' "ENTOURAGE_LIVE=1 $REPO/cli/entourage project new other"; do
+  out=$("$E" space new other 2>&1)
+  for want in 'run plain `entourage`' 'write a test case' "ENTOURAGE_LIVE=1 $REPO/cli/entourage space new other"; do
     case $out in *"$want"*) ;; *) fail "the message does not say '$want': $out" ;; esac
   done
   # Only that command, so that nothing else the output holds is ever run.
   live=$(printf '%s\n' "$out" | tail -n 1)
   live=${live#"${live%%[![:space:]]*}"}
-  [ "$live" = "ENTOURAGE_LIVE=1 $REPO/cli/entourage project new other" ] || { fail "the last line is not the command to run: $out"; return; }
+  [ "$live" = "ENTOURAGE_LIVE=1 $REPO/cli/entourage space new other" ] || { fail "the last line is not the command to run: $out"; return; }
   eval "$live" >/dev/null 2>"$TMP/err" || fail "the command it gives exited non-zero: $live: $(cat "$TMP/err")"
-  [ -f "$P/other/PROJECT.md" ] || fail "the command it gives made no project: $live"
+  [ -f "$P/other/PROJECT.md" ] || fail "the command it gives made no space: $live"
 }
 
 # A word with a space in it is quoted, so the command can be pasted.
@@ -347,20 +380,20 @@ guard_quotes_the_command_it_gives() {
   guard_machine
   as_worktree
   local out
-  out=$("$E" project add demo "$HOME/My repos/web" 2>&1)
-  case $out in *"ENTOURAGE_LIVE=1 $REPO/cli/entourage project add demo '$HOME/My repos/web'") ;; *) fail "did not quote the path: $out" ;; esac
+  out=$("$E" space add demo "$HOME/My repos/web" 2>&1)
+  case $out in *"ENTOURAGE_LIVE=1 $REPO/cli/entourage space add demo '$HOME/My repos/web'") ;; *) fail "did not quote the path: $out" ;; esac
 }
 
-CASES="guard_refuses_install guard_refuses_update guard_refuses_project_new
-guard_refuses_project_add guard_refuses_project_open guard_refuses_setting_a_projects_teams
+CASES="guard_refuses_install guard_refuses_update guard_refuses_space_new
+guard_refuses_space_add guard_refuses_space_open guard_refuses_setting_a_spaces_teams
 guard_refuses_task_new guard_refuses_task_start guard_refuses_task_build
 guard_refuses_task_handoff guard_refuses_linear_key guard_refuses_linear_type guard_refuses_linear_section
 guard_refuses_linear_move
 guard_refuses_a_command_it_does_not_know
 profile_ls_runs_in_a_worktree profile_set_is_refused_in_a_worktree
 guard_knows_a_worktree_git_made
-guard_runs_the_reads_and_changes_nothing guard_opens_the_store_read_only
-guard_runs_project_new_when_asked guard_runs_task_start_when_asked guard_records_a_handoff_when_asked
+guard_runs_the_reads_and_changes_nothing guard_runs_the_space_reads guard_opens_the_store_read_only
+guard_runs_space_new_when_asked guard_runs_task_start_when_asked guard_records_a_handoff_when_asked
 guard_takes_only_1_as_asking guard_does_not_take_asking_from_the_env_file
 guard_never_stops_the_main_checkout guard_never_stops_an_npm_install guard_leaves_other_git_files_alone
 guard_says_which_copy_to_run guard_quotes_the_command_it_gives"

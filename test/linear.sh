@@ -267,13 +267,13 @@ linear_key_refuses_an_answer_that_names_no_user_with_an_old_jq() {
   [ ! -e "$(env_file)" ] || fail "saved the key: $(cat "$(env_file)")"
 }
 
-# --- listing a project's open cards -----------------------------------------
+# --- listing a space's open cards -------------------------------------------
 
-# The project "demo" on a machine with a key saved. Its Linear teams are the
+# The space "demo" on a machine with a key saved. Its Linear teams are the
 # ones named, or ABC.
 listed_demo() {
-  "$E" project new demo >/dev/null
-  "$E" project team demo "${@:-ABC}" >/dev/null
+  "$E" space new demo >/dev/null
+  "$E" space team demo "${@:-ABC}" >/dev/null
   saved_key
   stub_linear
 }
@@ -328,7 +328,7 @@ task_ls_asks_only_for_open_cards() {
   esac
 }
 
-task_ls_asks_for_every_team_of_the_project() {
+task_ls_asks_for_every_team_of_the_space() {
   listed_demo ABC XYZ
   linear_answers '{"data":{"teams":{"nodes":[{"key":"XYZ"},{"key":"ABC"}]},"workflowStates":{"nodes":[]},"issues":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}'
   "$E" task ls demo >/dev/null || fail "task ls exited non-zero"
@@ -432,8 +432,8 @@ task_ls_when_linear_is_out_of_reach_says_so() {
 
 task_ls_without_a_team_says_how_to_set_it() {
   listed_demo; rm "$P/demo/teams"
-  out=$("$E" task ls demo 2>&1) && fail "exited zero for a project with no team"
-  case $out in *"entourage project team demo "*) ;; *) fail "did not say how to set the team: $out" ;; esac
+  out=$("$E" task ls demo 2>&1) && fail "exited zero for a space with no team"
+  case $out in *"entourage space team demo "*) ;; *) fail "did not say how to set the team: $out" ;; esac
   [ "$(curl_count)" = 0 ] || fail "asked Linear with no team to ask about: $(curl_calls)"
 }
 
@@ -463,10 +463,10 @@ task_ls_says_when_curl_is_missing() {
   case $out in *"curl is not installed"*) ;; *) fail "did not say curl is missing: $out" ;; esac
 }
 
-task_ls_unknown_project() {
+task_ls_unknown_space() {
   stub_linear; saved_key
-  "$E" task ls nope >/dev/null 2>&1 && fail "listed a project that does not exist"
-  [ "$(curl_count)" = 0 ] || fail "asked Linear about a project that does not exist: $(curl_calls)"
+  "$E" task ls nope >/dev/null 2>&1 && fail "listed a space that does not exist"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear about a space that does not exist: $(curl_calls)"
 }
 
 task_ls_refuses_an_unknown_option() {
@@ -665,13 +665,13 @@ task_ls_names_the_line_of_a_bad_team_key() {
 
 # --- asking for one card ----------------------------------------------------
 
-# The project "demo" with one repo of one commit, the key saved, and Linear
+# The space "demo" with one repo of one commit, the key saved, and Linear
 # answering with $1, for `task start` to ask it about a card.
 card_asked() {
-  "$E" project new demo >/dev/null
+  "$E" space new demo >/dev/null
   git init -q -b main "$HOME/Dev/api"
   git -C "$HOME/Dev/api" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-  "$E" project add demo "$HOME/Dev/api" >/dev/null
+  "$E" space add demo "$HOME/Dev/api" >/dev/null
   saved_key; stub_linear; linear_answers "$1"
 }
 # The repo's branches other than main, one per line.
@@ -786,8 +786,8 @@ EOF
 env_file_cannot_move_entourages_folder() {
   mkdir -p "$HOME/.config/entourage"
   echo "ENTOURAGE_HOME=$TMP/elsewhere" > "$(env_file)"
-  "$E" project new demo >/dev/null || fail "project new exited non-zero"
-  [ -d "$P/demo" ] || fail "the project was not made in the usual folder"
+  "$E" space new demo >/dev/null || fail "space new exited non-zero"
+  [ -d "$P/demo" ] || fail "the space was not made in the usual folder"
   [ ! -e "$TMP/elsewhere" ] || fail "the env file moved entourage's folder"
 }
 
@@ -1826,10 +1826,10 @@ CASES="$CARD_LOOKUP_CASES $WRITE_CASES $READ_CASES $MOVE_CASES
   linear_key_saves_nothing_when_linear_is_out_of_reach linear_key_refuses_what_is_not_a_key
   linear_key_says_when_jq_is_missing linear_key_says_when_curl_is_missing
   task_ls_lists_cards_under_their_status task_ls_json_is_one_line_a_program_can_read
-  task_ls_asks_only_for_open_cards task_ls_asks_for_every_team_of_the_project
+  task_ls_asks_only_for_open_cards task_ls_asks_for_every_team_of_the_space
   task_ls_puts_a_status_two_teams_share_in_one_group task_ls_fetches_every_page
   task_ls_without_a_key_says_how_to_save_one task_ls_with_a_rejected_key_says_so
   task_ls_knows_a_rejected_key_by_its_error task_ls_when_linear_is_out_of_reach_says_so
   task_ls_without_a_team_says_how_to_set_it task_ls_names_a_team_linear_does_not_have
   task_ls_says_what_linear_said_was_wrong task_ls_json_prints_nothing_when_it_fails
-  task_ls_says_when_curl_is_missing task_ls_unknown_project task_ls_refuses_an_unknown_option"
+  task_ls_says_when_curl_is_missing task_ls_unknown_space task_ls_refuses_an_unknown_option"

@@ -1,9 +1,9 @@
 # Tasks: a card an agent writes up, then a worktree of each repo on one
 # branch. Sourced by cli/entourage.
 
-# A task is one piece of work in a project, usually a Linear card. A person
+# A task is one piece of work in a space, usually a Linear card. A person
 # runs two commands, in this order:
-#   task new    an agent writes the card up, in a tab in the project's space
+#   task new    an agent writes the card up, in a tab in the space
 #   task start  a worktree of each repo on the card's branch, in a tab of its
 #               own, where it types `task build` to start the agent that
 #               builds the card
@@ -16,13 +16,13 @@
 CARD_RE='^[A-Za-z][A-Za-z0-9]*-[0-9]+$'
 # The skills the agent writes a card up with, in the order it uses them.
 CARD_SKILLS='sdlc-define sdlc-plan sdlc-breakdown'
-# The agent's first message. {card} and {project} are filled in.
+# The agent's first message. {card} and {space} are filled in.
 CARD_PROMPT=$REPO/prompts/task-new.md
 # The skills the agent builds a card with, in the order it uses them: the
 # build, then the review, which sends what it finds not met back to the build,
 # then the pull request, which waits for the human to merge it.
 BUILD_SKILLS='sdlc-build sdlc-review sdlc-pr'
-# The build agent's first message. {card} and {project} are filled in.
+# The build agent's first message. {card} and {space} are filled in.
 BUILD_PROMPT=$REPO/prompts/task-build.md
 # The agent a new task's tab runs: one word, a command on PATH.
 AGENT=${ENTOURAGE_AGENT:-claude}
@@ -76,13 +76,13 @@ check_card() {
   esac
 }
 
-# Start writing a card up: a tab in the project's space, in the project's
-# folder, running an agent whose first message names the card and the skills.
+# Start writing a card up: a tab in the space, in the space's folder, running
+# an agent whose first message names the card and the skills.
 # It makes no branch, worktree or task folder; `task start` does that once the
 # card has a type.
 task_new() {
   local name=${1:-} card=${2:-} dir skill prompt arg argv
-  dir=$(project_dir "$name")
+  dir=$(space_dir "$name")
   [ -n "$card" ] ||
     die "which card? Usage: entourage task new $name <card>, like: entourage task new $name ABC-122"
   [[ $card =~ $CARD_RE ]] ||
@@ -99,14 +99,14 @@ task_new() {
   done
   profile_args "$CARD_PROFILE" "$CARD_SETTINGS"
   [ -f "$CARD_PROMPT" ] || die "the agent's first message is missing from $CARD_PROMPT"
-  prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$CARD_PROMPT")
+  prompt=$(sed -e "s/{card}/$card/g" -e "s/{space}/$name/g" "$CARD_PROMPT")
   check_card "$card"
 
   sync_links "$dir"
-  # `project new` does this too. Here it covers a project made before it did,
+  # `space new` does this too. Here it covers a space made before it did,
   # or on a day Claude Code's file could not be written. It comes before the
   # tab, because the agent meets the trust question the moment it starts.
-  trust_project "$name"
+  trust_space "$name"
   (show_space "$name" "$dir") ||
     die "could not show the space for '$name', so no agent was started."
   # No `space` argument: the tab goes in the selected space, which show_space
@@ -121,8 +121,8 @@ task_new() {
   say "The agent writes the card up, then asks you to approve it."
 }
 
-# `task start` makes a folder in a project's tasks/ folder, named after its
-# branch's description, holding one git worktree per repo of the project:
+# `task start` makes a folder in a space's tasks/ folder, named after its
+# branch's description, holding one git worktree per repo of the space:
 #   tasks/abc-122-short-title/api   a worktree of api on feat/abc-122-short-title
 
 # Branch names follow Conventional Branch 1.1.0 (https://conventionalbranch.org):
@@ -158,7 +158,7 @@ short_name() {
 # from the card in Linear: like feat/abc-122-export-orders-as-csv. It stops
 # before anything is made when Linear cannot be asked, has no such card, or
 # the card has no type.
-#   card_branch <project> <card ID, in upper case>
+#   card_branch <space> <card ID, in upper case>
 card_branch() {
   local name=$1 card=$2 found type short branch
   found=$(linear_card "$card") || exit 1
@@ -264,7 +264,7 @@ setup_line() {
 # runs there, not here, so that `task start` returns at once, setup is on
 # screen where the work will happen, and the agent cannot start before setup
 # has finished. Nothing in this step can fail the task.
-#   $1 what `tab.new` printed   $2 the project   $3 the card
+#   $1 what `tab.new` printed   $2 the space   $3 the card
 start_in_tab() {
   local tab=$1 build="entourage task build $2 $3" line term name
   line=${SETUP_LINE:+$SETUP_LINE && }$build
@@ -315,7 +315,7 @@ TARGET_REPOS=() TARGET_GROUPS=() TASK_GROUPS=()
 # Read targets of the form <repo>[:<group>[,<group>...]] into TARGET_REPOS and
 # TARGET_GROUPS, or stop. entourage checks a group's shape only: what a group
 # means, and whether it exists, is the repo's business.
-#   $1 the project   $2... the project's repos, then --, then the targets
+#   $1 the space   $2... the space's repos, then --, then the targets
 parse_targets() {
   local name=$1 known=() arg repo groups group found r i
   shift
@@ -327,7 +327,7 @@ parse_targets() {
     found=0
     for r in "${known[@]}"; do [ "$r" != "$repo" ] || found=1; done
     [ "$found" = 1 ] ||
-      die "'$repo' is not a repo in project '$name'. Its repos are: ${known[*]}"
+      die "'$repo' is not a repo in space '$name'. Its repos are: ${known[*]}"
     i=0
     while [ "$i" -lt "${#TARGET_REPOS[@]}" ]; do
       [ "${TARGET_REPOS[$i]}" != "$repo" ] ||
@@ -354,7 +354,7 @@ parse_targets() {
 
 task_start() {
   local name=${1:-} card=${2:-} dir branch task
-  dir=$(project_dir "$name")
+  dir=$(space_dir "$name")
   [ -n "$card" ] ||
     die "which card? Usage: entourage task start $name <card> [<repo>[:<group>[,<group>...]] ...], like: entourage task start $name ABC-122"
   case $card in
@@ -369,11 +369,11 @@ task_start() {
 
   # Check everything before making anything.
   local all=() repos=() bases=() repo base i tdir
-  while IFS= read -r repo; do all+=("$repo"); done < <(project_repos "$dir")
+  while IFS= read -r repo; do all+=("$repo"); done < <(space_repos "$dir")
   [ "${#all[@]}" -gt 0 ] ||
-    die "project '$name' has no repos. Add one with: entourage project add $name <path>"
+    die "space '$name' has no repos. Add one with: entourage space add $name <path>"
   # The task's repos are the ones its targets name, or every repo when there
-  # are no targets, always in the order of the project's repos file.
+  # are no targets, always in the order of the space's repos file.
   shift 2
   parse_targets "$name" "${all[@]}" -- "$@"
   TASK_GROUPS=()
@@ -435,7 +435,7 @@ task_start() {
       die "could not make a worktree in ${repo##*/}; the task was not made"
     say "  worktree  ${repo##*/} (from $base)"
   done
-  # With several repos the session starts in the task folder, so the project's
+  # With several repos the session starts in the task folder, so the space's
   # doc is linked there for an agent to read.
   if [ "${#repos[@]}" -gt 1 ]; then
     ln -s ../../PROJECT.md "$tdir/CLAUDE.md"
@@ -450,7 +450,7 @@ task_start() {
   [ "${#repos[@]}" -gt 1 ] || folder=$tdir/${repos[0]##*/}
   # The task exists now. If Herdr cannot show it, keep it and say where it is.
   (show_space "$name" "$dir") ||
-    die "made the task at $folder but could not show it in Herdr. Open that folder in the project's space yourself."
+    die "made the task at $folder but could not show it in Herdr. Open that folder in the space for '$name' yourself."
   # No `space` argument: the tab goes in the selected space, which show_space
   # has just selected or made.
   local tab
@@ -475,11 +475,11 @@ task_start() {
 # the tab to start a new agent when the first one has stopped.
 task_build() {
   local name=${1:-} card=${2:-} dir here low skill prompt
-  dir=$(project_dir "$name")
+  dir=$(space_dir "$name")
   [ -n "$card" ] ||
     die "which card? Usage: entourage task build $name <card>, like: entourage task build $name ABC-122"
   [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
-  [ "$#" -le 2 ] || die "usage: entourage task build <project> <card>"
+  [ "$#" -le 2 ] || die "usage: entourage task build <space> <card>"
   card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
   low=$(printf '%s' "$card" | tr '[:upper:]' '[:lower:]')
   # The agent works in the folder it starts in, so that has to be this card's
@@ -498,30 +498,30 @@ task_build() {
   done
   profile_args "$BUILD_PROFILE" "$BUILD_SETTINGS"
   [ -f "$BUILD_PROMPT" ] || die "the agent's first message is missing from $BUILD_PROMPT"
-  prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$BUILD_PROMPT")
+  prompt=$(sed -e "s/{card}/$card/g" -e "s/{space}/$name/g" "$BUILD_PROMPT")
   # The first message goes last, after the profile's flags.
   exec "$AGENT" ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} "$prompt"
 }
 
-# List the open cards of a project's Linear teams, grouped by status: the
+# List the open cards of a space's Linear teams, grouped by status: the
 # cards `task new` can be given. Linear itself is asked in linear.sh. --json
 # prints the list as one line for programs; the cards mod reads it.
 task_ls() {
   local name=${1:-} json=0 dir team keys list
   local -a teams=()
-  dir=$(project_dir "$name")
+  dir=$(space_dir "$name")
   case ${2:-} in
     --json) json=1 ;;
     '') ;;
     *) die "unknown option for task ls: $2" ;;
   esac
-  [ "$#" -le 2 ] || die "usage: entourage task ls <project> [--json]"
+  [ "$#" -le 2 ] || die "usage: entourage task ls <space> [--json]"
   # Read first, so that a bad line in the teams file stops it with its own
   # message, not one saying there is no team.
-  keys=$(project_teams "$dir") || exit 1
+  keys=$(space_teams "$dir") || exit 1
   while IFS= read -r team; do [ -z "$team" ] || teams+=("$team"); done <<< "$keys"
   [ "${#teams[@]}" -gt 0 ] ||
-    die "project '$name' has no Linear team, so there are no cards to list. Set it with: entourage project team $name <team key>, like: entourage project team $name ABC"
+    die "space '$name' has no Linear team, so there are no cards to list. Set it with: entourage space team $name <team key>, like: entourage space team $name ABC"
   list=$(linear_open_cards "$name" "${teams[@]}") || exit 1
   if [ "$json" = 1 ]; then
     printf '%s\n' "$list"
@@ -547,6 +547,6 @@ cmd_task() {
     watch) shift; task_watch "$@" ;;
     handoff) shift; task_handoff "$@" ;;
     log) shift; task_log "$@" ;;
-    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task build <project> <card>, or: entourage task finish <project> <card>, or: entourage task watch <project> <card> [--once], or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
+    *) die "usage: entourage task ls <space> [--json], or: entourage task new <space> <card>, or: entourage task start <space> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task build <space> <card>, or: entourage task finish <space> <card>, or: entourage task watch <space> <card> [--once], or: entourage task handoff <space> <card>, or: entourage task log <space> [<card>] [--json] (see: entourage help)" ;;
   esac
 }

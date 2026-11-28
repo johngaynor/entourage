@@ -109,7 +109,7 @@ WATCH_SLEEP=''
 
 task_watch() {
   local name=${1:-} card=${2:-} once=0 dir tdir f branch wts=() branches=()
-  dir=$(project_dir "$name")
+  dir=$(space_dir "$name")
   [ -n "$card" ] ||
     die "which card? Usage: entourage task watch $name <card> [--once], like: entourage task watch $name ABC-122"
   [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
@@ -118,7 +118,7 @@ task_watch() {
     '') ;;
     *) die "unknown option for task watch: $3" ;;
   esac
-  [ "$#" -le 3 ] || die "usage: entourage task watch <project> <card> [--once]"
+  [ "$#" -le 3 ] || die "usage: entourage task watch <space> <card> [--once]"
   card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
   command -v gh >/dev/null 2>&1 ||
     die "gh is not installed, so GitHub cannot be asked about $card's pull requests. Install it (https://cli.github.com), sign in with: gh auth login, then run this again."
