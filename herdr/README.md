@@ -221,26 +221,31 @@ entourage task new <project> <card>
   `curl` or `jq`), the card starts as before, with a note saying why.
 - **The skills write to the card through entourage.** The agent reads the card
   with its own Linear tools, but sets the type and writes each section with two
-  entourage commands, so those steps go the same way on every run:
+  entourage commands, so those steps go the same way on every run. A third,
+  which `sdlc-pr` runs once its pull requests are open, moves the card (see
+  [Hand-offs](#hand-offs)):
 
   | Command | What it does |
   |---|---|
   | `entourage linear type <card> <feat\|fix\|chore>` | Sets the card's type: its one label in the `Type` label group, the team's or else the workspace's. Any other type comes off; the card's other labels are never touched. A missing label is refused, never made. |
   | `entourage linear section <card> <Specification\|Plan\|Breakdown> [--replace]` | Adds the section, its body on stdin, below the description. Specification and Plan are folded away, in the form Linear keeps them in, `+++ ## <name>` … `+++` (one written as `>>>` is read the same); the Breakdown is left open, because you read it to approve the card. A section of that name already there is refused, unless `--replace` puts the new one in its place; `--replace` with none there is refused too. A body is refused when a line in it would end the section early or start a second one: a fold line, and in the Breakdown a `#` or `##` heading. A line inside a fenced code block is never taken for a section. |
+  | `entourage linear move <card> <started\|review\|done>` | Moves the card forward to its team's first started status (In Progress), its last started one (In Review), or its first completed one (Done), picked by its kind and its place in the team's order, not by its name. In a team with one started status, `review` is that status. A card already there, further on, done or canceled stays where it is, and the command says so and exits zero. A move that cannot be made, such as with Linear out of reach or a key without Write permission, exits non-zero, saying that the card was not moved and why. |
 
-  Both read the card back before they say they are done: one type, the one
-  asked for; the section there once, and the text above it as it was. Both need
-  your key to have Write permission. With no key saved, the skills write with
-  the agent's Linear tools instead, and say so.
+  All three read the card back before they say they are done: one type, the
+  one asked for; the section there once, and the text above it as it was; the
+  card in the status it was moved to. All three need your key to have Write
+  permission. With no key saved, the skills write the type and the sections
+  with the agent's Linear tools instead, and say so; the card is not moved then,
+  and `sdlc-pr` says so.
 
 ### The Cards panel
 
 On the `test` layout, the Cards panel under the projects list shows the open
 cards of the project whose space is showing, each with a button that writes
 the card up. Each card is under its status in Linear, which shows where its
-work is: `task start` moves a card to In Progress, and recording its merge
-moves it to Done, which takes it off the list (see
-[Starting the work](#starting-the-work)).
+work is: `task start` moves a card to In Progress, opening its pull requests
+moves it to In Review, and recording its merge moves it to Done, which takes
+it off the list (see [Starting the work](#starting-the-work)).
 
 - **It shows what `task ls` lists**: the same statuses in the same order, each
   with its count, and the cards under them. A click on a status closes its
@@ -278,7 +283,11 @@ it, which the `sdlc-review` skill runs: it hands off as `review`, `done` with
 `pr` next when every Done when item is met, or with `build` next, naming each
 item that is not. Once it has sent the work back, it asks you instead,
 as `needs-human`, whether to build again. So does the pull request after
-that, which the `sdlc-pr` skill runs: it hands off as `pr`. With the pull
+that, which the `sdlc-pr` skill runs: it hands off as `pr`. Once every pull
+request for the card is open, it moves the card in Linear to its team's last
+started status (In Review) with `entourage linear move <card> review`; in a
+team with one started status the card stays in it. When the card cannot be
+moved, it still goes on, and says so, and why, in its hand-offs. With the pull
 requests open it waits as `needs-human`, with their links, while you merge
 them. A change you ask for in the tab instead goes on the task's branch and
 into the same pull requests, and it waits as `needs-human` again. Once GitHub
@@ -435,8 +444,9 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   move needs your key to have Write permission. When Linear cannot be
   reached, or refuses the move, the task is still made and open, and the
   output says that the card was not moved, and why. Move it by hand then.
-  Once every pull request has merged, recording the merge moves the card to
-  Done (see [Hand-offs](#hand-offs)).
+  Once every pull request is open, `sdlc-pr` moves it to In Review, and once
+  every one has merged, recording the merge moves it to Done (see
+  [Hand-offs](#hand-offs)).
 - **Claude Code asks once to trust a repo it does not know.** With one repo,
   the tab starts in its worktree, and a worktree takes the trust of its repo's
   own checkout, not of the project folder above it. When Claude Code's file

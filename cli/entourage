@@ -34,6 +34,9 @@ Usage:
                                            set a card's type, its label in the Type group
   entourage linear section <card> <Specification|Plan|Breakdown> [--replace]
                                            add a section to a card, its body on stdin
+  entourage linear move <card> <started|review|done>
+                                           move a card forward in Linear: to its team's first
+                                           started status, its last started one (In Review), or Done
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
@@ -48,7 +51,8 @@ project's Linear teams that is not done, cancelled or a duplicate, under its
 status. It needs two things set once. `linear key` asks for a Linear API key
 and saves it (make one in Linear, under Settings, Account, Security & access,
 Personal API keys; Read permission is enough to list cards, and the card
-skills' writes, `linear type` and `linear section`, need Write too).
+skills' writes, `linear type`, `linear section` and `linear move`, need
+Write too).
 `project team` names the project's teams by their keys: ABC for the team
 whose cards are ABC-122. A project can name several teams, and several
 projects can name the same one. Linear is asked with curl and its answer read
@@ -90,12 +94,16 @@ into the default branch of each repo the work changed, saying how the review
 showed each Done when item. You merge it, then tell the agent in the tab that
 it has merged: it checks GitHub, and records the merge once every pull
 request for the card has merged. No agent merges a pull request.
-entourage moves the card in Linear at two points: once `task start` has
-opened the tab, to the team's first started status (In Progress), and once
-the merge is recorded, to its first completed one (Done). A status is picked
-by its kind and its place in the team's order, not by its name; a card only
-moves forward, one that is done or canceled is never moved, the key needs
-Write permission, and a move that cannot be made is a note, never a failure.
+entourage moves the card in Linear at three points: once `task start` has
+opened the tab, to the team's first started status (In Progress); once
+sdlc-pr has opened every pull request, with `linear move <card> review`, to
+its last started one (In Review); and once the merge is recorded, to its
+first completed one (Done). A status is picked by its kind and its place in
+the team's order, not by its name; a card only moves forward, one that is
+done or canceled is never moved, and the key needs Write permission. A move
+that cannot be made never stops the step: `task start` and the merge say so
+in a note, and sdlc-pr in its hand-off. `linear move` alone exits non-zero
+then, saying why.
 Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122`, `/sdlc-pr ABC-122`.
 `task handoff` is run by the agent each time a step ends or pauses, and

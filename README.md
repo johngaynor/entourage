@@ -13,7 +13,7 @@ Early setup. Six skills are in, and they have had only a few runs on real cards:
 | `sdlc-breakdown` | Decides whether the card is one piece or several slices, then asks you to approve it |
 | `sdlc-build` | Builds an approved card in its task: makes the change the Plan describes, runs the tests and commits, pushing nothing |
 | `sdlc-review` | Reviews the build against the card's Done when, writes what it found on the card, and sends what is not met back to build |
-| `sdlc-pr` | Pushes a reviewed card's branch, opens its pull requests, waits for you to merge them and records the merge. It never merges |
+| `sdlc-pr` | Pushes a reviewed card's branch, opens its pull requests, moves the card to In Review, waits for you to merge them and records the merge. It never merges |
 
 They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
@@ -192,13 +192,18 @@ has commits ahead of its default branch, and no other, it pushes the task's
 branch, never forced, and opens a pull request into the default branch, by the
 repo's own rules and pull request template. Each one links the card and says,
 for each Done when item, how the review showed it and what is left to you.
+Once every one is open, it moves the card in Linear to In Review, the team's
+last started status, with `entourage linear move <card> review`; in a team
+with one started status the card stays in it. When the card cannot be moved,
+it says so, and why, and goes on.
 
 Then it asks you to merge them, as `needs-human` with their links. Merge each
 one on GitHub yourself, then tell the agent in the tab that they have merged.
 It checks each with `gh pr view`, and once every one has merged it hands off
 `done` with `merged` next, which ends the card: `task log` shows the card as
 merged, and recording it moves the card to Done in Linear, as `task start`
-moved it to In Progress. Each move picks the team's own status of that kind,
+moved it to In Progress and opening the pull requests moved it to In Review.
+Each move picks the team's own status of that kind,
 goes only forward, never touches a card that is done or canceled, and needs
 your Linear key to have Write permission. A move that cannot be made is a
 note saying why, and the step goes on. If one has not merged yet, it names it
