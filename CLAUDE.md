@@ -46,6 +46,15 @@ The guard is `cli/lib/guard.sh`. It lists the commands a worktree's copy may
 run, so a new command is refused there until it is added to that list, and
 it is added only if it changes nothing.
 
+## Herdr's docs
+
+Herdr's docs for mods are `AGENTS.md`, `herdr.d.ts` and `gpui-kit.d.ts` in
+`~/.config/herdr-app`. They are large, so never read one whole. Find the part
+you need: list the headings with `grep -n '^#' ~/.config/herdr-app/AGENTS.md`,
+where a section ends at the next heading of its level, or grep a `.d.ts` file
+for the declaration, such as `export function exec`. Then read only that
+range, with `sed -n '<from>,<to>p'` or `Read` with an offset and a limit.
+
 ## Versions and releases
 
 **Never change `"version"` in `package.json` as part of a feature or fix PR.**
