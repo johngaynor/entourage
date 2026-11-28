@@ -634,6 +634,110 @@ linear_section() {
   fi
 }
 
+# --- moving a card ----------------------------------------------------------
+#
+# entourage moves a card at the two points it sees for itself: `task start`
+# moves it to its team's first started status, and the hand-off that records
+# its merge moves it to the first completed one. The status is picked by its
+# kind and its place in the team's order, never by its name, which each team
+# chooses. A card only moves forward, so a person who has moved it further on
+# by hand is never undone, and a card that is done, canceled or a duplicate
+# is never moved at all.
+
+# The kinds of status a card moves through, in order. A card in a completed
+# status, or one of any other kind, is closed.
+MOVE_ORDER='{"triage":0,"backlog":1,"unstarted":2,"started":3,"completed":4}'
+
+# The question for a move: the card, its status, and its team's statuses.
+MOVE_QUERY='query($team: String!, $number: Float!) {
+  issues(first: 1, filter: {team: {key: {eq: $team}}, number: {eq: $number}}) {
+    nodes { id identifier state { id name type position }
+      team { states(first: 250) { nodes { id name type position } } } }
+  }
+}'
+
+# From the answer to MOVE_QUERY, on stdin, what to do: $to is the kind to
+# move to, started or completed, and $order is MOVE_ORDER. The target is the
+# status of that kind that comes first in the team's order. The card moves
+# only when the target is further along: a later kind, or a later place
+# within the same kind.
+MOVE_PLAN='
+  def place: (.position | numbers) // 1000000;
+  if (.issues.nodes | type) != "array" then error("no list of cards")
+  elif (.issues.nodes | length) == 0 then {state: "none"}
+  else .issues.nodes[0] as $card
+    | $card.state as $now
+    | if ($card.id | type) != "string" or ($now.id? | type) != "string"
+        or ($now.type? | type) != "string" or ($card.team.states.nodes? | type) != "array"
+      then error("unreadable") else . end
+    | ([$card.team.states.nodes[] | select(.type == $to and (.id | type) == "string")]
+       | sort_by(place) | .[0]) as $target
+    | if $target == null then {state: "notarget"}
+      elif $now.id == $target.id then {state: "there", now: $now.name}
+      elif $order[$now.type] == null or $now.type == "completed" then {state: "closed", now: $now.name}
+      elif $order[$target.type] > $order[$now.type]
+        or ($target.type == $now.type and ($target | place) > ($now | place))
+        then {state: "move", id: $card.id, to: $target.id, name: $target.name, was: $now.name}
+      else {state: "past", now: $now.name, name: $target.name}
+      end
+  end'
+
+# Move a card forward to its team's first status of a kind, or leave it
+# where it is and say why. The change is read back: the card has to be in the
+# status asked for. It stops, as the other commands here do, when it cannot.
+#   linear_move <card ID, in upper case> <started|completed>
+linear_move() {
+  local card=$1 to=$2 key vars data plan saved
+  linear_tools
+  key=$(linear_saved_key) || exit 1
+  vars=$(jq -cn --arg team "${card%-*}" --arg number "${card##*-}" \
+    '{team: $team, number: ($number | tonumber)}' 2>/dev/null) ||
+    die "'$card' is not a card ID like ABC-122."
+  data=$(linear_ask "$key" "$MOVE_QUERY" "$vars") || exit 1
+  plan=$(printf '%s' "$data" | jq -c --arg to "$to" --argjson order "$MOVE_ORDER" "$MOVE_PLAN" 2>/dev/null) || plan=
+  case $(printf '%s' "$plan" | jq -r '.state' 2>/dev/null) in
+    move) ;;
+    there) say "$card is in $(printf '%s' "$plan" | jq -r '.now') already"; return ;;
+    past) say "$card stays in $(printf '%s' "$plan" | jq -r '.now'), which is past $(printf '%s' "$plan" | jq -r '.name'): a card only moves forward"; return ;;
+    closed) say "$card stays in $(printf '%s' "$plan" | jq -r '.now'), which is closed: a card that is done or canceled is never moved"; return ;;
+    none) die "Linear has no card $card that the saved key can see." ;;
+    notarget) die "team ${card%-*} has no $to status in Linear." ;;
+    *) die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it." ;;
+  esac
+  data=$(linear_update "$key" "$(printf '%s' "$plan" | jq -r '.id')" \
+    "$(printf '%s' "$plan" | jq -c '{stateId: .to}')" 'state { id name }') || exit 1
+  # What Linear says the card is in now: the status asked for.
+  saved=$(printf '%s' "$data" | jq -r '.issueUpdate.issue.state.id // empty' 2>/dev/null) || saved=
+  [ "$saved" = "$(printf '%s' "$plan" | jq -r '.to')" ] ||
+    die "Linear did not save $card in $(printf '%s' "$plan" | jq -r '.name'): its answer shows it in $(printf '%s' "$data" | jq -r '.issueUpdate.issue.state.name // "no status"' 2>/dev/null || printf 'no status'). Look at the card in Linear."
+  say "$card moved to $(printf '%s' "$plan" | jq -r '.name') in Linear (it was $(printf '%s' "$plan" | jq -r '.was'))"
+}
+
+# The first sentence of a message from die, on one line, with no "entourage: "
+# before it. The rest of such a message is often advice for a command that
+# stops, such as to run it again, which is wrong for a step that goes on.
+first_sentence() {
+  local why=$1
+  why=${why#entourage: }; why=${why%%$'\n'*}; why=${why%%. *}; why=${why%.}
+  printf '%s' "$why"
+}
+
+# Move a card as linear_move does, for a command whose own work is done by
+# then and must not be undone by Linear: it never stops. It prints one line,
+# what linear_move said, and returns 0; or, when the card could not be moved,
+# that it was not and the first sentence of why, and returns 1.
+#   linear_move_note <card ID, in upper case> <started|completed>
+linear_move_note() {
+  local card=$1 out
+  if out=$(linear_move "$card" "$2" 2>&1); then
+    say "$out"
+  else
+    out=$(first_sentence "$out")
+    say "$card was not moved in Linear${out:+: $out}"
+    return 1
+  fi
+}
+
 cmd_linear() {
   case ${1:-} in
     key) shift; linear_key "$@" ;;

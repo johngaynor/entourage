@@ -411,7 +411,8 @@ step_logged() {
   local block=$1 out want
   shift
   demo
-  out=$(hand "$block") || fail "task handoff refused the block: $out"
+  # stderr is kept apart: a merge's note on the card goes there.
+  out=$(hand "$block" 2>"$TMP/err") || fail "task handoff refused the block: $(cat "$TMP/err")"
   [ "$out" = "$block" ] || fail "did not print the block back: $out"
   out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
   for want in "$@"; do
@@ -517,6 +518,96 @@ summary: Merged.' 'merged'
   refused 'phase: merged
 status: failed
 reason: Not merged.' 'merged'
+}
+
+# --- the card moves to done on its merge ------------------------------------
+
+MERGE_BLOCK='phase: pr
+status: done
+next: merged
+summary: https://github.com/acme/shop/pull/7 has merged into main.'
+
+# A Linear that answers with what is given, one answer for each call, and a
+# key to ask it with.
+linear_for_moves() { export LINEAR_API_KEY=$KEY; stub_linear; linear_answers "$@"; }
+
+# Recording the merge moves the card to its team's first completed status.
+# It is recorded with no answer from the human before it, as a watch on the
+# pull requests would record it. The block is printed as it is, on stdout,
+# and what happened to the card goes to stderr.
+handoff_moves_the_card_to_done_on_the_merge() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 'In Review')" "$(moved_answer Done)"
+  out=$(hand "$MERGE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$MERGE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(rows)" = 1 ] || fail "expected one row, got $(rows)"
+  [ "$(curl_count)" = 2 ] || fail "asked Linear $(curl_count) times, not 2: $(curl_calls)"
+  case $(changes_sent) in
+    *'"id":"id-ABC-122"'*'"stateId":"s-done"'*) ;;
+    *) fail "did not move the card to Done: $(changes_sent)" ;;
+  esac
+  grep -qxF 'ABC-122 moved to Done in Linear (it was In Review)' "$TMP/err" || fail "did not say the card moved: $(cat "$TMP/err")"
+}
+
+# A card that is closed is never moved: not to Done, and never back.
+handoff_moves_no_closed_card_on_the_merge() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 Canceled)"
+  out=$(hand "$MERGE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$MERGE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(curl_count)" = 1 ] || fail "asked Linear $(curl_count) times, not 1: $(curl_calls)"
+  [ -z "$(changes_sent)" ] || fail "asked Linear to change the card: $(changes_sent)"
+  grep -qF 'ABC-122 stays in Canceled, which is closed' "$TMP/err" || fail "did not say why the card stays: $(cat "$TMP/err")"
+}
+
+# Only the merge moves the card. A pull request closed without merging hands
+# off failed, or asks the human, and Linear is asked nothing; so does every
+# other step.
+handoff_moves_the_card_only_on_the_merge() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 'In Review')" "$(moved_answer Done)"
+  local block
+  for block in 'phase: pr
+status: failed
+reason: https://github.com/acme/shop/pull/7 was closed without merging.' 'phase: pr
+status: needs-human
+question: https://github.com/acme/shop/pull/7 was closed without merging. Reopen it, or stop here?
+options: stop here | reopen it' 'phase: pr
+status: answered
+answer: stop here' 'phase: review
+status: done
+next: pr
+summary: Every Done when item is met.' "$DONE_BLOCK"; do
+    hand "$block" >/dev/null 2>"$TMP/err" || fail "task handoff refused the block: $block: $(cat "$TMP/err")"
+    [ ! -s "$TMP/err" ] || fail "said something on stderr for: $block: $(cat "$TMP/err")"
+  done
+  [ "$(rows)" = 5 ] || fail "expected five rows, got $(rows)"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear: $(curl_calls)"
+}
+
+# A card that cannot be moved never costs the hand-off: it is recorded and
+# printed, the command exits zero, and stderr says why the card was not moved.
+handoff_records_the_merge_when_linear_refuses_the_move() {
+  demo
+  linear_for_moves "$(move_answer ABC-122 'In Review')" "$NO_WRITE"
+  linear_status_at 2 400
+  out=$(hand "$MERGE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$MERGE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(rows)" = 1 ] || fail "expected one row, got $(rows)"
+  grep -qxF 'ABC-122 was not moved in Linear: Linear answered with an error: Invalid scope: `write` required' "$TMP/err" ||
+    fail "did not say why the card was not moved: $(cat "$TMP/err")"
+}
+
+# With no key saved there is no Linear to ask, which is a note too.
+handoff_records_the_merge_with_no_key_saved() {
+  demo
+  stub_linear
+  out=$(hand "$MERGE_BLOCK" 2>"$TMP/err") || fail "task handoff exited non-zero: $(cat "$TMP/err")"
+  [ "$out" = "$MERGE_BLOCK" ] || fail "did not print the block back as it is: $out"
+  [ "$(rows)" = 1 ] || fail "expected one row, got $(rows)"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear with no key: $(curl_calls)"
+  grep -qF 'ABC-122 was not moved in Linear: no Linear key is saved' "$TMP/err" ||
+    fail "did not say why the card was not moved: $(cat "$TMP/err")"
 }
 
 # A store as the version before answers made it: no column for them, one row.
@@ -924,6 +1015,9 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_review_that_needs_the_human handoff_records_a_failed_review
   handoff_records_a_pull_request_waiting_to_merge handoff_records_a_merge
   handoff_records_a_pull_request_that_cannot_be_opened handoff_refuses_merged_as_a_phase
+  handoff_moves_the_card_to_done_on_the_merge handoff_moves_no_closed_card_on_the_merge
+  handoff_moves_the_card_only_on_the_merge handoff_records_the_merge_when_linear_refuses_the_move
+  handoff_records_the_merge_with_no_key_saved
   an_older_store_gains_the_answer_column
   log_reads_an_older_store_without_changing_it
   hand_offs_at_once_into_an_older_store_are_all_recorded
