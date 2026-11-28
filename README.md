@@ -227,18 +227,22 @@ that would alter what you approved on the card, such as a Done when item or a
 new dependency, it asks you about before it makes it. It takes changes only
 from what you say in the tab, not from review comments or CI on GitHub.
 
-Once the pull requests have merged, `task finish` ends the task:
+Once the merge is recorded, the agent ends the task with `task finish`, as its
+last command, so you remove nothing by hand:
 
 ```sh
 entourage task finish my-project ABC-122
 ```
 
 It removes the task's worktrees, deletes its branch in each repo, deletes its
-folder and closes its tab, and it works the same from the task's own tab. It
-checks every repo first, and removes nothing when that would lose work:
+folder and, last, closes its tab, the one the agent runs in. It checks every
+repo first, and removes nothing when that would lose work:
 changes that are not committed, commits that never reached the default
 branch (pushed or not), or git-ignored files that the repo's `made-by-setup`
-recipe does not say its setup makes again. It names each one. See
+recipe does not say its setup makes again. It names each one, and the agent
+tells you all of it and leaves the task as it is. A pull request closed
+without merging leaves the task too. Run the command yourself for a task the
+agent left, once you have kept what it named. See
 [herdr/README.md](herdr/README.md#finishing-a-task).
 
 Each skill also runs on its own in any agent, as `/sdlc-build ABC-122`,
