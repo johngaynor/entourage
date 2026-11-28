@@ -95,7 +95,7 @@ re-reads everything.
   | It says | When | Its exit code |
   |---|---|---|
   | `works`, and whose the key is | Linear knows the key. | not changed |
-  | `note`, that no Linear key is saved | Neither the env file nor your environment holds one. `task ls`, the Cards panel and `task start` need one; save one with `entourage linear key`. Nothing is asked of Linear. | not changed |
+  | `note`, that no Linear key is saved | Neither the env file nor your environment holds one. `task ls` and the Cards panel need one, and so does `task start` unless it is given the card's type and title; save one with `entourage linear key`. Nothing is asked of Linear. | not changed |
   | `problem`, that Linear rejected the key | Linear does not know the key, or `LINEAR_API_KEY` does not hold a key at all. Make a new key in Linear and save it with `entourage linear key`. | non-zero |
   | `note`, that the key was not checked, and why | Linear is out of reach, something between this machine and Linear answered for it, or `curl` or `jq` is not installed. It says nothing of the key, which may still work. Linear gets the 20 seconds every Linear command waits for it. | not changed |
 
@@ -299,7 +299,7 @@ entourage task new <project> <card>
   |---|---|
   | `entourage linear read <card> [--json]` | Prints the card whole: its ID and title, then its status, labels, parent (when it has one) and URL, the description with its sections as written, each comment with who wrote it and when, oldest first, and each sub-issue with its ID, status and title. A comment an app made is the app's. Control characters become spaces, as in `task ls`, but the description and the comments keep their line breaks. `--json` prints the same as one line for programs such as a mod, with the text as Linear gave it: `{"id", "title", "url", "status": {"name", "type"}, "type", "labels", "parent": {"id", "title"}, "description", "comments": [{"author", "createdAt", "body"}], "subIssues": [{"id", "title", "status": {"name", "type"}}]}`. `type` is the card's label in the `Type` group, `labels` the names of all its labels, and `type` and `parent` are `null` when the card has none. A card with more than 100 comments, 50 sub-issues or 100 labels is not printed, since what was read would pass for the whole: the command says so and exits non-zero. When it fails it prints nothing on stdout. It needs only Read permission. |
   | `entourage linear type <card> <feat\|fix\|chore>` | Sets the card's type: its one label in the `Type` label group, the team's or else the workspace's. Any other type comes off; the card's other labels are never touched. A missing label is refused, never made. |
-  | `entourage linear section <card> <Specification\|Plan\|Breakdown> [--replace]` | Adds the section, its body on stdin, below the description. Specification and Plan are folded away, in the form Linear keeps them in, `+++ ## <name>` … `+++` (one written as `>>>` is read the same); the Breakdown is left open, because you read it to approve the card. A section of that name already there is refused, unless `--replace` puts the new one in its place; `--replace` with none there is refused too. A body is refused when a line in it would end the section early or start a second one: a fold line, and in the Breakdown a `#` or `##` heading. A line inside a fenced code block is never taken for a section. |
+  | `entourage linear section <card> <Specification\|Plan\|Breakdown\|Review> [--replace]` | Adds the section, its body on stdin, below the description. Specification, Plan and Review are folded away, in the form Linear keeps them in, `+++ ## <name>` … `+++` (one written as `>>>` is read the same); the Breakdown is left open, because you read it to approve the card. The Review, which the review step writes, comes after the Breakdown, and each later round puts its own in the last one's place with `--replace`. A section of that name already there is refused, unless `--replace` puts the new one in its place; `--replace` with none there is refused too. A body is refused when a line in it would end the section early or start a second one: a fold line, and in the Breakdown a `#` or `##` heading. A line inside a fenced code block is never taken for a section. |
   | `entourage linear move <card> <approved\|started\|review\|done>` | Moves the card forward to its team's first not-started status (Todo in Lab, Ready for Dev in PHY), its first started status (In Progress), its last started one (In Review), or its first completed one (Done), picked by its kind and its place in the team's order, not by its name. `approved` moves each of the card's sub-issues after it the same way, by its own team's statuses, and is the move your approval makes. In a team with one started status, `review` is that status. A card already there, further on, done or canceled stays where it is, and the command says so and exits zero. A move that cannot be made, such as with Linear out of reach or a key without Write permission, exits non-zero, saying which card was not moved and why; the other cards still move. |
 
   The three that write read the card back before they say they are done: one
@@ -308,7 +308,9 @@ entourage task new <project> <card>
   Write permission. With no key saved, or a key Linear rejects, the skills read
   the card, and write the type and the sections, with the agent's Linear tools
   instead, and say so in the hand-off's flags; the card is not moved then, and
-  `sdlc-pr` says so.
+  `sdlc-pr` says so. `sdlc-review` writes the Review with them, too, when
+  Linear answers the write with an error, as it does for a key without Write
+  permission.
 
 ### The Cards panel
 
@@ -453,6 +455,38 @@ entourage task log <project> [<card>]
   and the one that comes next, or merged once its pull requests have) and
   for how long. A card with no hand-offs is
   not listed: `task ls` lists the cards in Linear.
+- **It says when a card's agent is stuck or has stopped.** A card's agent is
+  the one running its current phase. That is the write-up phase, in the tab
+  named after the card, until the work starts, then the build phase, in the
+  task's tab, named after its folder. The card's latest hand-off says
+  which, and the tab is found by its name in the project's space. For each
+  terminal in it, `hc` says what the agent last reported. When the tab has several, the most
+  urgent counts. What `task log` says:
+
+  | When | It shows |
+  |---|---|
+  | The agent is blocked, on any card | agent waiting on a permission prompt, agent asking a question in its tab, agent waiting for a sign-in, or agent waiting on you in its tab when hc does not say which |
+  | The agent hit an error, on any card | agent hit an error |
+  | A step is under way, and the agent's turn has ended without a hand-off | agent stopped without handing off |
+  | A step is under way, and the tab is closed, or its shell is back in the foreground: the agent has exited or never started | agent not running |
+
+  A step is under way when the latest hand-off is an answer, or `done` with
+  a step an agent runs next. A card waiting on you, failed, approved and not
+  yet started, or merged has none, so it shows as before unless its agent is
+  blocked or hit an error. For 15 seconds after `task new` or `task start`
+  records its start the agent is still starting, so it is not yet called
+  stopped or not running. A program in the tab that reports nothing, or a
+  terminal hc cannot answer for, says nothing either way. The plain list
+  shows it in place of where the card stands, with how long it has been so,
+  counted from when the agent's status last changed, or else from the
+  latest hand-off. A card's own log ends with `now:` and the same.
+  `--json` gives each card an `agent`: null, or its `state` (`blocked`,
+  `error`, `stopped` or `not running`), its `kind` (`permission`,
+  `question`, `auth` or null), its `tab` (null when closed), its `label`,
+  `for` and `seconds`. The card's own `state`, `for` and `seconds` keep
+  their meaning. None of it is stored: it is read from Herdr each time, and
+  no row or step's time changes with it. With `hc` or `jq` missing, Herdr
+  not running, or Herdr unable to list its tabs, every card shows as before.
 - **They are kept in `~/.config/entourage/entourage.db`,** a SQLite file
   beside your projects, on this machine only. It needs `sqlite3`, which macOS
   ships; `ENTOURAGE_SQLITE` picks another command. Without it `task new`
@@ -482,13 +516,15 @@ One branch for an approved card, checked out as a git worktree of the repos
 the task needs, and shown as a tab in the project's space.
 
 ```sh
-entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
+entourage task start <project> <card> [--type <type> --title <title>] [<repo>[:<group>[,<group>...]] ...]
 ```
 
 - **The card is its ID**, like `ABC-122`, as for `task new`. The write-up
   phase runs this command once you approve the card, or gives it to you when
   you chose to start later. For a card that was sliced, it uses the first
-  sub-issue that is not already started, done or canceled.
+  sub-issue that is not already started, done or canceled. When no Linear key
+  is saved, or Linear rejected the key, the command has that card's type and
+  title too.
 - **Linear names the branch.** `task start` asks Linear for the card, with
   the key `linear key` saved (see
   [Seeing a project's cards](#seeing-a-projects-cards)), and makes the branch
@@ -497,10 +533,26 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   of the card's title, in lowercase with hyphens, leaving out a, an and the,
   and anything a branch name cannot hold. "Insert the task here" gives
   `feat/abc-122-insert-task-here`.
-- **It stops before it makes anything** when Linear has no such card, the
-  card has no type yet (write it up first with `task new`), no key is saved,
-  or Linear cannot be asked. It says what to do. A branch in place of the
-  card is refused too, with a note that `task start` takes the card now.
+- **The type and title given name it when Linear cannot.**
+  `--type <type> --title <title>`, given anywhere after the card, before or
+  among the targets, name the branch the way Linear's would:
+  `--type feat --title 'Insert the task here'` gives
+  `feat/abc-122-insert-task-here`. They are used only when no key is saved,
+  or when Linear cannot be asked: it rejects the key, it is out of reach,
+  `LINEAR_API_KEY` does not hold a key, or `curl` or `jq` is missing. A note
+  says why Linear was not used. With a key Linear accepts, Linear's type and
+  title name the branch even when others are given, and a note names each
+  given one that differs, with what Linear has. The title goes between single
+  quotes, with each `'` in it written as `'\''`, as the write-up phase
+  writes it, so that the shell takes it as it is.
+- **It stops before it makes anything** when Linear has no such card or the
+  card has no type yet (write it up first with `task new`), and, with no type
+  and title given, when no key is saved or Linear cannot be asked. It says
+  what to do: with no key, that the card can be started with `--type` and
+  `--title`. A given type that is not a branch type, only one of the two, a
+  flag with no value, or an option it does not know stops it too, before
+  Herdr or Linear is asked. A branch in place of the card is refused too,
+  with a note that `task start` takes the card now.
 - **Targets say what the task works on.** Each one names a repo of the
   project by its folder name, and optionally groups inside it:
 
@@ -569,9 +621,9 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   a team that calls it that and Doing in one that calls it Doing. A card only
   moves forward: one already further along, such as In Review, stays there,
   and one that is done or canceled is never moved; the output says why. The
-  move needs your key to have Write permission. When Linear cannot be
-  reached, or refuses the move, the task is still made and open, and the
-  output says that the card was not moved, and why. Move it by hand then.
+  move needs your key to have Write permission. When no key is saved,
+  Linear cannot be reached, or it refuses the move, the task is still made
+  and open, and the output says that the card was not moved, and why. Move it by hand then.
   Once every pull request is open, `sdlc-pr` moves it to In Review, and once
   every one has merged, recording the merge moves it to Done (see
   [Hand-offs](#hand-offs)).

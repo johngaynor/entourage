@@ -156,22 +156,65 @@ short_name() {
   printf '%s' "$short"
 }
 
-# Print the branch a card's task is on, <type>/<card ID>-<short name>, named
-# from the card in Linear: like feat/abc-122-export-orders-as-csv. It stops
-# before anything is made when Linear cannot be asked, has no such card, or
-# the card has no type.
-#   card_branch <project> <card ID, in upper case>
+# Name the branch a card's task is on, <type>/<card ID>-<short name>: like
+# feat/abc-122-export-orders-as-csv. It leaves the branch in BRANCH, and in
+# BRANCH_NOTES what `task start` says about where the type and title came
+# from. It runs in the main shell, not in $( ), so that it can leave both,
+# and every stop is before anything is made.
+#   card_branch <project> <card ID, in upper case> [<type> <title>]
+#
+# Without a type and title, it asks Linear, and stops when Linear cannot be
+# asked, has no such card, or the card has no type. With them, Linear still
+# wins when it can be asked: Linear's type and title name the branch, by the
+# same checks, with a note for each given one that differs. With no key
+# saved, or a Linear that cannot be asked (a rejected key, no network, no
+# curl or jq), the given ones name it, with a note on why.
+BRANCH='' BRANCH_NOTES=()
 card_branch() {
-  local name=$1 card=$2 found type short branch
-  found=$(linear_card "$card") || exit 1
-  type=$(printf '%s' "$found" | jq -r '.type // empty')
-  [ -n "$type" ] ||
-    die "$card has no type in Linear, so its branch cannot be named. Write the card up first: entourage task new $name $card"
-  short=$(printf '%s' "$found" | jq -r '.title' | short_name)
+  local name=$1 card=$2 given_type=${3:-} given_title=${4:-} found out rc=0 type title short branch
+  BRANCH='' BRANCH_NOTES=()
+  if [ -z "$given_type" ]; then
+    [ -n "${LINEAR_API_KEY:-}" ] ||
+      die "no Linear key is saved, so entourage cannot read $card's type and title in Linear. Save a key with entourage linear key (make one in $KEY_PLACE), or give the type and title: entourage task start $name $card --type <type> --title '<title>'"
+    found=$(linear_card "$card") || exit 1
+  else
+    # Only 0 prints anything on stdout, and only 3 on stderr, so the two
+    # together are the card on 0 and why on 3.
+    out=$(linear_card_known "$card" 2>&1) || rc=$?
+    case $rc in
+      0) found=${out##*$'\n'} ;;
+      1) die "Linear has no card $card that the saved key can see. Check the ID, then run this again." ;;
+      2) found=''
+         BRANCH_NOTES+=("the branch is named from the type and title given, since no Linear key is saved") ;;
+      *) found=''
+         # Only the first sentence: the rest is advice for a command that
+         # stops, and this one goes on.
+         out=$(first_sentence "$out")
+         BRANCH_NOTES+=("the branch is named from the type and title given, since Linear could not be asked${out:+: $out}") ;;
+    esac
+  fi
+  if [ -n "$found" ]; then
+    type=$(printf '%s' "$found" | jq -r '.type // empty')
+    [ -n "$type" ] ||
+      die "$card has no type in Linear, so its branch cannot be named. Write the card up first: entourage task new $name $card"
+    title=$(printf '%s' "$found" | jq -r '.title')
+    # The notes are said only once the branch is made, so a type of
+    # Linear's that no branch can hold stops below before any is said.
+    if [ -n "$given_type" ] && [ "$given_type" != "$type" ]; then
+      BRANCH_NOTES+=("the type given is $given_type, but $card's in Linear is $type: the branch is named from Linear's")
+    fi
+    if [ -n "$given_type" ] && [ "$given_title" != "$title" ]; then
+      # Linear's title is anyone's text, so it is made plain, as task ls makes it.
+      BRANCH_NOTES+=("the title given is not $card's in Linear, which is '$(printf '%s' "$found" | jq -r "$PLAIN_DEF"' .title | plain')': the branch is named from Linear's")
+    fi
+  else
+    type=$given_type title=$given_title
+  fi
+  short=$(printf '%s' "$title" | short_name)
   branch=$type/$(printf '%s' "$card" | tr '[:upper:]' '[:lower:]')${short:+-$short}
   valid_branch "$branch" ||
     die "$card's type in Linear is '$type', which is not a branch type, so its branch cannot be named. Set its type to feat, fix or chore (see https://conventionalbranch.org)."
-  printf '%s\n' "$branch"
+  BRANCH=$branch
 }
 
 has_origin() { git -C "$1" remote get-url origin >/dev/null 2>&1; }
@@ -354,17 +397,48 @@ parse_targets() {
   done
 }
 
+# What `task start` takes after the card.
+START_ARGS='[--type <type> --title <title>] [<repo>[:<group>[,<group>...]] ...]'
+
 task_start() {
-  local name=${1:-} card=${2:-} dir branch task
+  local name=${1:-} card=${2:-} dir branch task usage given_type='' given_title='' typed=0 titled=0 note
+  local targets=()
   dir=$(project_dir "$name")
+  usage="entourage task start $name <card> $START_ARGS"
   [ -n "$card" ] ||
-    die "which card? Usage: entourage task start $name <card> [<repo>[:<group>[,<group>...]] ...], like: entourage task start $name ABC-122"
+    die "which card? Usage: $usage, like: entourage task start $name ABC-122"
   case $card in
     */*) die "task start takes the card now, not a branch, and names the branch from the card's type and title in Linear. Give the card's ID, like: entourage task start $name ABC-122" ;;
   esac
   [[ $card =~ $CARD_RE ]] ||
-    die "'$card' is not a card ID like ABC-122. Usage: entourage task start $name <card> [<repo>[:<group>[,<group>...]] ...]"
+    die "'$card' is not a card ID like ABC-122. Usage: $usage"
   card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
+  # The card's type and title, for when Linear cannot be asked for them
+  # (card_branch), come from anywhere after the card, both or neither. The
+  # rest are targets. All of it is checked before Herdr or Linear is asked.
+  shift 2
+  while [ "$#" -gt 0 ]; do
+    case $1 in
+      --type | --title)
+        case ${2-} in '' | --type | --title) die "$1 needs a value. Usage: $usage" ;; esac
+        if [ "$1" = --type ]; then
+          [ "$typed" = 0 ] || die "--type is given twice. Usage: $usage"
+          given_type=$2 typed=1
+        else
+          [ "$titled" = 0 ] || die "--title is given twice. Usage: $usage"
+          given_title=$2 titled=1
+        fi
+        shift 2
+        ;;
+      --*) die "unknown option for task start: $1. Usage: $usage" ;;
+      *) targets+=("$1"); shift ;;
+    esac
+  done
+  [ "$typed" = "$titled" ] ||
+    die "give --type and --title together, or neither to have Linear name the branch. Usage: $usage"
+  # The check Linear's type gets, on the card's own branch.
+  [ "$typed" = 0 ] || valid_branch "$given_type/$(printf '%s' "$card" | tr '[:upper:]' '[:lower:]')" ||
+    die "'$given_type' is not a branch type, so the branch cannot be named. Give --type feat, fix or chore (see https://conventionalbranch.org)."
   # A task is shown as a tab, so Herdr has to be there before anything is made.
   require_herdr
   herdr_running || die "Herdr is not running. Open it, then run this again."
@@ -376,8 +450,7 @@ task_start() {
     die "project '$name' has no repos. Add one with: entourage project add $name <path>"
   # The task's repos are the ones its targets name, or every repo when there
   # are no targets, always in the order of the project's repos file.
-  shift 2
-  parse_targets "$name" "${all[@]}" -- "$@"
+  parse_targets "$name" "${all[@]}" -- ${targets[@]+"${targets[@]}"}
   TASK_GROUPS=()
   for repo in "${all[@]}"; do
     if [ "${#TARGET_REPOS[@]}" -eq 0 ]; then
@@ -395,8 +468,10 @@ task_start() {
   for repo in "${repos[@]}"; do
     is_repo "$repo" || die "$repo is missing or is not a git repo (see: entourage status)"
   done
-  # Linear names the branch, once everything here has been checked.
-  branch=$(card_branch "$name" "$card") || exit 1
+  # Linear names the branch, or the type and title given when Linear cannot,
+  # once everything here has been checked.
+  card_branch "$name" "$card" "$given_type" "$given_title"
+  branch=$BRANCH
   task=$(task_name "$branch")
   tdir=$dir/tasks/$task
   [ ! -e "$tdir" ] || die "task '$task' already exists at $tdir"
@@ -418,6 +493,7 @@ task_start() {
   sync_links "$dir"
 
   say "Making task '$task' for $card on branch $branch, in $tdir"
+  for note in ${BRANCH_NOTES[@]+"${BRANCH_NOTES[@]}"}; do say "  note      $note"; done
   # From here until the worktrees and links are all made, any failure or
   # interruption removes what was made.
   MADE=() UNDO_DIR=$tdir UNDO_BRANCH=$branch
@@ -549,6 +625,6 @@ cmd_task() {
     watch) shift; task_watch "$@" ;;
     handoff) shift; task_handoff "$@" ;;
     log) shift; task_log "$@" ;;
-    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...], or: entourage task build <project> <card>, or: entourage task finish <project> <card>, or: entourage task watch <project> <card> [--once], or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
+    *) die "usage: entourage task ls <project> [--json], or: entourage task new <project> <card>, or: entourage task start <project> <card> $START_ARGS, or: entourage task build <project> <card>, or: entourage task finish <project> <card>, or: entourage task watch <project> <card> [--once], or: entourage task handoff <project> <card>, or: entourage task log <project> [<card>] [--json] (see: entourage help)" ;;
   esac
 }

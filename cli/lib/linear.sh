@@ -263,6 +263,17 @@ CARD_QUERY='query($team: String!, $number: Float!) {
 }'
 # The label group a card's type is in. sdlc-define sets the type there.
 TYPE_GROUP=Type
+# Turn Linear's answer to CARD_QUERY into the card, {id, title, type}, or
+# "none" when Linear has no such card. type is null when the card has no
+# label in the Type group ($group). An answer with no list of cards in it is
+# not Linear saying it has none, so it is an error.
+CARD_SHAPE='
+  if (.issues.nodes | type) != "array" then error("no list of cards")
+  elif (.issues.nodes | length) == 0 then "none"
+  else .issues.nodes[0]
+    | {id: .identifier, title: (.title // ""),
+       type: ([.labels.nodes[]? | select(.parent.name? == $group) | .name] | first)}
+  end'
 
 # Print one card as one line of JSON, or stop and say why:
 #   {"id":"ABC-122","title":"Export orders as CSV","type":"feat"}
@@ -276,14 +287,7 @@ linear_card() {
     '{team: $team, number: ($number | tonumber)}' 2>/dev/null) ||
     die "'$card' is not a card ID like ABC-122."
   data=$(linear_ask "$key" "$CARD_QUERY" "$vars") || exit 1
-  # An answer with no list of cards in it is not Linear saying it has none.
-  found=$(printf '%s' "$data" | jq -c --arg group "$TYPE_GROUP" '
-    if (.issues.nodes | type) != "array" then error("no list of cards")
-    elif (.issues.nodes | length) == 0 then "none"
-    else .issues.nodes[0]
-      | {id: .identifier, title: (.title // ""),
-         type: ([.labels.nodes[]? | select(.parent.name? == $group) | .name] | first)}
-    end' 2>/dev/null) || found=
+  found=$(printf '%s' "$data" | jq -c --arg group "$TYPE_GROUP" "$CARD_SHAPE" 2>/dev/null) || found=
   case $found in
     '') die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it." ;;
     '"none"') die "Linear has no card $card that the saved key can see. Check the ID, then run this again." ;;
@@ -291,17 +295,19 @@ linear_card() {
   printf '%s\n' "$found"
 }
 
-# Whether Linear has a card, for `task new` to check before it starts one. It
-# asks the same question as linear_card, which `task start` uses, but it never
-# stops: what it found is in how it returns.
+# Whether Linear has a card, for `task new` to check before it starts one, and
+# for `task start` when it is given the card's type and title. It asks the
+# same question as linear_card, but it never stops: what it found is in how
+# it returns.
 #   linear_card_known <card ID, in upper case>
-# It returns how that went, and prints nothing on stdout:
-#   0  Linear has the card
+# It returns how that went:
+#   0  Linear has the card, which it prints on stdout as linear_card does
 #   1  Linear has no such card, that the saved key can see
 #   2  no key is saved, so nothing was asked
 #   3  Linear could not be asked; why is on stderr
 # Only 1 is a no. The rest leave the card to start, so that a missing key,
-# the network or a rejected key never keeps an agent from starting.
+# the network or a rejected key never keeps an agent from starting. Only 0
+# prints anything on stdout.
 linear_card_known() {
   local card=$1 key=${LINEAR_API_KEY:-} tool vars data found
   [ -n "$key" ] || return 2
@@ -315,13 +321,13 @@ linear_card_known() {
   # linear_ask stops with its own message, on stderr, when it cannot ask.
   data=$(linear_ask "$key" "$CARD_QUERY" "$vars") || return 3
   # Judged by what jq prints: some versions exit zero on an empty answer. Only
-  # a real list counts: jq gives a missing one a length of 0 too, and that
-  # must not read as Linear saying it has no such card.
-  found=$(printf '%s' "$data" | jq -r '.issues.nodes | arrays | length' 2>/dev/null) || found=
+  # a real list counts (CARD_SHAPE), and a missing one must not read as
+  # Linear saying it has no such card.
+  found=$(printf '%s' "$data" | jq -c --arg group "$TYPE_GROUP" "$CARD_SHAPE" 2>/dev/null) || found=
   case $found in
-    0) return 1 ;;
-    '' | *[!0-9]*) printf "Linear's answer was not one entourage can read\n" >&2; return 3 ;;
-    *) return 0 ;;
+    '"none"') return 1 ;;
+    '{'*) printf '%s\n' "$found" ;;
+    *) printf "Linear's answer was not one entourage can read\n" >&2; return 3 ;;
   esac
 }
 
@@ -660,9 +666,11 @@ linear_type() {
 }
 
 # The sections the card skills write, in the order they come on a card.
-# Specification and Plan are folded away; the human reads the Breakdown to
-# approve the card, so it is left open.
-CARD_SECTIONS='Specification Plan Breakdown'
+# Specification, Plan and Review are folded away; the human reads the
+# Breakdown to approve the card, so it is left open. The Review, which
+# sdlc-review writes, comes last: an open Breakdown ends at the next fold,
+# which is the Review's heading.
+CARD_SECTIONS='Specification Plan Breakdown Review'
 
 # The question for linear section: the card and its description.
 SECTION_QUERY='query($team: String!, $number: Float!) {
@@ -751,7 +759,7 @@ SECTION_BODY_CHECK=$SECTION_FORMS'
 # the heading and the folding are added here. The whole description is sent
 # back, then what Linear saved is read: the text above the section must be as
 # it was, and the section there once.
-#   entourage linear section <card> <Specification|Plan|Breakdown> [--replace]
+#   entourage linear section <card> <Specification|Plan|Breakdown|Review> [--replace]
 linear_section() {
   local card=${1:-} name=${2:-} replace=false open=false body key vars data id placed new before check
   [ "$#" -ge 2 ] && [ "$#" -le 3 ] ||
@@ -1062,6 +1070,6 @@ cmd_linear() {
     move) shift; linear_move_cmd "$@" ;;
     read) shift; linear_read "$@" ;;
     archive) shift; linear_archive_cmd "$@" ;;
-    *) die "usage: entourage linear key, or: entourage linear read <card> [--json], or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <approved|started|review|done>, or: entourage linear archive [on|off|--json] (see: entourage help)" ;;
+    *) die "usage: entourage linear key, or: entourage linear read <card> [--json], or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown|Review> [--replace], or: entourage linear move <card> <approved|started|review|done>, or: entourage linear archive [on|off|--json] (see: entourage help)" ;;
   esac
 }
