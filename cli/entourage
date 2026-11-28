@@ -49,6 +49,8 @@ Usage:
                                            move a card forward in Linear: to its team's first
                                            not-started status (Todo) with its sub-issues, its first
                                            started status, its last started one (In Review), or Done
+  entourage linear archive [on|off|--json] say whether a merged card is archived in Linear, or turn
+                                           that on or off (--json for programs)
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
@@ -191,6 +193,17 @@ is opus at xhigh. A file that is not valid settings stops `task new` and
 `task build` before an agent starts, saying what in it is wrong, and
 `status` says so too. The file is read with jq. The Agent settings button at
 the right end of Herdr's tab bar shows and changes them with these commands.
+The file also holds "archive", true or false: `linear archive on` and
+`linear archive off` set it, leaving the profiles as they are, and
+`linear archive` says whether it is on. It is off with no "archive", and
+`install` and `update` never write one. With it on, recording a card's merge
+archives the card in Linear once its move has put it in Done, and every other
+done, canceled or duplicate card of the project's teams, so that closed cards
+stop counting against Linear's free plan's 250. A card with a parent or
+sub-issues is never archived. An archived card can still be opened by its ID
+and restored from its team's archive. A card that is not archived never stops
+the merge: the note names it and says why, and the first call Linear refuses
+or cannot answer ends the archiving, which the next merge goes on with.
 
 These variables, and your Linear key as LINEAR_API_KEY, can be exported in
 your shell or written as NAME=value lines in ~/.config/entourage/.env, which
@@ -203,8 +216,9 @@ ENTOURAGE_LIVE are the variables the file cannot set.
 The copy of entourage in a git worktree of the entourage repo, run as
 ./cli/entourage, is a change being built. It runs only the commands that
 read: help, status, project ls, project team <name> with no teams,
-profile ls, task ls, task log and task watch. Every other command stops before it does anything,
-says why, and leaves this machine as it was. ENTOURAGE_LIVE=1, set for that one run,
+profile ls, linear archive alone or with --json, task ls, task log and
+task watch. Every other command stops before it does anything, says why,
+and leaves this machine as it was. ENTOURAGE_LIVE=1, set for that one run,
 runs it for real. The installed entourage is never stopped, whatever folder
 it is run from.
 EOF
@@ -335,7 +349,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common guard links recipes trust settings project linear task finish watch handoff commands; do
+for part in common guard links recipes trust settings project linear archive task finish watch handoff commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null

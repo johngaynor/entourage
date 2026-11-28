@@ -327,6 +327,42 @@ NO_WRITE='{"errors":[{"message":"Invalid scope: `write` required","extensions":{
 # The calls that asked Linear to change a card, one line each.
 changes_sent() { curl_calls | grep issueUpdate || true; }
 
+# --- archiving --------------------------------------------------------------
+
+# Linear's answer to the archive's question about the merged card: the card
+# $1, in Lab's status named $2, with the parent card $3 (an ID, or none when
+# empty) and the sub-issues $4 (a JSON list of IDs, or none).
+archive_card_answer() {
+  jq -cn --arg card "$1" --arg now "$2" --arg parent "${3:-}" --argjson kids "${4:-[]}" --argjson states "$LAB_STATUSES" \
+    '{data: {issues: {nodes: [{id: ("id-" + $card), identifier: $card,
+       state: ($states[] | select(.name == $now) | {name, type}),
+       parent: (if $parent == "" then null else {identifier: $parent} end),
+       children: {nodes: [$kids[] | {identifier: .}]}}]}}}'
+}
+# A card as a page of closed cards lists it: the card $1, in Lab's status
+# named $2, with the parent card $3 (an ID, or none) and the sub-issues $4 (a
+# JSON list of IDs, or none).
+closed_card() {
+  jq -cn --arg card "$1" --arg now "$2" --arg parent "${3:-}" --argjson kids "${4:-[]}" --argjson states "$LAB_STATUSES" \
+    '{id: ("id-" + $card), identifier: $card,
+      state: ($states[] | select(.name == $now) | {name, type}),
+      parent: (if $parent == "" then null else {identifier: $parent} end),
+      children: {nodes: [$kids[] | {identifier: .}]}}'
+}
+# Linear's answer with one page of closed cards: $1, a JSON list of
+# closed_card's, and $2, where the next page starts, or nothing when this
+# page is the last.
+closed_page() {
+  jq -cn --argjson cards "$1" --arg next "${2:-}" \
+    '{data: {issues: {nodes: $cards,
+       pageInfo: {hasNextPage: ($next != ""), endCursor: (if $next == "" then null else $next end)}}}}'
+}
+# Linear's answer to archiving a card.
+ARCHIVED='{"data":{"issueArchive":{"success":true}}}'
+
+# The calls that asked Linear to archive a card, one line each.
+archives_sent() { curl_calls | grep issueArchive || true; }
+
 # Every call made to curl, one line each, and how many there were.
 curl_calls() { cat "$TMP/curl-calls.log" 2>/dev/null; }
 curl_count() { curl_calls | grep -c '' || true; }

@@ -873,6 +873,7 @@ cmd_linear() {
     type) shift; linear_type "$@" ;;
     section) shift; linear_section "$@" ;;
     move) shift; linear_move_cmd "$@" ;;
-    *) die "usage: entourage linear key, or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <approved|started|review|done> (see: entourage help)" ;;
+    archive) shift; linear_archive_cmd "$@" ;;
+    *) die "usage: entourage linear key, or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <approved|started|review|done>, or: entourage linear archive [on|off|--json] (see: entourage help)" ;;
   esac
 }

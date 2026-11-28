@@ -338,7 +338,11 @@ merged, it records that as your answer, `answered`, so the log shows how long
 the pull requests waited on you, and hands off `done` with `merged` next.
 Recording that hand-off moves the card in Linear to its team's first completed
 status (Done), whatever recorded it: your answer, or a watch on the pull
-requests. A card that is done or canceled already stays as it is. When a pull
+requests. A card that is done or canceled already stays as it is. With
+archiving on (see [Archiving merged cards](#archiving-merged-cards)), it then
+archives the card in Linear, and every other done, canceled or duplicate card
+of the project's teams; a card that is not archived is a note naming it and
+why, and the hand-off is recorded either way. When a pull
 request is closed without merging, it records that the same way and asks you
 whether to stop, and the card is not moved. When one is in conflict with its
 default branch, it records that the same way and brings it up to date without
@@ -689,6 +693,49 @@ drag the window as before, then the Agents button at the right end.
   `entourage` is not on Herdr's `PATH`, it runs the copy the mod is linked
   from.
 
+### Archiving merged cards
+
+The settings file also says whether a merged card is archived in Linear, as
+`"archive": true` or `false` beside `"profiles"`. Linear's free plan makes no
+new card once 250 are not archived, and a done card stays in its team's lists
+until Linear's own auto-archive takes it, months later.
+
+```sh
+entourage linear archive [on|off|--json]
+```
+
+- **It is off until you turn it on.** With no `"archive"` in the file, or no
+  file, archiving is off, and `install` and `update` never write one. With it
+  off, a merged card stays in Done, and the merge asks Linear nothing more.
+- **`linear archive` says whether it is on.** `--json` prints the same as one
+  line for programs, with the file it is kept in:
+  `{"file":"…/settings.json","archive":false}`, so a mod can read it.
+- **`linear archive on` and `linear archive off` set it**, and leave the
+  profiles as they are. Anything else is refused, saying what it takes, and
+  the file is left as it was. With no file yet, `on` or `off` makes one that
+  names every profile on the defaults. An `"archive"` that is not `true` or
+  `false` makes the file not valid settings, which `linear archive`,
+  `profile`, `task new`, `task build` and `entourage status` all say.
+- **With it on, recording a merge archives closed cards.** Once the merge's
+  hand-off has moved the card to Done, the card is archived, and then every
+  other card of the project's teams that is in a completed or canceled status,
+  such as Done, Canceled or Duplicate. Each is one `issueArchive` call, without
+  `trash`: an archived card still opens by its ID, and can be restored from its
+  team's archive. Every page of closed cards is listed before one is archived,
+  up to 50 pages of 100; past that, the next merge archives the rest.
+- **A card with a parent or sub-issues is never archived**, whether it is the
+  merged card or another closed one, since archiving a card archives its
+  sub-issues with it. The note names it, and says so.
+- **Archiving never stops the merge.** The hand-off is recorded first, and a
+  card that is not archived is a note on stderr naming it and why: no Linear
+  key saved, a key without Write permission, Linear out of reach, or a card
+  that is not in a closed status. The first call Linear refuses or cannot
+  answer ends the archiving for that merge, since every card after it would
+  fail the same way, and the next merge goes on with it. A last line says how
+  many other closed cards were archived.
+- **In a worktree**, `./cli/entourage linear archive`, alone or with `--json`,
+  reads as the installed copy does; `on` and `off` are refused.
+
 ## What a repo provides
 
 entourage knows nothing about how a repo is built or run. A repo says so
@@ -794,8 +841,8 @@ shell, or written as a `NAME=value` line in entourage's env file,
 - Run `herdr-app check herdr/mods/<name>` after editing a mod.
 - A worktree's copy of the CLI, `./cli/entourage` in a git worktree of this
   repo, runs only the commands that read: `help`, `status`, `project ls`,
-  `project team <name>`, `profile ls`, `task ls`, `task log` and
-  `task watch`. Any other command stops
+  `project team <name>`, `profile ls`, `linear archive` (alone or with
+  `--json`), `task ls`, `task log` and `task watch`. Any other command stops
   before it changes anything, and says to run plain `entourage` for a card's
   own steps, to write a test case to try the command, or to run it for real
   with `ENTOURAGE_LIVE=1 ./cli/entourage …`. Plain `entourage` is never

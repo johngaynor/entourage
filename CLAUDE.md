@@ -49,9 +49,10 @@ being built. Which copy to run for what:
   it is run from.
 - **`./cli/entourage` to try the change.** It runs the worktree's code against
   the real machine, so it runs only the commands that read: `help`, `status`,
-  `project ls`, `project team <name>` with no teams, `profile ls`, `task ls`,
-  `task log` and `task watch`. Any other command stops before it does
-  anything and says so, and the hand-off store is opened read-only.
+  `project ls`, `project team <name>` with no teams, `profile ls`,
+  `linear archive` alone or with `--json`, `task ls`, `task log` and
+  `task watch`. Any other command stops before it does anything and says
+  so, and the hand-off store is opened read-only.
 - **A test case to try a command that changes the machine.** Each case has a
   throwaway home and stand-ins for Herdr and Linear.
 - **`ENTOURAGE_LIVE=1 ./cli/entourage …` only when the human asks for it.** It
