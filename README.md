@@ -115,8 +115,9 @@ else. This needs `jq`; without it Claude Code asks once.
 
 ## Tasks
 
-A task is one piece of work in a project, usually a Linear card. You run two
-commands, in this order.
+A task is one piece of work in a project, usually a Linear card. Two commands
+make it, in this order: `task new`, then `task start`, which the write-up phase
+runs once you approve the card, unless you hold it for later.
 
 To see which cards there are first, `task ls` lists the open cards of the
 project's Linear teams, under their statuses:
@@ -142,7 +143,8 @@ entourage task new my-project ABC-122
 Recording your approval moves the card in Linear to its team's first
 not-started status (Todo in Lab), and each of its sub-issues with it. When a
 card cannot be moved, the approval is still recorded, and the agent tells you
-which card, and why.
+which card, and why. Then the agent starts the build phase with `task start`,
+unless you hold it for later.
 
 As it goes, the agent records how each step ended. `task log` lists that for
 a card, oldest first, with how long each step took and how long a question
@@ -162,7 +164,8 @@ entourage task log my-project
 `task start` starts the work, once you have approved the card. It takes the
 card too, makes a branch and a git worktree of it in every repo of the
 project, opens a tab for it, and starts the agent there that runs the build
-phase. The write-up phase gives you the command:
+phase. The write-up phase runs it once you approve the card, or gives it to
+you when you chose to start later:
 
 ```sh
 entourage task start my-project ABC-122

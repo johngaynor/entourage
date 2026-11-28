@@ -104,14 +104,14 @@ Give them a summary they can answer from without opening Linear:
 - The approach, in a sentence or two.
 - Whether it is one piece or several, and why. If several, the slice names in order.
 
-Then ask them to approve or say what to change. Record the ask as a hand-off with this block, then end your message with the summary and, below it, the block the command printed:
+Then ask them to approve or say what to change. An approval also says when the build phase starts: now, or later, when they start it themselves. Record the ask as a hand-off with this block, then end your message with the summary and, below it, the block the command printed:
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
 step: breakdown
 status: needs-human
-question: Approve <card ID> as specified, planned and broken down?
-options: approve | change breakdown | change plan | change specification
+question: Approve <card ID> as specified, planned and broken down, and start its build phase now?
+options: approve and start | approve, start later | change breakdown | change plan | change specification
 EOF
 ```
 
@@ -123,6 +123,8 @@ Wait for their answer.
 | Change the Specification or the Plan | Make the change by that section's own skill, `sdlc-define` or `sdlc-plan`, as a revision the human asked for. That skill ends with its own `done` block, whose `next` does not apply here: come back to this step and re-check every section below the one that changed, because a new Done when item can make the Plan and the Breakdown wrong. Ask again |
 | Approve, and the card is one piece | The card is ready to build. Hand off, as described below |
 | Approve, and the card is sliced | Go on to part 2 |
+
+Approve and start, and approve, start later, are both an approval: everything above and below is the same for each, and only what follows the hand-off differs. Go by what they mean, not by the exact words. An approval that does not hold the build phase back, such as `approve` or `yes`, is one to start now. One that holds it back in any words, such as later, not yet or I'll start it, is one to start later. If you can't tell which, ask. When you record their answer, say which they chose, so that `entourage task log` shows it.
 
 ## Part 2: Create the sub-issues
 
@@ -156,7 +158,7 @@ entourage task handoff <project> <card ID> <<'EOF'
 step: breakdown
 status: done
 next: start
-summary: <that the card is approved, and whether it is one piece or sliced; if sliced, the sub-issues in order with their IDs, and which one is first>
+summary: <that the card is approved, to start now or later; whether it is one piece or sliced; if sliced, the sub-issues in order with their IDs, and which one is first>
 flags: <anything that didn't go to plan, such as a blocking relation that couldn't be set>
 EOF
 ```
@@ -165,7 +167,19 @@ Put your own words in place of each hint in angle brackets, and leave the `flags
 
 Recording this hand-off moves the card in Linear to its team's first not-started status, Todo in Lab or Ready for Dev in PHY, and, when the card was sliced, each of its sub-issues too. A card already further along, done or canceled stays where it is. Below the block, the command says what happened to each card. When it says a card was not moved, tell the human in your message which card was not moved, and why, such as no Linear key saved or a key without Write permission. They can move it in Linear, or run `entourage linear move <card ID> approved` with the parent's ID once what stopped it is fixed. The hand-off is recorded either way, so don't record it again.
 
-Start is not a skill. It is the `entourage task start` command, which the human runs, so there is no skill for you to go on to.
+### Start the build phase
+
+Start is not a skill. It is the `entourage task start` command, which makes the task's branch and worktrees, opens its tab in the project's space and starts an agent there for the build phase. It takes one card: the card itself when it is one piece, or, when it was sliced, the first sub-issue in order that is not already started, done or canceled. If every sub-issue is, start nothing and tell the human so.
+
+- **The human chose to start later:** give them the command, `entourage task start <project> <ID>`, and run nothing.
+- **The human chose to start now:** run that command yourself, once, after the hand-off above is recorded, or written in your message when it could not be recorded. Then tell the human the tab it opened, and pass on every `agent` and `note` line it printed: those say what still needs them, such as an agent it could not start, a repo Claude Code will ask about trusting, or a card it did not move in Linear.
+
+If it stops, don't run it again. Tell the human what it said, and what to do next:
+
+| It stopped | Then tell the human |
+|---|---|
+| Before it made the task: what it said has no `made the task at` | To run `entourage task start <project> <ID>` once what it named is fixed |
+| After it made the task: it says `made the task at <folder>` | That the task is made and a second `task start` would be refused, so to open that folder in the project's space and run `entourage task build <project> <ID>` there |
 
 ## The handoff block
 
