@@ -390,6 +390,12 @@ setup:
   setup.
 - **`just` has to be installed** on the machine. Without it, tasks start
   without setup and `entourage status` says so.
+- **Say in the repo's docs how a fresh checkout is made ready.** While setup
+  is off, the `sdlc-build` skill reads the repo's `CLAUDE.md`, `AGENTS.md` or
+  `README` to learn what to install before it runs the tests, and installs
+  that into the task's worktree. It installs only: it starts no app, server
+  or database, and asks you when the tests need one running or a tool
+  installed on the machine.
 
 ## entourage's variables
 

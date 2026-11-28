@@ -60,7 +60,9 @@ Join several groups with a comma: `app:athlete,coach`.
 To build the card once its task is started, start an agent in the task's tab
 and ask it to build the card with the sdlc-build skill (`/sdlc-build ABC-122`).
 It makes the change the card's Plan describes, runs the tests and commits on
-the task's branch. It pushes nothing and opens no pull request.
+the task's branch. It first installs what the tests need, the way the repo's
+docs say, and starts no app, server or database. It pushes nothing and opens
+no pull request.
 `task handoff` is run by the agent each time a step ends or pauses, and
 when the human answers a question. It reads a handoff block on stdin (phase,
 status, next and so on, one per line), refuses one that breaks the rules, and
