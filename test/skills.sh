@@ -154,6 +154,27 @@ breakdown_tells_the_human_when_the_approval_did_not_move_a_card() {
   esac
 }
 
+# Without a key Linear accepts, task start cannot read the card's type and
+# title, so the command sdlc-breakdown runs or gives the human carries them,
+# quoted so that it runs as pasted whatever the title holds. The approval's
+# note is what says the key is missing or was rejected.
+breakdown_gives_the_type_and_title_without_a_key() {
+  local skill=$REPO/skills/sdlc-breakdown/SKILL.md prompt=$REPO/prompts/task-new.md section want
+  section=$(sed -n '/^### Start the build phase/,/^## /p' "$skill")
+  [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build phase section"; return; }
+  for want in "entourage task start <space> <ID> --type <type> --title '<title>'" \
+      'no Linear key is saved' 'Linear rejected the key' 'first sub-issue' "'\\''" \
+      'whether you run it or give it' 'the plain `entourage task start <space> <ID>`'; do
+    case $section in
+      *"$want"*) ;;
+      *) fail "sdlc-breakdown's Start the build phase does not say: $want" ;;
+    esac
+  done
+  for want in '--type' '--title'; do
+    grep -qF -- "$want" "$prompt" || fail "the task-new prompt does not name $want"
+  done
+}
+
 # The build's agent starts from prompts/task-build.md, which drives build,
 # review and the pull request as task-new.md drives the write-up, and ends the
 # run when the pull request has merged.
@@ -312,11 +333,15 @@ each_skill_writes_its_section_with_the_command() {
 
 # The command adds a section's heading and folding. A skill that shows a
 # section written with its heading, in any form, would have it written twice.
+# The Review is sdlc-review's to write: sdlc-pr shows one as it reads it on
+# the card, heading and all.
 no_skill_writes_a_section_itself() {
-  local s
+  local s sections
   for s in $CARD_SKILL_NAMES; do
-    ! grep -qE '^((>>>|\+\+\+) )?## (Specification|Plan|Breakdown)$' "$REPO/skills/$s/SKILL.md" ||
-      fail "$s still shows a section written with its heading: $(grep -nE '^((>>>|\+\+\+) )?## (Specification|Plan|Breakdown)$' "$REPO/skills/$s/SKILL.md")"
+    sections='Specification|Plan|Breakdown'
+    [ "$s" != sdlc-review ] || sections="$sections|Review"
+    ! grep -qE "^((>>>|\\+\\+\\+) )?## ($sections)\$" "$REPO/skills/$s/SKILL.md" ||
+      fail "$s still shows a section written with its heading: $(grep -nE "^((>>>|\\+\\+\\+) )?## ($sections)\$" "$REPO/skills/$s/SKILL.md")"
   done
 }
 
@@ -354,6 +379,15 @@ each_skill_falls_back_without_a_key() {
     grep -qF '`entourage linear` says no Linear key is saved' "$REPO/skills/$s/SKILL.md" ||
       fail "$s does not write with the Linear tools when no Linear key is saved"
   done
+  # So does the review step, its Review, and when Linear refuses the write
+  # too, as it does a key without Write permission (test/linear.sh).
+  row=$(grep -E '^\| `entourage linear` says no Linear key is saved' "$REPO/skills/sdlc-review/SKILL.md")
+  case $row in
+    *'write the Review'*'Linear tools'* | *'Linear tools'*'write the Review'*) ;;
+    *) fail "sdlc-review does not write the Review with the Linear tools when entourage cannot: $row" ;;
+  esac
+  case $row in *'Linear answered with an error'*) ;; *) fail "sdlc-review does not fall back when Linear answers the write with an error: $row" ;; esac
+  case $row in *'`>>> ## Review`'*'closing `>>>`'*) ;; *) fail "sdlc-review does not say what form to write the Review in then: $row" ;; esac
 }
 
 # Every card skill and both of the factory's profiles read the card through
@@ -429,7 +463,10 @@ review_asks_the_human_after_one_send_back() {
 # the pull request after it, can read it from a fresh session.
 review_writes_what_it_found_on_the_card() {
   local skill=$REPO/skills/sdlc-review/SKILL.md
-  grep -qx '>>> ## Review' "$skill" || fail "sdlc-review does not show its collapsed Review section"
+  grep -qF "entourage linear section <card ID> Review <<'EOF'" "$skill" ||
+    fail "sdlc-review does not show the command that writes its Review"
+  grep -qF "entourage linear section <card ID> Review --replace <<'EOF'" "$skill" ||
+    fail "sdlc-review does not revise its Review with --replace on a later round"
   grep -qF 'after the Breakdown' "$skill" || fail "sdlc-review does not say where the Review goes"
   grep -qF 'revise it in place' "$skill" || fail "sdlc-review does not revise its Review on a later round"
 }
@@ -1001,4 +1038,4 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
   task_build_prompt_drives_build_and_review breakdown_hands_on_to_start
-  breakdown_tells_the_human_when_the_approval_did_not_move_a_card"
+  breakdown_tells_the_human_when_the_approval_did_not_move_a_card breakdown_gives_the_type_and_title_without_a_key"

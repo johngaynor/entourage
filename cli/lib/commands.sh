@@ -121,7 +121,7 @@ cmd_status() {
     1) key_out=${key_out#entourage: }
        printf '  %-10s %s\n' problem "${key_out%%$'\n'*}"
        key_problems=1 ;;
-    2) printf '  %-10s %s\n' note "no Linear key is saved, and task ls, the Cards panel and task start need one. Make one in $KEY_PLACE, then save it with: entourage linear key" ;;
+    2) printf '  %-10s %s\n' note "no Linear key is saved, and task ls and the Cards panel need one, as does task start unless it is given the card's type and title. Make one in $KEY_PLACE, then save it with: entourage linear key" ;;
     # Only the first sentence of why, as task new gives it: the rest of
     # linear_ask's message is advice for a command that stops.
     *) key_out=$(first_sentence "$key_out")

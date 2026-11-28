@@ -95,6 +95,7 @@ guard_refuses_linear_section() {
   guard_machine
   refused linear section ABC-122 Plan <<< "**Approach:** Build it."
   refused linear section ABC-122 Plan --replace <<< "**Approach:** Build it."
+  refused linear section ABC-122 Review --replace <<< "Round 2, on api 3f2a91c. The tests pass."
 }
 # Moving a card, as sdlc-pr does once its pull requests are open.
 guard_refuses_linear_move() {
@@ -182,6 +183,8 @@ guard_runs_the_reads_and_changes_nothing() {
   git -C "$HOME/Dev/api" worktree add -q -b feat/abc-122-insert-task-here "$P/demo/tasks/abc-122-insert-task-here/api"
   stub_gh
   gh_answers api "$(pr_answer OPEN https://github.com/acme/api/pull/7 60)"
+  # Its tab is open, for `task log` to ask hc about.
+  herdr_tabs abc-122-insert-task-here:t1
   local usual worktree before
   usual=$(all_reads)
   as_worktree
@@ -193,7 +196,14 @@ guard_runs_the_reads_and_changes_nothing() {
     fail "a worktree's copy read otherwise: $(diff <(printf '%s\n' "$usual") <(printf '%s\n' "$worktree"))"
   case $usual in *'ABC-2  Second card'*'build done, then review'*'Built the export.'*) ;; *) fail "the reads did not show the cards and the hand-off: $usual" ;; esac
   case $usual in *'open https://github.com/acme/api/pull/7'$'\n''[exit 2]'*) ;; *) fail "the watch did not show the open pull request: $usual" ;; esac
-  [ ! -s "$TMP/herdr-calls.log" ] || fail "a read called Herdr: $(cat "$TMP/herdr-calls.log")"
+  # `task log` asks Herdr whether it is running and what tabs it has open, and
+  # hc what each of a card's terminals is doing. Each of those only reads, and
+  # no read asks Herdr or hc for anything else.
+  ! grep -Evx 'status|ls' "$TMP/herdr-calls.log" >/dev/null 2>&1 ||
+    fail "a read asked Herdr for more than what it shows: $(grep -Evx 'status|ls' "$TMP/herdr-calls.log")"
+  grep -qx 'get t1 --json' "$TMP/hc-calls.log" 2>/dev/null || fail "task log did not ask hc about the card's tab: $(hc_calls)"
+  ! grep -Evx 'get t1 --json' "$TMP/hc-calls.log" >/dev/null 2>&1 ||
+    fail "a read asked hc for more than what a terminal is doing: $(grep -Evx 'get t1 --json' "$TMP/hc-calls.log")"
 }
 
 # The space commands that read run in a worktree, and so do their old names,

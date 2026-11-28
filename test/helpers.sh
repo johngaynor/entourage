@@ -114,6 +114,46 @@ stub_hc() {
 }
 hc_calls() { cat "$TMP/hc-calls.log" 2>/dev/null; }
 
+# A stand-in for `hc` that knows what each terminal is doing, for tests of
+# what `task log` says about a card's agent. It logs each call's arguments on
+# one line, answers `hc get <t> --json` with $TMP/hc-get-<t>.json, and fails
+# as hc does for any other terminal, or any other command.
+stub_hc_status() {
+  cat > "$TMP/bin/hc" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/hc-calls.log"
+if [ "\$1" = get ] && [ "\${3:-}" = --json ] && [ -f "$TMP/hc-get-\$2.json" ]; then
+  cat "$TMP/hc-get-\$2.json"
+  exit 0
+fi
+echo '{"error":{"kind":"not_found","message":"no such terminal"}}' >&2
+exit 3
+EOF
+  chmod +x "$TMP/bin/hc"
+}
+
+# The tabs Herdr has open in demo's space, which the stub herdr-app prints for
+# `herdr-app ls`: one argument per tab, its name and its terminals, as
+# ABC-122:t1 or abc-122-fix-it:t2,t3 (ABC-122: for a tab with none). Another
+# space, for another folder, has tabs of the same names, whose terminal tx
+# hc knows nothing about, so a card's agent is looked for in its own space
+# alone.
+herdr_tabs() {
+  local dir spec tabs='[]'
+  dir=$(cd -P "$P/demo" && pwd)
+  for spec in "$@"; do
+    tabs=$(jq -c --arg name "${spec%%:*}" --arg terms "${spec#*:}" \
+      '. + [{id: ("tb-" + $name), name: $name, active: false, settled: false,
+        terminals: [$terms | splits(",") | select(. != "") | {terminal: ., status: null}]}]' <<< "$tabs")
+  done
+  jq -n --arg dir "$dir" --arg other "$TMP/elsewhere" --argjson tabs "$tabs" \
+    '{recent: [], spaces: [
+      {id: "sp-other", name: "other", folder: $other, tabs: [
+        {id: "tb-x1", name: "ABC-122", terminals: [{terminal: "tx", status: "blocked"}]},
+        {id: "tb-x2", name: "abc-122-fix-it", terminals: [{terminal: "tx", status: "blocked"}]}]},
+      {id: "sp-demo", name: "demo", folder: $dir, tabs: $tabs}]}' > "$TMP/herdr-ls.json"
+}
+
 # --- a worktree's copy ------------------------------------------------------
 
 # Make the case's copy of entourage a worktree's: its .git folder becomes a

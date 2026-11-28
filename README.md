@@ -169,6 +169,14 @@ newest first, with where each stands, such as waiting on you, or merged:
 entourage task log my-space
 ```
 
+It also asks Herdr what each card's agent is doing, and says so when the
+agent needs you or is not getting on with its step: waiting in its tab on a
+permission prompt, a question or a sign-in, hit an error, stopped without
+handing off, or not running. That shows in place of where the card stands,
+and as the last line of the card's own log. It is read from Herdr each time
+and never stored; with Herdr closed, `task log` shows what it always has. See
+[herdr/README.md](herdr/README.md#hand-offs).
+
 `task start` starts the work, once you have approved the card. It takes the
 card too, makes a branch and a git worktree of it in every repo of the
 space, opens a tab for it, and starts the agent there that runs the build
@@ -201,9 +209,29 @@ words of its title, leaving out a, an and the. "Insert the task here" gives
       web/                      a worktree of web on the same branch
 ```
 
-It needs your Linear key, as `task ls` does. A card Linear doesn't have, a
-card with no type yet, or Linear out of reach stops it before anything is
-made.
+It asks Linear with your Linear key, as `task ls` does. When Linear can't be
+asked, give the card's type and title after it instead. The write-up phase
+adds them to the command it runs or gives you when no key is saved or Linear
+rejected the key:
+
+```sh
+entourage task start my-space ABC-122 --type feat --title 'Insert the task here'
+```
+
+That names the same branch, `feat/abc-122-insert-task-here`. The type and
+title given are used only when no key is saved, or Linear can't be asked: it
+rejects the key, it is out of reach, or `curl` or `jq` is missing. A note
+says why. With a key Linear accepts, Linear's type and title name the branch
+whatever is given, and a note names each given one that differs. Give both or
+neither, anywhere after the card, before or among the targets. The title goes
+between single quotes, with each `'` in it written as `'\''`, so that the
+shell takes it as it is.
+
+It stops before anything is made when Linear doesn't have the card, or the
+card has no type yet. With no type and title given, it also stops when no key
+is saved or Linear can't be asked; with no key, it says that the card can be
+started with `--type` and `--title`. A given type that is not a branch type,
+or only one of the two, stops it as well.
 
 Setup is off for now, while the local environment each task gets is worked
 out. With `ENTOURAGE_SETUP=1`, a repo that has a `justfile` with a `setup`

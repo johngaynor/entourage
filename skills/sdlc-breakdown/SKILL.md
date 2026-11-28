@@ -171,6 +171,14 @@ Recording this hand-off moves the card in Linear to its team's first not-started
 
 Start is not a skill. It is the `entourage task start` command, which makes the task's branch and worktrees, opens its tab in the space and starts an agent there for the build phase. It takes one card: the card itself when it is one piece, or, when it was sliced, the first sub-issue in order that is not already started, done or canceled. If every sub-issue is, start nothing and tell the human so.
 
+When the note below the hand-off says the card was not moved because no Linear key is saved, or because Linear rejected the key, `task start` can't read the card's type and title from Linear either. So the command carries them, whether you run it or give it. Read the type and title of the card it takes, the card itself or the first sub-issue as above, with the Linear tools, and put them after the ID:
+
+```
+entourage task start <space> <ID> --type <type> --title '<title>'
+```
+
+Put the title between single quotes as Linear has it, and write each `'` in it as `'\''`, so the command runs as pasted whatever the title holds: `Ada's export` is `--title 'Ada'\''s export'`. With any other note, or none, the command is the plain `entourage task start <space> <ID>`.
+
 - **The human chose to start later:** give them the command, `entourage task start <space> <ID>`, and run nothing.
 - **The human chose to start now:** run that command yourself, once, after the hand-off above is recorded, or written in your message when it could not be recorded. Then tell the human the tab it opened, and pass on every `agent` and `note` line it printed: those say what still needs them, such as an agent it could not start, a repo Claude Code will ask about trusting, or a card it did not move in Linear.
 

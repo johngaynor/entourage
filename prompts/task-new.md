@@ -14,4 +14,4 @@ sdlc-breakdown asks me to approve the card, and whether to start its build phase
 
     entourage task start {space} {card}
 
-It names the branch from the type you set on the card and from its title. If the card was sliced, it takes a sub-issue's ID in place of {card}. sdlc-breakdown's Start the build phase says which, and what to do when it stops. Run it yourself only when I approved to start now. When I chose to start later, give it to me and don't run it.
+It names the branch from the type you set on the card and from its title. If the card was sliced, it takes a sub-issue's ID in place of {card}. sdlc-breakdown's Start the build phase says which, and what to do when it stops. Run it yourself only when I approved to start now. When I chose to start later, give it to me and don't run it. When sdlc-breakdown says to give the card's type and title, add `--type` and `--title` to the command, as the skill shows, whether you run it or give it to me.

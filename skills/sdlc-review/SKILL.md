@@ -59,10 +59,10 @@ Check each of the build step's commits against the repo's rules for commits: the
 
 Write what you found on the card as a collapsed section after the Breakdown. Change nothing else on the card. If an earlier round wrote a Review, revise it in place, so the card has one Review, the latest.
 
-Use this form:
+Write it with this command, the section's body on stdin:
 
 ```
->>> ## Review
+entourage linear section <card ID> Review <<'EOF'
 Round <n>, on <the commit each worktree was at>. The tests <pass, or which fail>.
 
 - **Met.** <Done when item, in a few words>: <how it was shown>
@@ -70,10 +70,18 @@ Round <n>, on <the commit each worktree was at>. The tests <pass, or which fail>
 - **For the human.** <Done when item>: <what to run, and what they should see>
 
 **Commits:** <that they follow the repo's rules, or which rule a commit breaks>
->>>
+EOF
 ```
 
-The round is 1 the first time, and one more each time the work has been sent back to the build step before. When `sdlc-pr` sent the work here after the default branch was merged in, the round is one more than the last as well, and its round line says why: `Round <n>, on <the commit each worktree was at>, after the default branch was merged in.` Check each Done when item again with the merge commit, as for any round. After writing, read the card back. Check that nothing above the Review changed and that the Review shows as a collapsed section.
+The command adds the heading and the folding, puts the Review after the Breakdown, and leaves everything above it as it is. On a later round the card has a Review already, and the command refuses a second one. Run it with `--replace` after the section name, which puts the new Review in the last one's place:
+
+```
+entourage linear section <card ID> Review --replace <<'EOF'
+<the Review, in the same form>
+EOF
+```
+
+The round is 1 the first time, and one more each time the work has been sent back to the build step before. When `sdlc-pr` sent the work here after the default branch was merged in, the round is one more than the last as well, and its round line says why: `Round <n>, on <the commit each worktree was at>, after the default branch was merged in.` Check each Done when item again with the merge commit, as for any round. The command reads the card back before it says it is done: when it says it added or wrote the Review, the write is checked, and you don't need to read the card again.
 
 ## 6. Hand off
 
@@ -163,11 +171,12 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Hand off as `failed`. Don't review from memory of the card or from its title |
-| `entourage linear read` says no Linear key is saved or that Linear rejected the key, or the command isn't there | Read the card with the Linear tools instead, and say so in `flags` when you hand off |
+| `entourage linear` says no Linear key is saved, that Linear rejected the key or that Linear answered with an error, or the command isn't there | Read the card and write the Review with the Linear tools instead, in the same form, between `>>> ## Review` and a closing `>>>`, and on a later round revise the one there in place. A key with Read permission alone reads the card and gets the error only at the write: write just the Review with them then. Say so in `flags` when you hand off |
 | A repo the Plan changes has no worktree in the task | Ask the human. The task may have been started with targets that left it out |
 | The Plan's Tests line names a test that isn't there | The item is not met. Say which test is missing. Don't write it: that is the build step's work |
 | A test fails only now and then | Run it again. If it fails again, the item is not met. If it passes, say in `flags` that it failed once |
-| A write to the card fails | Read the card before doing anything else. Retry once, and only if the Review isn't there, so it can't be added twice |
+| `entourage linear` says it could not reach Linear | Run it once more. It checks the card before it writes, so it can't add the Review twice. If it then says the card already has a Review, the first try got through |
+| `entourage linear section` says the text above the section changed | Put it back from what you read at the start of this run, with the Linear tools, and tell the human |
 | The collapsed section shows as plain `>>>` text | Leave the content as it is and tell the human. Don't keep reformatting it |
 
 If something fails that isn't on this list, stop and tell the human what happened. Don't work around it.
@@ -186,7 +195,7 @@ If something fails that isn't on this list, stop and tell the human what happene
 **The Review it writes**
 
 ```
->>> ## Review
+entourage linear section ABC-122 Review <<'EOF'
 Round 1, on api 3f2a91c and web 8d04e17. The tests pass in both.
 
 - **Met.** Button shows for a manager: `OrdersPage.test.tsx` renders the page as a manager and as a clerk, and finds the button only for the manager.
@@ -194,7 +203,7 @@ Round 1, on api 3f2a91c and web 8d04e17. The tests pass in both.
 - **Met.** Same filters and range as on screen: the API test sends a filtered request, and the component test checks the filters are passed.
 
 **Commits:** both follow the repo's rules.
->>>
+EOF
 ```
 
 **The hand-off at the end**

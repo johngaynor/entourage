@@ -1372,6 +1372,94 @@ linear_section_says_when_jq_is_missing() {
   case $out in *"command not found"*) fail "gave bash's own message: $out" ;; esac
 }
 
+# --- the Review, which sdlc-review writes -----------------------------------
+
+# A card as the review step finds it: written up, approved and built, with
+# its Breakdown open at the end.
+BUILT_CARD="$ORIGINAL
+
++++ ## Specification
+$SPEC_BODY
++++
+
++++ ## Plan
+**Approach:** Like the invoice export.
++++
+
+## Breakdown
+One piece."
+REVIEW_BODY='Round 1, on api 3f2a91c. The tests pass.
+
+- **Met.** Button shows for a manager: `OrdersPage.test.tsx` finds it only for the manager.
+
+**Commits:** they follow the repo'"'"'s rules.'
+
+# The Review is folded, like the Specification and the Plan, and goes after
+# the open Breakdown, which is left as it was.
+linear_section_adds_the_review_folded_after_the_breakdown() {
+  saved_key; stub_linear
+  want="$BUILT_CARD
+
++++ ## Review
+$REVIEW_BODY
++++"
+  linear_answers "$(section_read "$(printf '%s' "$BUILT_CARD" | jq -Rs .)")" "$(section_saved "$want")"
+  out=$(printf '%s\n' "$REVIEW_BODY" | "$E" linear section ABC-122 Review) || fail "linear section exited non-zero: $out"
+  case $out in *Review*ABC-122*) ;; *) fail "did not say what it added: $out" ;; esac
+  got=$(sent_body 2 | jq -r '.variables.input.description')
+  [ "$got" = "$want" ] || fail "sent the description: $got"
+}
+
+# A later round writes its Review in place of the last one, so the card has
+# one Review. A second one is refused without --replace, and the text above
+# it, the Breakdown and all, is checked in what Linear saved.
+linear_section_replaces_the_review_in_place() {
+  saved_key; stub_linear
+  # Linear keeps a folded section with a blank line inside each end.
+  before="$BUILT_CARD
+
++++ ## Review
+
+Round 1, on api 3f2a91c. Item 2 is not met.
+
++++"
+  want="$BUILT_CARD
+
++++ ## Review
+$REVIEW_BODY
++++"
+  linear_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")"
+  out=$(printf '%s\n' "$REVIEW_BODY" | "$E" linear section ABC-122 Review 2>&1) &&
+    fail "exited zero with a Review already there"
+  case $out in *"--replace"*) ;; *) fail "did not say how to replace it: $out" ;; esac
+  [ "$(curl_count)" = 1 ] || fail "changed the card anyway: $(curl_calls)"
+  fresh_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")" "$(section_saved "$want")"
+  out=$(printf '%s\n' "$REVIEW_BODY" | "$E" linear section ABC-122 Review --replace) ||
+    fail "linear section --replace exited non-zero: $out"
+  got=$(sent_body 2 | jq -r '.variables.input.description')
+  [ "$got" = "$want" ] || fail "sent the description: $got"
+  # Linear's copy with the Breakdown above the Review changed.
+  fresh_answers "$(section_read "$(printf '%s' "$before" | jq -Rs .)")" \
+    "$(section_saved "${want/One piece./Two pieces.}")"
+  out=$(printf '%s\n' "$REVIEW_BODY" | "$E" linear section ABC-122 Review --replace 2>&1) &&
+    fail "exited zero with the Breakdown above the Review changed"
+  case $out in *above*) ;; *) fail "did not say the text above changed: $out" ;; esac
+}
+
+# A key with Read permission alone is refused the change, and the command
+# says what Linear said, so the skill can write the Review with its own tools.
+linear_section_review_with_a_key_without_write_says_so() {
+  saved_key; stub_linear
+  linear_answers "$(section_read "$(printf '%s' "$BUILT_CARD" | jq -Rs .)")" "$NO_WRITE"
+  linear_status_at 2 400
+  out=$(printf '%s\n' "$REVIEW_BODY" | "$E" linear section ABC-122 Review 2>&1) &&
+    fail "exited zero when Linear refused the change: $out"
+  case $out in
+    *'Linear answered with an error: Invalid scope: `write` required'*) ;;
+    *) fail "did not say Linear answered with an error: $out" ;;
+  esac
+}
+
 # The team's label wins over the workspace's, whichever Linear lists first.
 linear_type_prefers_the_teams_label_to_the_workspaces() {
   saved_key; stub_linear
@@ -1786,7 +1874,9 @@ WRITE_CASES="$REVIEW_CASES linear_type_sets_the_type_and_keeps_the_other_labels 
   linear_section_writes_into_an_empty_description linear_section_refuses_a_second_section_of_the_same_name
   linear_section_replaces_a_section_in_place linear_section_replaces_the_open_breakdown
   linear_section_fails_when_the_text_above_changed linear_section_accepts_linears_rewriting_of_the_section
-  linear_section_refuses_what_is_not_a_section"
+  linear_section_refuses_what_is_not_a_section
+  linear_section_adds_the_review_folded_after_the_breakdown linear_section_replaces_the_review_in_place
+  linear_section_review_with_a_key_without_write_says_so"
 
 # --- status and the key -----------------------------------------------------
 
