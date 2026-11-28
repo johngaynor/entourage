@@ -1,6 +1,6 @@
 ---
 name: sdlc-build
-description: Build an approved Linear card in the task that `entourage task start` made for it, by reading the card's Plan, making the change in the task's worktree, running the tests and committing on the task's branch, then recording how the build ended. Use this once a card is approved and its task started, whenever asked to build, implement or code a card in that task, even if the request only says "build ABC-123". It pushes nothing and opens no pull request.
+description: Build an approved Linear card in the task that `entourage task start` made for it, by reading the card's Plan, making the change in the task's worktree, installing what its tests need and running them, and committing on the task's branch, then recording how the build ended. Use this once a card is approved and its task started, whenever asked to build, implement or code a card in that task, even if the request only says "build ABC-123". It pushes nothing and opens no pull request.
 ---
 
 # Build a card
@@ -23,11 +23,14 @@ Build ends with commits on the task's branch. Push nothing and open no pull requ
 
 ## 1. Read how the repo works
 
-Read the guidance in each worktree you will change: its `CLAUDE.md`, `AGENTS.md`, `README` and any `CONTRIBUTING` file. Look for three things:
+Read the guidance in each worktree you will change: its `CLAUDE.md`, `AGENTS.md`, `README` and any `CONTRIBUTING` file. Look for four things:
 
+- **How a fresh checkout is made ready.** What a new clone has to install before its tests can run, such as its dependencies.
 - **How it is tested.** The command that runs the tests, and how to run only some of them.
 - **How commits are written.** The form of a commit message, and anything a commit must never contain.
 - **Rules for a change like this one.** A file that must not be edited by hand, a list that a new file must be added to, a version that only a release changes.
+
+`entourage task start` installs nothing for now, so a new worktree may have none of what its tests need. If it lacks something, install what the tests need the way the repo's docs say. Install only: start no app, dev server or database. Install into the worktree, as its dependencies are: a tool installed on the machine itself, such as with `brew` or a global `npm install`, is for the human, so ask. Read a command before you run it: if the docs' way of making a checkout ready also starts something, run only the part that installs. If the docs don't say how to install what is missing, ask the human rather than guess. If the tests need something you may not start yourself, such as a database or Docker, ask the human, saying what.
 
 Then run the tests once, before you change anything. A test that fails now is not one you broke, and you need to know that before you start. If any fail, ask the human whether to build on top of them.
 
@@ -57,7 +60,7 @@ When every Done when item has its change, run the repo's whole test suite, in ev
 
 If a test fails, find out why and fix it. Change a test only when the Plan changes what that test checks. A test made to pass by weakening it is a failure you have hidden from the human.
 
-If the tests can't run at all, because the worktree isn't set up and something they need is missing, don't install anything to get them running. Ask the human, saying what is missing.
+If the tests can't run at all because something they need is missing, install it as section 1 says, then run them again. If it is something you may not start yourself, ask the human, saying what.
 
 ## 4. Commit
 
@@ -131,6 +134,9 @@ EOF
 | The Linear tools aren't available | Hand off as `failed`. Don't build from memory of the card or from its title |
 | A repo the Plan changes has no worktree in the task | Ask the human. The task may have been started with targets that left it out |
 | A path in the Plan doesn't exist | Find the real one. If there isn't one, and the file isn't marked as new, ask the human |
+| The worktree lacks what the tests need, and the repo's docs don't say how to install it | Ask the human what to install. Don't guess |
+| An install fails | Ask the human, with the command and its error. Don't change the repo's files to make it install |
+| The tests need an app, server, database or Docker running | Ask the human, saying what. Don't start it yourself |
 | A test fails before you have changed anything | Ask the human whether to build on top of it. Don't fix it as part of this card |
 | A commit hook refuses the commit | Fix what it names and commit again. Never skip the hook |
 | The tests still fail after you have tried what you can | Hand off as `failed`, with the failing tests and what you tried. Leave the work uncommitted in the worktree |
@@ -155,7 +161,7 @@ entourage task handoff shop ABC-122 <<'EOF'
 phase: build
 status: done
 next: review
-summary: Built the CSV export in api and the Download CSV button in web, in two commits. Both test suites pass. The CSV helper is csv_rows in shop/api/app/common/export.py, not csv_stream as the Plan said.
+summary: Installed each worktree's dependencies as its README says, then built the CSV export in api and the Download CSV button in web, in two commits. Both test suites pass. The CSV helper is csv_rows in shop/api/app/common/export.py, not csv_stream as the Plan said.
 flags: The orders page's tests can't set its filters yet, so item 3 is shown by the API test alone. The orders list also ignores the date range on page 2, which is outside this card.
 EOF
 ```

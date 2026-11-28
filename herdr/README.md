@@ -211,6 +211,12 @@ entourage task new <project> <card>
   Herdr not running, no agent on your `PATH`, or the skills not linked into
   `~/.claude/skills` stops it before anything is opened. Run
   `entourage update` to link the skills.
+- **With a Linear key saved, it checks that Linear has the card**, so a
+  mistyped ID stops it before an agent starts. It looks the card up by its
+  team's key and number, so it does not check that the card is one of the
+  project's teams. Only a definite no stops it: with no key saved, Linear is
+  not asked, and when Linear cannot be asked (the network, a rejected key, no
+  `curl` or `jq`), the card starts as before, with a note saying why.
 
 ### The Cards panel
 
@@ -309,17 +315,32 @@ entourage task log <project> [<card>]
 
 ### Starting the work
 
-One branch, checked out as a git worktree of the repos the task needs, and
-shown as a tab in the project's space.
+One branch for an approved card, checked out as a git worktree of the repos
+the task needs, and shown as a tab in the project's space.
 
 ```sh
-entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
+entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
 ```
 
+- **The card is its ID**, like `ABC-122`, as for `task new`. The write-up
+  gives you this command once you approve the card. For a card that was
+  sliced, it gives the first sub-issue's ID.
+- **Linear names the branch.** `task start` asks Linear for the card, with
+  the key `linear key` saved (see
+  [Seeing a project's cards](#seeing-a-projects-cards)), and makes the branch
+  `<type>/<card-id>-<short-name>`. The type is the card's label in the `Type`
+  group, which the write-up sets. The short name is the first four words of
+  the card's title, in lowercase with hyphens, leaving out a, an and the, and
+  anything a branch name cannot hold. "Insert the task here" gives
+  `feat/abc-122-insert-task-here`.
+- **It stops before it makes anything** when Linear has no such card, the
+  card has no type yet (write it up first with `task new`), no key is saved,
+  or Linear cannot be asked. It says what to do. A branch in place of the
+  card is refused too, with a note that `task start` takes the card now.
 - **Targets say what the task works on.** Each one names a repo of the
   project by its folder name, and optionally groups inside it:
 
-  | After the branch | The task gets |
+  | After the card | The task gets |
   |---|---|
   | nothing | every repo of the project, each with its whole setup |
   | `app:athlete` | the `app` repo, set up for its `athlete` group |
@@ -333,12 +354,11 @@ entourage task start <project> <branch> [<repo>[:<group>[,<group>...]] ...]
   knows it. A repo whose folder name has a colon in it cannot be named as a
   target.
 
-- **The branch is `<type>/<description>`**, following
-  [Conventional Branch](https://conventionalbranch.org): `feat/abc-122-insert-task-here`,
-  `fix/abc-140-header-bug`, `chore/update-dependencies`. Put the card's ID in
-  the description. The types are `feature`, `feat`, `bugfix`, `fix`, `hotfix`,
-  `release` and `chore`, plus `ai`, `claude`, `codex`, `copilot` and `cursor`.
-- **The description names the task.** `feat/abc-122-insert-task-here` makes
+- **The branch follows [Conventional Branch](https://conventionalbranch.org).**
+  A card's type is `feat`, `fix` or `chore`. A type label that is not one of
+  the spec's types (`feature`, `feat`, `bugfix`, `fix`, `hotfix`, `release`,
+  `chore`, `ai`, `claude`, `codex`, `copilot` or `cursor`) stops it.
+- **Everything after the type names the task.** `feat/abc-122-insert-task-here` makes
   the folder `tasks/abc-122-insert-task-here` and a tab of that name.
 - **Each of the task's repos gets a worktree** at `tasks/<task>/<repo>`, on the new branch,
   cut from the remote's default branch after a fetch. A repo that cannot be
@@ -395,6 +415,12 @@ setup:
   setup.
 - **`just` has to be installed** on the machine. Without it, tasks start
   without setup and `entourage status` says so.
+- **Say in the repo's docs how a fresh checkout is made ready.** While setup
+  is off, the `sdlc-build` skill reads the repo's `CLAUDE.md`, `AGENTS.md` or
+  `README` to learn what to install before it runs the tests, and installs
+  that into the task's worktree. It installs only: it starts no app, server
+  or database, and asks you when the tests need one running or a tool
+  installed on the machine.
 
 ## entourage's variables
 

@@ -106,23 +106,27 @@ newest first, with where each stands, such as waiting on you:
 entourage task log my-project
 ```
 
-`task start` starts the work. It makes a branch and a git worktree of it in
-every repo of the project, and opens a tab for it:
+`task start` starts the work, once you have approved the card. It takes the
+card too, makes a branch and a git worktree of it in every repo of the
+project, and opens a tab for it. The write-up gives you the command:
 
 ```sh
-entourage task start my-project feat/abc-122-insert-task-here
+entourage task start my-project ABC-122
 ```
 
-Name targets after the branch to take only what the task needs: a repo, or
+Name targets after the card to take only what the task needs: a repo, or
 groups inside a repo (`app:athlete`, or `app:athlete,coach` for several).
 
 ```sh
-entourage task start my-project feat/abc-122-insert-task-here app:athlete billing
+entourage task start my-project ABC-122 app:athlete billing
 ```
 
-The branch is `<type>/<description>`, following
-[Conventional Branch](https://conventionalbranch.org), with the card's ID in
-the description. The description names the task:
+It asks Linear for the card and names the branch from it:
+`<type>/<card-id>-<short-name>`, following
+[Conventional Branch](https://conventionalbranch.org). The type is the one
+the write-up set on the card, and the short name is the first four words of
+its title, leaving out a, an and the. "Insert the task here" gives
+`feat/abc-122-insert-task-here`. Everything after the type names the task:
 
 ```
 ~/.config/entourage/projects/my-project/
@@ -131,6 +135,10 @@ the description. The description names the task:
       api/                      a worktree of api on feat/abc-122-insert-task-here
       web/                      a worktree of web on the same branch
 ```
+
+It needs your Linear key, as `task ls` does. A card Linear doesn't have, a
+card with no type yet, or Linear out of reach stops it before anything is
+made.
 
 Setup is off for now, while the local environment each task gets is worked
 out. With `ENTOURAGE_SETUP=1`, a repo that has a `justfile` with a `setup`
@@ -147,8 +155,11 @@ ask it to build the card with the `sdlc-build` skill:
 ```
 
 It reads the card's Plan, makes the change in the task's worktrees, runs the
-tests and commits on the task's branch. It pushes nothing and opens no pull
-request, so the commits wait for you there. Like the write-up, it records how
+tests and commits on the task's branch. Since setup is off, it first installs
+into each worktree what the tests need, the way that repo's own docs say. It
+installs only: it starts no app, server or database, and asks you when the
+tests need one running. It pushes nothing and opens no pull request, so the
+commits wait for you there. Like the write-up, it records how
 it ended, and `task log` shows it: `done` only when the tests pass,
 `needs-human` with a question, or `failed` with the reason. A card with no
 Plan is not built.
