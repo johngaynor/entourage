@@ -108,7 +108,27 @@ cmd_status() {
   if ! have_sqlite && [ -n "$(ls -d "$SPACES"/*/ 2>/dev/null)" ]; then
     say "  note       $SQLITE is not installed, so hand-offs are not recorded."
   fi
-  if [ "$problems" -gt 0 ] || [ "$space_problems" -gt 0 ] || [ "$settings_problems" -gt 0 ]; then
+  # The Linear key, asked of Linear itself. Only a key Linear rejects, or one
+  # that is no key at all, is a problem. With none saved the rest of entourage
+  # still works, and a key that could not be checked may work too.
+  local key_problems=0 key_rc=0 key_out
+  if [ -n "$KEY_EXPORTED" ]; then say "Linear key: LINEAR_API_KEY, exported in your environment"
+  else say "Linear key: $ENV_FILE"
+  fi
+  key_out=$(linear_key_state 2>&1) || key_rc=$?
+  case $key_rc in
+    0) printf '  %-10s %s\n' works "the key of ${key_out:-a user with no name}" ;;
+    1) key_out=${key_out#entourage: }
+       printf '  %-10s %s\n' problem "${key_out%%$'\n'*}"
+       key_problems=1 ;;
+    2) printf '  %-10s %s\n' note "no Linear key is saved, and task ls, the Cards panel and task start need one. Make one in $KEY_PLACE, then save it with: entourage linear key" ;;
+    # Only the first sentence of why, as task new gives it: the rest of
+    # linear_ask's message is advice for a command that stops.
+    *) key_out=$(first_sentence "$key_out")
+       printf '  %-10s %s\n' note "the key was not checked${key_out:+: $key_out}" ;;
+  esac
+  if [ "$problems" -gt 0 ] || [ "$space_problems" -gt 0 ] || [ "$settings_problems" -gt 0 ] ||
+    [ "$key_problems" -gt 0 ]; then
     [ "$space_problems" = 0 ] || say "$space_problems space problem(s)."
     return 1
   fi

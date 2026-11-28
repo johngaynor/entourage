@@ -13,12 +13,13 @@ STORE=$ENT_HOME/entourage.db
 SQLITE=${ENTOURAGE_SQLITE:-sqlite3}
 
 # The lines a block can have, in the order they are printed.
-HANDOFF_KEYS='phase status next summary flags question options answer reason'
-# The steps a block can name as its phase or as what comes next. start is the
+HANDOFF_KEYS='step status next summary flags question options answer reason'
+# The steps a block can name as its step or as what comes next. start is the
 # step after breakdown: `entourage task start`, which records its own row as
 # start (record_start). Breakdown hands on to it once the human approves the
-# card, but it is only ever what comes next in a block, since no agent runs
-# it. A review that finds the work done hands on to pr, the step that pushes
+# card, but it is only ever what comes next in a block, since it is a command
+# that records its own row, not a skill: the write-up agent runs it, or the
+# human does when they hold the build phase for later. A review that finds the work done hands on to pr, the step that pushes
 # the task's branch, opens its pull requests and waits for the human to merge
 # them. merged is where a card ends: pr hands on to it once every pull request
 # has merged. It too is only ever what comes next, since nothing runs after it.
@@ -30,7 +31,7 @@ HANDOFF_LINE_MAX=2000
 HANDOFF_USAGE="Usage: entourage task handoff <space> <card>, with the block on stdin:
 
 entourage task handoff <space> <card> <<'EOF'
-phase: define
+step: define
 status: done
 next: plan
 summary: One to three sentences on what was done.
@@ -38,7 +39,7 @@ EOF
 
 status is done (needs next and summary, may have flags), needs-human (needs
 question and options, may have summary), answered (needs answer: what the
-human replied to a needs-human hand-off) or failed (needs reason). phase and
+human replied to a needs-human hand-off) or failed (needs reason). step and
 next are one of: $HANDOFF_STEPS.
 start and merged are only ever next: \`entourage task start\` records start,
 and merged is where a card ends. Every value goes on one line."
@@ -66,14 +67,24 @@ sql_str() {
 }
 
 has_answer_column() { store "$STORE" 'select answer from handoffs limit 0;' >/dev/null; }
+has_step_column() { store "$STORE" 'select step from handoffs limit 0;' >/dev/null; }
 
-# A store made before answers were recorded has no column for them. Add it.
-# Two hand-offs can get here at the same moment: one adds the column and the
-# other's attempt fails, so look again before calling that a failure.
+# Bring a store made by an older entourage up to date, keeping every row:
+#   - one made before answers were recorded has no column for them: add it.
+#   - one made before the rename keeps each hand-off's step in a column called
+#     phase: rename it to step.
+# Two hand-offs can get here at the same moment: one changes the store and
+# the other's attempt fails, so look again before calling that a failure.
 store_upgrade() {
-  has_answer_column ||
-    store "$STORE" 'alter table handoffs add column answer text;' ||
-    has_answer_column
+  {
+    has_answer_column ||
+      store "$STORE" 'alter table handoffs add column answer text;' ||
+      has_answer_column
+  } && {
+    has_step_column ||
+      store "$STORE" 'alter table handoffs rename column phase to step;' ||
+      has_step_column
+  }
 }
 
 # Make the store if this is its first use, and bring an older one up to date.
@@ -81,19 +92,19 @@ store_ready() {
   mkdir -p "$ENT_HOME"
   store "$STORE" 'create table if not exists handoffs (
     id integer primary key, at text not null, project text not null,
-    card text not null, phase text not null, status text not null,
+    card text not null, step text not null, status text not null,
     next text, summary text, flags text, question text, options text,
     answer text, reason text);' && store_upgrade
 }
 
 # Record one hand-off, timed now in UTC:
-#   store_handoff <space> <card> <phase> <status> <next> <summary> <flags> <question> <options> <answer> <reason>
+#   store_handoff <space> <card> <step> <status> <next> <summary> <flags> <question> <options> <answer> <reason>
 store_handoff() {
   local at values='' v
   at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   for v in "$at" "$@"; do values="$values${values:+, }$(sql_str "$v")"; done
   store "$STORE" "insert into handoffs
-    (at, project, card, phase, status, next, summary, flags, question, options, answer, reason)
+    (at, project, card, step, status, next, summary, flags, question, options, answer, reason)
     values ($values);"
 }
 
@@ -104,13 +115,13 @@ store_handoff() {
 # Neither command is ever failed by it: it only says when it could not record.
 #   record_start <space> <card> [start]
 record_start() {
-  local phase=new next=define
-  [ "${3:-}" != start ] || phase=start next=build
+  local step=new next=define
+  [ "${3:-}" != start ] || step=start next=build
   if ! have_sqlite; then
     say "  note      $SQLITE is not installed, so hand-offs are not recorded"
     return 0
   fi
-  { store_ready && store_handoff "$1" "$2" "$phase" done "$next" '' '' '' '' '' ''; } ||
+  { store_ready && store_handoff "$1" "$2" "$step" done "$next" '' '' '' '' '' ''; } ||
     say "  note      could not record the start in $STORE"
 }
 
@@ -155,7 +166,7 @@ task_handoff() {
   [ "$#" -le 2 ] || die "$HANDOFF_USAGE"
   [ ! -t 0 ] || die "$HANDOFF_USAGE"
 
-  local phase='' status='' next='' summary='' flags='' question='' options='' answer='' reason=''
+  local step='' status='' next='' summary='' flags='' question='' options='' answer='' reason=''
   local line key value n=0 seen=' '
   local re='^[[:space:]]*([a-z]+):[[:space:]]*(.*)$' blank='^[[:space:]]*$' hint='^<.*>$'
   while IFS= read -r line || [ -n "$line" ]; do
@@ -169,6 +180,9 @@ task_handoff() {
     key=${BASH_REMATCH[1]} value=${BASH_REMATCH[2]}
     # Drop spaces after the value.
     value=${value%"${value##*[![:space:]]}"}
+    # The line was called phase before it was called step.
+    [ "$key" != phase ] ||
+      die "a block names its step in a 'step:' line, not 'phase:': write 'step:' in its place."
     in_list "$key" "$HANDOFF_KEYS" ||
       die "a handoff block has no '$key:' line. Its lines are: $HANDOFF_KEYS."
     ! in_list "$key" "$seen" || die "the block has '$key:' twice."
@@ -181,11 +195,11 @@ task_handoff() {
   done
   [ "$seen" != ' ' ] || die "there is no block on stdin. $HANDOFF_USAGE"
 
-  [ -n "$phase" ] || die "the block has no 'phase:' line, the step that is handing off."
-  in_list "$phase" "$HANDOFF_STEPS" || die "'$phase' is not a step. The steps are: $HANDOFF_STEPS."
-  [ "$phase" != merged ] ||
+  [ -n "$step" ] || die "the block has no 'step:' line, the step that is handing off."
+  in_list "$step" "$HANDOFF_STEPS" || die "'$step' is not a step. The steps are: $HANDOFF_STEPS."
+  [ "$step" != merged ] ||
     die "'merged' is where a card ends, so it can only come next. The step that hands on to it is pr."
-  [ "$phase" != start ] ||
+  [ "$step" != start ] ||
     die "'start' is recorded by \`entourage task start\`, so it can only come next. The step that hands on to it is breakdown."
   [ -n "$status" ] || die "the block has no 'status:' line. Use done, needs-human, answered or failed."
   local need allow
@@ -208,7 +222,7 @@ task_handoff() {
 
   have_sqlite ||
     die "$SQLITE is not installed, so the hand-off was not recorded. Write the block in your message instead."
-  { store_ready && store_handoff "$name" "$card" "$phase" "$status" "$next" "$summary" "$flags" "$question" "$options" "$answer" "$reason"; } ||
+  { store_ready && store_handoff "$name" "$card" "$step" "$status" "$next" "$summary" "$flags" "$question" "$options" "$answer" "$reason"; } ||
     die "the hand-off was not recorded: could not write to $STORE. Write the block in your message instead."
   for key in $HANDOFF_KEYS; do
     [ -z "${!key}" ] || printf '%s: %s\n' "$key" "${!key}"
@@ -222,7 +236,7 @@ task_handoff() {
   #   - Every pull request for the card has merged, so its work is finished.
   #     Whatever records the merge, a human's answer or a watch on the pull
   #     requests, moves the card to its team's first completed status.
-  if [ "$status" = done ] && [ "$phase" = breakdown ] && [ "$next" = start ]; then
+  if [ "$status" = done ] && [ "$step" = breakdown ] && [ "$next" = start ]; then
     linear_move_note "$card" approved >&2 || true
   elif [ "$status" = done ] && [ "$next" = merged ]; then
     linear_move_note "$card" completed >&2 || true
@@ -259,37 +273,38 @@ sql_took() {
 
 # SQL that starts a query on one card's view, or on every card's in the
 # space, as the table `shown`. Each card's rows are worked out on their own.
-# The store's column for the space is still called project.
-#   log_view <space> <card, or empty for all> <answer column, or null in a store without one>
+# The store's column for the space is still called project. The step column
+# is step, or phase in a store from before the rename; either is read as step.
+#   log_view <space> <card, or empty for all> <answer column, or null in a store without one> <step column>
 log_view() {
   local cards=''
   [ -z "$2" ] || cards="and card = $(sql_str "$2")"
   printf "with base as (
-      select id, at, card, phase, status, next, summary, flags, question, options,
+      select id, at, card, %s as step, status, next, summary, flags, question, options,
         %s as answer, reason,
         lag(at) over w as prev_at, lag(status) over w as before, lead(id) over w as after,
-        sum(case when phase = 'new' then 1 else 0 end) over w as run
+        sum(case when %s = 'new' then 1 else 0 end) over w as run
       from handoffs where project = %s %s
       window w as (partition by card order by id)),
     timed as (
       select *,
-        case when phase in ('new', 'start') or prev_at is null then null
+        case when step in ('new', 'start') or prev_at is null then null
           else max(cast(strftime('%%s', at) - strftime('%%s', prev_at) as integer), 0) end as seconds,
         case when after is null and status = 'needs-human'
           then max(cast(strftime('%%s', 'now') - strftime('%%s', at) as integer), 0) end as open_seconds
       from base),
     labeled as (
       select *,
-        case when phase in ('new', 'start') then 'start'
+        case when step in ('new', 'start') then 'start'
           when status = 'answered' and before = 'needs-human' then 'wait'
           else 'step' end as kind,
         status || case when next is null then '' else ', then ' || next end as what,
-        case when phase in ('new', 'start') then 'started'
-          when status = 'done' then phase || ' done'
-          when status = 'needs-human' then phase || ' asked a question'
+        case when step in ('new', 'start') then 'started'
+          when status = 'done' then step || ' done'
+          when status = 'needs-human' then step || ' asked a question'
           when status = 'answered' then 'answered'
-          when status = 'failed' then phase || ' failed'
-          else phase || ' ' || status end as label,
+          when status = 'failed' then step || ' failed'
+          else step || ' ' || status end as label,
         case when seconds is null then '' else (%s) end as short,
         case when seconds is null then ''
           when status = 'answered' and before = 'needs-human' then 'waited ' || (%s)
@@ -301,11 +316,11 @@ log_view() {
     shown as (
       select *,
         case when status = 'needs-human' then 'waiting on the human'
-          when phase in ('new', 'start') then 'started'
+          when step in ('new', 'start') then 'started'
           when status = 'done' and next = 'merged' then 'merged'
           else label || substr(what, length(status) + 1) end as state
       from labeled)" \
-    "$3" "$(sql_str "$1")" "$cards" \
+    "$4" "$3" "$4" "$(sql_str "$1")" "$cards" \
     "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took seconds)" "$(sql_took seconds)" \
     "$(sql_took open_seconds)"
 }
@@ -332,7 +347,7 @@ log_cards() {
         'cards', (select json_group_array(json(c)) from (
           select json_object('card', card, 'at', at, 'state', state,
             'waiting', nullif(waiting, ''), 'for', $(sql_took since), 'seconds', since,
-            'run', run, 'phase', phase, 'status', status, 'next', next) as c
+            'run', run, 'step', step, 'status', status, 'next', next) as c
           from latest order by at desc, id desc)));" ||
       die "could not read the hand-offs in $STORE. It may not be entourage's store."
     return
@@ -374,12 +389,14 @@ task_log() {
   [ -z "$card" ] || card=$(handoff_card "$name" "$card" log) || exit 1
   have_sqlite || die "$SQLITE is not installed, so no hand-offs have been recorded on this machine."
 
-  # Reading never changes the store. An older one has no answer column, so it
-  # is read without one.
-  local answer_column=null view='' found=''
+  # Reading never changes the store, so an older one is read as it is: one
+  # with no answer column without one, and one from before the rename by its
+  # phase column, which is read as the step.
+  local answer_column=null step_column=step view='' found=''
   if [ -e "$STORE" ]; then
     ! has_answer_column || answer_column=answer
-    view=$(log_view "$name" "$card" "$answer_column")
+    has_step_column || step_column=phase
+    view=$(log_view "$name" "$card" "$answer_column" "$step_column")
   fi
   if [ -z "$card" ]; then
     log_cards "$name" "$json" "$view"
@@ -399,12 +416,12 @@ task_log() {
         'state', (select state from shown order by id desc limit 1),
         'waiting', (select nullif(waiting, '') from shown order by id desc limit 1),
         'run', (select max(run) from shown),
-        'steps', (select json_group_array(json(step)) from (
+        'steps', (select json_group_array(json(entry)) from (
           select json_object('run', run, 'at', at, 'clock', strftime('%H:%M', at, 'localtime'),
-            'phase', phase, 'status', status, 'next', next, 'kind', kind, 'label', label,
+            'step', step, 'status', status, 'next', next, 'kind', kind, 'label', label,
             'took', took, 'short', short, 'seconds', seconds, 'waiting', nullif(waiting, ''),
             'summary', summary, 'flags', flags, 'question', question, 'options', options,
-            'answer', answer, 'reason', reason) as step
+            'answer', answer, 'reason', reason) as entry
           from shown order by id)));" ||
       die "could not read the hand-offs in $STORE. It may not be entourage's store."
     return
@@ -413,21 +430,21 @@ task_log() {
   # The unit separator: no value can hold it, and unlike a tab it does not let
   # `read` run two empty fields together.
   local sep=$'\x1f' count=0 key
-  local at phase what took summary flags question options answer reason waiting
+  local at step what took summary flags question options answer reason waiting
   if [ -e "$STORE" ]; then
     found=$(store -separator "$sep" "$STORE" "$view
-      select at, phase, what, took, coalesce(summary, ''), coalesce(flags, ''),
+      select at, step, what, took, coalesce(summary, ''), coalesce(flags, ''),
         coalesce(question, ''), coalesce(options, ''), coalesce(answer, ''),
         coalesce(reason, ''), waiting
       from shown order by id;") ||
       die "could not read the hand-offs in $STORE. It may not be entourage's store."
   fi
-  while IFS=$sep read -r at phase what took summary flags question options answer reason waiting; do
+  while IFS=$sep read -r at step what took summary flags question options answer reason waiting; do
     [ -n "$at" ] || continue
     [ "$count" -gt 0 ] || say "$card in '$name'"
     count=$((count + 1))
-    if [ -n "$took" ]; then printf '%s  %-10s %-22s %s\n' "$at" "$phase" "$what" "$took"
-    else printf '%s  %-10s %s\n' "$at" "$phase" "$what"
+    if [ -n "$took" ]; then printf '%s  %-10s %-22s %s\n' "$at" "$step" "$what" "$took"
+    else printf '%s  %-10s %s\n' "$at" "$step" "$what"
     fi
     for key in summary flags question options answer reason; do
       [ -z "${!key}" ] || printf '    %s: %s\n' "$key" "${!key}"

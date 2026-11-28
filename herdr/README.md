@@ -88,7 +88,18 @@ re-reads everything.
 - **Check a machine:** `entourage status` lists each mod, layout, skill and
   phase profile and whether it is linked, and on a clone each dev profile's
   subagent and whether it is written. A settings file that is not valid
-  settings is a problem it names.
+  settings is a problem it names. Then it checks your Linear key (see
+  [Seeing a space's cards](#seeing-a-spaces-cards)), by asking Linear whose
+  it is, and says where the key is set and one of these:
+
+  | It says | When | Its exit code |
+  |---|---|---|
+  | `works`, and whose the key is | Linear knows the key. | not changed |
+  | `note`, that no Linear key is saved | Neither the env file nor your environment holds one. `task ls`, the Cards panel and `task start` need one; save one with `entourage linear key`. Nothing is asked of Linear. | not changed |
+  | `problem`, that Linear rejected the key | Linear does not know the key, or `LINEAR_API_KEY` does not hold a key at all. Make a new key in Linear and save it with `entourage linear key`. | non-zero |
+  | `note`, that the key was not checked, and why | Linear is out of reach, something between this machine and Linear answered for it, or `curl` or `jq` is not installed. It says nothing of the key, which may still work. Linear gets the 20 seconds every Linear command waits for it. | not changed |
+
+  The key itself is never shown.
 - **Remove one from a machine:** delete its link in `~/.config/herdr-app/mods`
   or `layouts`. The next `entourage update` will link it again, so remove it
   from the repo to drop it everywhere.
@@ -145,9 +156,10 @@ uses for it too. Only the template is in this repo. Your own spaces are in
 
 ## Tasks
 
-A task is one piece of work in a space, usually a Linear card. You run two
-commands, in this order: `task new`, then `task start`. Two more, `task
-handoff` and `task log`, record and show how each step ended.
+A task is one piece of work in a space, usually a Linear card. Two
+commands make it, in this order: `task new`, then `task start`, which the
+write-up phase runs for you once you approve the card, unless you hold it.
+Two more, `task handoff` and `task log`, record and show how each step ended.
 `task ls` lists the cards there are to start.
 
 ### Seeing a space's cards
@@ -176,6 +188,11 @@ entourage task ls <space> [--json]
 - **The key is never shown.** It is handed to `curl` on its stdin, never as an
   argument, and no message prints it. To take it off the machine, delete its
   line from the env file.
+- **`entourage status` checks the key** each time it runs, by asking Linear
+  whose it is. It says when the key works, when none is saved, when Linear
+  rejects it, and when it could not be checked; only a rejected key makes it
+  exit non-zero. See
+  [Keeping a machine up to date](#keeping-a-machine-up-to-date).
 - **When it cannot list, it says which thing is wrong:** no key saved, a key
   Linear rejects, Linear out of reach, something between this machine and
   Linear answering for it (a proxy's or a firewall's page), a space with no
@@ -213,7 +230,7 @@ entourage task new <space> <card>
 - **The card is its ID**, like `ABC-122`. Upper or lower case both work.
 - **It opens a tab named after the card** in the space, in the space's
   folder, and starts an agent in it for the write-up phase. The
-  harness is `claude`; `ENTOURAGE_AGENT` picks another command.
+  harness is `claude`; `ENTOURAGE_HARNESS` picks another command.
 - **`claude` starts with the write-up phase profile**,
   [../agents/entourage-write-up.md](../agents/entourage-write-up.md), linked
   into `~/.claude/agents`, on the `write-up` profile's model and effort:
@@ -238,7 +255,8 @@ entourage task new <space> <card>
   with the card and space filled in. It tells the agent to start with
   `sdlc-define` and follow each skill's handoff block to the next
   (`sdlc-plan`, then `sdlc-breakdown`), in that one session, and to wait for
-  your approval at the end. Edit that file to change what the agent is told.
+  your approval at the end, then start the build phase unless you hold it. Edit that
+  file to change what the agent is told.
 - **Your approval moves the card.** Once you approve it, and its sub-issues
   exist when it was sliced, the agent records the approval, and recording it
   moves the card in Linear to its team's first not-started status (Todo in
@@ -246,6 +264,22 @@ entourage task new <space> <card>
   team's statuses (see [Hand-offs](#hand-offs)). A card already further
   along, done or canceled stays where it is. When a card cannot be moved, the
   approval is still recorded, and the agent tells you which card, and why.
+- **Your approval starts the build phase, unless you hold it.** The approval
+  asks whether to start the build phase now. With `approve and start`, or any approval
+  that does not hold it back, the agent runs `entourage task start` itself
+  once the approval is recorded (see [Starting the work](#starting-the-work)),
+  and Herdr shows the task's new tab, as when you run it yourself. For a card
+  that was sliced, it starts the first sub-issue that is not already started,
+  done or canceled. With `approve, start later`, or an approval that holds it
+  back in other words, the approval is the same and moves the card the same
+  way, but the agent gives you the command to run when you want the build
+  phase to start. The agent passes on what `task start` says still needs you, such as
+  a repo Claude Code will ask about trusting. When `task start` stops, the
+  agent does not run it again: it tells you what it said and what to run once
+  that is fixed. `task log` shows which you chose, in your answer and the
+  approval's summary. A started task adds a `start` row under the card it
+  started, which for a sliced card is the sub-issue, so it is in that
+  sub-issue's log.
 - **It makes no branch, worktree or task folder.** The card has no type until
   the agent has defined it, and the type is the start of the branch name.
 - **It checks first.** An unknown space, something that is not a card ID,
@@ -323,8 +357,8 @@ recording its merge moves it to Done, which takes it off the list (see
 Each step of the write-up phase ends by handing off: which step it was, how it
 ended (`done`, `needs-human` or `failed`) and what comes next. Breakdown, the
 last of them, hands off `done` with `start` next once you approve the card:
-the next step is `entourage task start`, which you run. Recording that
-hand-off moves the card in Linear to its team's first not-started status (Todo
+the next step is `entourage task start`, which the agent runs, or gives
+you to run when you chose to start later. Recording that hand-off moves the card in Linear to its team's first not-started status (Todo
 in Lab, Ready for Dev in PHY), and each of its sub-issues with it, by its own
 team's statuses. What happened to each card is said on stderr; when one cannot
 be moved, the hand-off is still recorded, the note names each card that was
@@ -374,14 +408,14 @@ task as it is. A pull request closed without merging finishes nothing either:
 the agent asks you whether to stop. When it cannot push or open a pull
 request, such as when `gh` is not signed in or a repo has no remote, it hands
 off `failed` with the reason. `merged` is where a card ends: it is only ever
-next, and `task handoff` refuses it in the `phase:` line, which names the step
+next, and `task handoff` refuses it in the `step:` line, which names the step
 a hand-off is for. It does the same with `start`, since only `task start`
 records that step. The agent records each hand-off itself, with the block on
 stdin:
 
 ```sh
 entourage task handoff <space> <card> <<'EOF'
-phase: define
+step: define
 status: done
 next: plan
 summary: Set the type to fix. The Specification has six Done when items.
@@ -394,8 +428,10 @@ entourage task log <space> [<card>]
 
 - **The command holds the rules.** It refuses a block with a missing line, an
   unknown status or step, a line that doesn't belong to that status, or a
-  value that runs onto a second line, and says what to fix. Run it with no
-  block to see the rules.
+  value that runs onto a second line, and says what to fix. A block from an
+  agent that started before the step's line was called `step:` is refused
+  once, with `step:` to write in its place. Run it with no block to see the
+  rules.
 - **It is a command because wording wasn't enough.** An agent going from one
   skill straight into the next writes nothing in between, but it does run
   commands.
@@ -425,7 +461,11 @@ entourage task log <space> [<card>]
   beside your spaces, on this machine only. It needs `sqlite3`, which macOS
   ships; `ENTOURAGE_SQLITE` picks another command. Without it `task new`
   still starts the agent, the hand-offs are not recorded, and
-  `entourage status` says so.
+  `entourage status` says so. A store made before the block's line was
+  called `step:` keeps each step in a column called `phase`. The first
+  hand-off recorded into it renames that column to `step` and keeps every
+  hand-off it held; until then `task log` reads it as it is and changes
+  nothing.
 - **The card stays in Linear.** The store records how a step ended, not what
   was written.
 - **The Steps panel shows it in Herdr.** Select a card's tab, the one `task
@@ -450,8 +490,9 @@ entourage task start <space> <card> [<repo>[:<group>[,<group>...]] ...]
 ```
 
 - **The card is its ID**, like `ABC-122`, as for `task new`. The write-up
-  phase gives you this command once you approve the card. For a card that was
-  sliced, it gives the first sub-issue's ID.
+  phase runs this command once you approve the card, or gives it to you when
+  you chose to start later. For a card that was sliced, it uses the first
+  sub-issue that is not already started, done or canceled.
 - **Linear names the branch.** `task start` asks Linear for the card, with
   the key `linear key` saved (see
   [Seeing a space's cards](#seeing-a-spaces-cards)), and makes the branch
@@ -499,7 +540,7 @@ entourage task start <space> <card> [<repo>[:<group>[,<group>...]] ...]
   `entourage task build <space> <card>` into its shell, after setup when
   setup runs, so the agent starts on the card with no one typing there, and
   not before setup has finished. `task build` starts the agent for the build
-  phase in its harness (`ENTOURAGE_AGENT`, or `claude`) in the folder it is
+  phase in its harness (`ENTOURAGE_HARNESS`, or `claude`) in the folder it is
   run in, with the first message in
   [prompts/task-build.md](../prompts/task-build.md). `claude` starts with the
   build phase profile,
@@ -678,7 +719,7 @@ entourage profile set <profile> <model|effort> <value>
   npm install writes neither, since only a clone works on entourage.
 - **It needs `jq`.** Without it `profile` stops and says so, and `task new`
   and `task build` stop only when there is a file to read.
-- **Another harness**, named by `ENTOURAGE_AGENT`, starts with no model or
+- **Another harness**, named by `ENTOURAGE_HARNESS`, starts with no model or
   effort, as before, and the file is not read.
 
 ### The Agents button
@@ -756,7 +797,7 @@ shell, or written as a `NAME=value` line in entourage's env file,
 | Variable | What it sets |
 |---|---|
 | `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
-| `ENTOURAGE_AGENT` | The harness: the command `task new` and `task build` start the agent with. `claude` when it is not set, which starts with a phase profile. Another harness starts as it is, with no profile. Its name says agent, but what it names is the harness. |
+| `ENTOURAGE_HARNESS` | The harness: the command `task new` and `task build` start the agent with. `claude` when it is not set, which starts with a phase profile. Another harness starts as it is, with no profile. |
 | `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
 | `ENTOURAGE_SETUP` | `1` makes `task start` run each repo's `setup` recipe. Off when it is not set, for now. |
 | `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |

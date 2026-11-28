@@ -4,7 +4,7 @@ The words entourage's docs, skills, prompts and profiles use, and what each
 one means. Use each in this sense only, so that a word names one thing and a
 thing has one name. A name stays as it is wherever it appears: a command such
 as `task build`, a skill such as `sdlc-review`, a profile such as `build`, a
-hand-off value such as `next: review`, a variable such as `ENTOURAGE_AGENT`,
+hand-off value such as `next: review`, a variable such as `ENTOURAGE_HARNESS`,
 and a button or a heading.
 
 ## Software factory
@@ -37,8 +37,7 @@ is the skill of its name, such as `sdlc-define`. Start is the
 `entourage task start` command, which the human runs. Merged is where a card
 ends: it is only ever named as the next step.
 
-A hand-off names its step on its `phase:` line, as in `phase: define`. The
-line's name is older than these words, and what it holds is a step.
+A hand-off names its step on its `step:` line, as in `step: define`.
 
 ## Phase
 
@@ -96,8 +95,8 @@ one phase of a card. Not the program it runs in, which is the harness.
 
 ## Harness
 
-The program an agent runs in: `claude` unless `ENTOURAGE_AGENT` names another
-command. `ENTOURAGE_AGENT` names the harness, though its name says agent.
+The program an agent runs in: `claude` unless `ENTOURAGE_HARNESS` names
+another command.
 
 ## herdr-core
 

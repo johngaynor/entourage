@@ -75,7 +75,7 @@ With every pull request open, hand off as `needs-human` with their links:
 
 ```
 entourage task handoff <space> <card ID> <<'EOF'
-phase: pr
+step: pr
 status: needs-human
 summary: <the pull requests opened, one for each repo the work changed, what is left to the human in them, and why the card was not moved to In Review, if it was not>
 question: Merge <the link of each pull request>. I watch GitHub and record the merge myself; tell me here if you want a change instead.
@@ -89,7 +89,7 @@ Then start `entourage task watch <space> <card ID>` in the background, the way y
 
   ```
   entourage task handoff <space> <card ID> <<'EOF'
-  phase: pr
+  step: pr
   status: answered
   answer: merged on GitHub, seen by the watch
   EOF
@@ -100,7 +100,7 @@ Then start `entourage task watch <space> <card ID>` in the background, the way y
 
   ```
   entourage task handoff <space> <card ID> <<'EOF'
-  phase: pr
+  step: pr
   status: answered
   answer: closed on GitHub, <its link>
   EOF
@@ -111,7 +111,7 @@ Then start `entourage task watch <space> <card ID>` in the background, the way y
 
   ```
   entourage task handoff <space> <card ID> <<'EOF'
-  phase: pr
+  step: pr
   status: answered
   answer: in conflict on GitHub, <its link>
   EOF
@@ -147,7 +147,7 @@ Then hand off as `needs-human` again, with the links, and wait as section 5 says
 
 ```
 entourage task handoff <space> <card ID> <<'EOF'
-phase: pr
+step: pr
 status: needs-human
 summary: <the change made, the commit in each pull request that makes it, and that the tests pass>
 question: Merge <the link of each pull request>. I watch GitHub and record the merge myself; tell me here if you want a change instead.
@@ -161,7 +161,7 @@ When every pull request for the card has merged, as the watch saw it or `--once`
 
 ```
 entourage task handoff <space> <card ID> <<'EOF'
-phase: pr
+step: pr
 status: done
 next: merged
 summary: <each pull request, and the default branch it merged into>
@@ -199,7 +199,7 @@ Ask the human only when you cannot settle the conflict: when the tests cannot be
 
 ```
 entourage task handoff <space> <card ID> <<'EOF'
-phase: pr
+step: pr
 status: needs-human
 summary: <why it cannot be settled: the tests that fail and what you tried, or the Done when item a resolution would change, and how>
 question: <the pull request> is in conflict with <the default branch> in <the files in conflict>. <the resolution you recommend>?
@@ -213,7 +213,7 @@ Once the merge is committed and the tests pass, record the hand-off:
 
 ```
 entourage task handoff <space> <card ID> <<'EOF'
-phase: pr
+step: pr
 status: done
 next: review
 summary: <the pull request brought up to date, the merge commit, the files that conflicted and what the fix changed, and that the tests pass>
@@ -230,7 +230,7 @@ Record a hand-off every time this step ends or pauses: when the step is finished
 
 ```
 entourage task handoff <space> <card ID> <<'EOF'
-phase: <this step>
+step: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
 summary: <one to three sentences on what you did>
@@ -242,14 +242,14 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<space>` is the entourage space this session is in. The `phase:` line names this step, not a phase. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<space>` is the entourage space this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
-| `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
-| `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
-| `answered` | The human has replied to a `needs-human` hand-off | `phase`, `status`, `answer` |
-| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
+| `done` | This step's work is on the card and you have read it back | `step`, `status`, `next`, `summary`, and `flags` if there are any |
+| `needs-human` | You can't go on without an answer or an approval | `step`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `answered` | The human has replied to a `needs-human` hand-off | `step`, `status`, `answer` |
+| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `step`, `status`, `reason` |
 
 - **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage space, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a space or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.
@@ -314,7 +314,7 @@ Builds [ABC-122](https://linear.app/acme/issue/ABC-122/export-orders-as-csv): Ex
 
 ```
 entourage task handoff shop ABC-122 <<'EOF'
-phase: pr
+step: pr
 status: needs-human
 summary: Opened acme/api#141 and acme/web#88 into main, each linking the card and the other, and moved ABC-122 to In Review. One item is left to you: open the file in a spreadsheet.
 question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88. I watch GitHub and record the merge myself; tell me here if you want a change instead.
@@ -324,7 +324,7 @@ EOF
 
 ```
 entourage task handoff shop ABC-122 <<'EOF'
-phase: pr
+step: pr
 status: answered
 answer: name the file by the day it was made
 EOF
@@ -332,7 +332,7 @@ EOF
 
 ```
 entourage task handoff shop ABC-122 <<'EOF'
-phase: pr
+step: pr
 status: needs-human
 summary: The file is named orders-YYYY-MM-DD.csv now, with its test, in commit 5c1e0d2 on acme/api#141, and its description lists the change. Both test suites pass.
 question: Merge https://github.com/acme/api/pull/141 and https://github.com/acme/web/pull/88. I watch GitHub and record the merge myself; tell me here if you want a change instead.
@@ -342,7 +342,7 @@ EOF
 
 ```
 entourage task handoff shop ABC-122 <<'EOF'
-phase: pr
+step: pr
 status: answered
 answer: merged on GitHub, seen by the watch
 EOF
@@ -350,7 +350,7 @@ EOF
 
 ```
 entourage task handoff shop ABC-122 <<'EOF'
-phase: pr
+step: pr
 status: done
 next: merged
 summary: acme/api#141 and acme/web#88 have both merged into main.

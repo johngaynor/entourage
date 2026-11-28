@@ -112,7 +112,7 @@ When the Specification is on the card and you have read it back, record the hand
 
 ```
 entourage task handoff <space> <card ID> <<'EOF'
-phase: define
+step: define
 status: done
 next: plan
 summary: <the type you set, whether you replaced a label that was already there, and how many Done when items there are>
@@ -130,7 +130,7 @@ Record a hand-off every time this step ends or pauses: when the step is finished
 
 ```
 entourage task handoff <space> <card ID> <<'EOF'
-phase: <this step>
+step: <this step>
 status: <done, needs-human or failed>
 next: <the step that follows>
 summary: <one to three sentences on what you did>
@@ -142,14 +142,14 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<space>` is the entourage space this session is in. The `phase:` line names this step, not a phase. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<space>` is the entourage space this session is in. The `step:` line names this step. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
-| `done` | This step's work is on the card and you have read it back | `phase`, `status`, `next`, `summary`, and `flags` if there are any |
-| `needs-human` | You can't go on without an answer or an approval | `phase`, `status`, `question`, `options`, and `summary` if it helps them answer |
-| `answered` | The human has replied to a `needs-human` hand-off | `phase`, `status`, `answer` |
-| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `phase`, `status`, `reason` |
+| `done` | This step's work is on the card and you have read it back | `step`, `status`, `next`, `summary`, and `flags` if there are any |
+| `needs-human` | You can't go on without an answer or an approval | `step`, `status`, `question`, `options`, and `summary` if it helps them answer |
+| `answered` | The human has replied to a `needs-human` hand-off | `step`, `status`, `answer` |
+| `failed` | Something is missing or went wrong, and this skill tells you to stop or doesn't cover it | `step`, `status`, `reason` |
 
 - **If the command refuses the block, fix what it names and run it again.** If it can't record at all, because the command is missing, you are not in an entourage space, or it says the hand-off was not recorded, write the block in your message instead and carry on. Don't make a space or install anything to get it to run.
 - **When you stop for the human, end your message with the block the command printed.** Above it goes only what the human needs and can't read on the card: a section you could not write there, or the summary they approve from.

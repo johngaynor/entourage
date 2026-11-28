@@ -3,7 +3,7 @@
 # machine when asked, and that the installed copy is never stopped. Sourced by
 # test/run.sh.
 
-BLOCK='phase: build
+BLOCK='step: build
 status: done
 next: review
 summary: Built the export.'

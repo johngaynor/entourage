@@ -10,7 +10,7 @@ demo() { "$E" space new demo >/dev/null; }
 # Hand the block in $1 off for ABC-122 in demo.
 hand() { printf '%s\n' "$1" | "$E" task handoff demo ABC-122; }
 
-DONE_BLOCK='phase: define
+DONE_BLOCK='step: define
 status: done
 next: plan
 summary: Set the type to fix.
@@ -21,7 +21,7 @@ handoff_records_a_done_step() {
   out=$(hand "$DONE_BLOCK") || fail "task handoff exited non-zero"
   [ "$out" = "$DONE_BLOCK" ] || fail "did not print the block back: $out"
   [ "$(rows)" = 1 ] || fail "expected one row, got $(rows)"
-  got=$(q "select project || '|' || card || '|' || phase || '|' || status || '|' || next || '|' || summary || '|' || flags from handoffs")
+  got=$(q "select project || '|' || card || '|' || step || '|' || status || '|' || next || '|' || summary || '|' || flags from handoffs")
   [ "$got" = 'demo|ABC-122|define|done|plan|Set the type to fix.|Not reproduced.' ] || fail "wrong row: $got"
   at=$(q 'select at from handoffs')
   re='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
@@ -36,13 +36,13 @@ summary: Set the type to fix.
 
 next: plan
 status: done
-phase: define') || fail "task handoff exited non-zero"
+step: define') || fail "task handoff exited non-zero"
   [ "$out" = "$DONE_BLOCK" ] || fail "did not put the lines in the usual order: $out"
 }
 
 handoff_records_a_question() {
   demo
-  block='phase: breakdown
+  block='step: breakdown
 status: needs-human
 summary: fix, one piece.
 question: Approve ABC-122 as specified, planned and broken down?
@@ -56,10 +56,10 @@ options: approve | change breakdown | change plan | change specification'
 
 handoff_records_a_failure() {
   demo
-  hand 'phase: plan
+  hand 'step: plan
 status: failed
 reason: The card has no Specification.' >/dev/null || fail "task handoff exited non-zero"
-  [ "$(q "select phase || '|' || status || '|' || reason from handoffs")" = 'plan|failed|The card has no Specification.' ] ||
+  [ "$(q "select step || '|' || status || '|' || reason from handoffs")" = 'plan|failed|The card has no Specification.' ] ||
     fail "wrong row: $(q 'select * from handoffs')"
 }
 
@@ -73,40 +73,40 @@ refused() {
 
 handoff_refuses_a_missing_line() {
   demo
-  refused 'phase: define
+  refused 'step: define
 status: done
 summary: Done.' 'next'
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan' 'summary'
-  refused 'phase: define
+  refused 'step: define
 status: needs-human
 question: Which users?' 'options'
-  refused 'phase: define
+  refused 'step: define
 status: failed' 'reason'
-  refused 'phase: define
+  refused 'step: define
 next: plan
 summary: Done.' 'status'
   refused 'status: done
 next: plan
-summary: Done.' 'phase'
+summary: Done.' "'step:'"
 }
 
 handoff_refuses_what_it_does_not_know() {
   demo
-  refused 'phase: define
+  refused 'step: define
 status: finished
 next: plan
 summary: Done.' 'finished'
-  refused 'phase: deploy
+  refused 'step: deploy
 status: done
 next: plan
 summary: Done.' 'deploy'
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: ship
 summary: Done.' 'ship'
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan
 summary: Done.
@@ -115,16 +115,16 @@ note: Something else.' 'note'
 
 handoff_refuses_a_line_that_does_not_belong() {
   demo
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan
 summary: Done.
 reason: None.' 'reason'
-  refused 'phase: define
+  refused 'step: define
 status: failed
 reason: Linear is down.
 next: plan' 'next'
-  refused 'phase: define
+  refused 'step: define
 status: needs-human
 question: Which users?
 options: all | admins
@@ -133,7 +133,7 @@ flags: None.' 'flags'
 
 handoff_refuses_a_value_on_two_lines() {
   demo
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan
 summary: Set the type to fix
@@ -142,12 +142,12 @@ and wrote the Specification.' 'one line'
 
 handoff_refuses_a_repeated_or_empty_line() {
   demo
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan
 summary: Done.
 summary: Really done.' 'twice'
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan
 summary: Done.
@@ -157,7 +157,8 @@ flags:' 'flags'
 handoff_refuses_an_empty_block() {
   demo
   if out=$("$E" task handoff demo ABC-122 </dev/null 2>&1); then fail "accepted no block at all"; fi
-  case $out in *'phase:'*) ;; *) fail "does not show what a block looks like: $out" ;; esac
+  case $out in *'step:'*) ;; *) fail "does not show what a block looks like: $out" ;; esac
+  case $out in *'phase'*) fail "the usage still names a phase: $out" ;; esac
 }
 
 handoff_refuses_unknown_space_and_bad_card() {
@@ -178,7 +179,7 @@ handoff_keeps_awkward_text() {
   IFS= read -r text <<'EOF'
 It's "done"; ran `ls` and $HOME, then '); drop table handoffs; -- 100% \n .shell true
 EOF
-  block="phase: define
+  block="step: define
 status: done
 next: plan
 summary: $text"
@@ -208,7 +209,7 @@ handoff_without_sqlite_says_so() {
   if out=$(hand "$DONE_BLOCK" 2>&1); then fail "claimed to record without sqlite3"; fi
   case $out in *'not recorded'*) ;; *) fail "does not say the hand-off was not recorded: $out" ;; esac
   # A block that breaks the rules is still refused for that, so the agent hears it.
-  if out=$(hand 'phase: define
+  if out=$(hand 'step: define
 status: done' 2>&1); then fail "accepted a broken block"; fi
   case $out in *'next'*) ;; *) fail "did not check the block first: $out" ;; esac
 }
@@ -224,7 +225,7 @@ started_demo() {
 task_new_records_the_start() {
   started_demo
   "$E" task new demo abc-122 >/dev/null || fail "task new exited non-zero"
-  [ "$(q "select card || '|' || phase || '|' || status || '|' || next from handoffs")" = 'ABC-122|new|done|define' ] ||
+  [ "$(q "select card || '|' || step || '|' || status || '|' || next from handoffs")" = 'ABC-122|new|done|define' ] ||
     fail "no starting row: $(q 'select * from handoffs')"
 }
 
@@ -251,14 +252,14 @@ status_notes_missing_sqlite() {
 log_lists_a_cards_handoffs_in_order() {
   demo
   hand "$DONE_BLOCK" >/dev/null
-  hand 'phase: plan
+  hand 'step: plan
 status: needs-human
 question: Reuse the invoice export?
 options: yes | write a new one' >/dev/null
-  printf 'phase: define\nstatus: done\nnext: plan\nsummary: Another card entirely.\n' |
+  printf 'step: define\nstatus: done\nnext: plan\nsummary: Another card entirely.\n' |
     "$E" task handoff demo ABC-9 >/dev/null
   "$E" space new other >/dev/null
-  printf 'phase: define\nstatus: done\nnext: plan\nsummary: Another space entirely.\n' |
+  printf 'step: define\nstatus: done\nnext: plan\nsummary: Another space entirely.\n' |
     "$E" task handoff other ABC-122 >/dev/null
   out=$("$E" task log demo abc-122) || fail "task log exited non-zero"
   first=$(printf '%s\n' "$out" | grep -n 'define' | head -1 | cut -d: -f1)
@@ -304,11 +305,11 @@ task_new_starts_when_the_store_cannot_be_written() {
 
 handoff_refuses_two_steps_in_one_value() {
   demo
-  refused 'phase: define plan
+  refused 'step: define plan
 status: done
 next: plan
 summary: Done.' 'define plan'
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan breakdown
 summary: Done.' 'plan breakdown'
@@ -316,7 +317,7 @@ summary: Done.' 'plan breakdown'
 
 handoff_refuses_a_control_character() {
   demo
-  refused "phase: define
+  refused "step: define
 status: done
 next: plan
 summary: A tab$(printf '\t')in the middle." 'control character'
@@ -324,15 +325,15 @@ summary: A tab$(printf '\t')in the middle." 'control character'
 
 handoff_takes_crlf_lines() {
   demo
-  printf 'phase: define\r\nstatus: done\r\nnext: plan\r\nsummary: From a Windows editor.\r\n' |
+  printf 'step: define\r\nstatus: done\r\nnext: plan\r\nsummary: From a Windows editor.\r\n' |
     "$E" task handoff demo ABC-122 >/dev/null || fail "refused a block with CRLF line ends"
-  [ "$(q "select phase || '|' || summary from handoffs")" = 'define|From a Windows editor.' ] ||
+  [ "$(q "select step || '|' || summary from handoffs")" = 'define|From a Windows editor.' ] ||
     fail "kept the carriage returns: $(q 'select hex(summary) from handoffs')"
 }
 
 handoff_takes_indented_lines() {
   demo
-  out=$(hand '  phase: define
+  out=$(hand '  step: define
   status: done
   next: plan
   summary: Set the type to fix.
@@ -344,7 +345,7 @@ handoff_takes_indented_lines() {
 # a hand-off.
 handoff_refuses_a_placeholder_left_in() {
   demo
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan
 summary: <one to three sentences on what you did>' 'placeholder'
@@ -353,7 +354,7 @@ summary: <one to three sentences on what you did>' 'placeholder'
 handoff_refuses_a_very_long_line() {
   demo
   long=$(printf 'x%.0s' $(seq 1 5000))
-  refused "phase: define
+  refused "step: define
 status: done
 next: plan
 summary: $long" 'characters'
@@ -381,24 +382,24 @@ log_says_when_nothing_is_recorded() {
 
 handoff_records_an_answer() {
   demo
-  block='phase: breakdown
+  block='step: breakdown
 status: answered
 answer: change specification: the athlete app only'
   out=$(hand "$block") || fail "task handoff exited non-zero"
   [ "$out" = "$block" ] || fail "did not print the block back: $out"
-  [ "$(q "select phase || '|' || status || '|' || answer from handoffs")" = 'breakdown|answered|change specification: the athlete app only' ] ||
+  [ "$(q "select step || '|' || status || '|' || answer from handoffs")" = 'breakdown|answered|change specification: the athlete app only' ] ||
     fail "wrong row: $(q 'select * from handoffs')"
 }
 
 handoff_checks_an_answer() {
   demo
-  refused 'phase: breakdown
+  refused 'step: breakdown
 status: answered' "'answer:'"
-  refused 'phase: breakdown
+  refused 'step: breakdown
 status: answered
 answer: approve
 summary: They approved.' 'summary'
-  refused 'phase: define
+  refused 'step: define
 status: done
 next: plan
 summary: Done.
@@ -422,7 +423,7 @@ step_logged() {
 
 # The build step hands off as build, with review next when it is done.
 handoff_records_a_finished_build() {
-  step_logged 'phase: build
+  step_logged 'step: build
 status: done
 next: review
 summary: Built the CSV export and its tests. The tests pass.' \
@@ -430,7 +431,7 @@ summary: Built the CSV export and its tests. The tests pass.' \
 }
 
 handoff_records_a_build_that_needs_the_human() {
-  step_logged 'phase: build
+  step_logged 'step: build
 status: needs-human
 question: The Plan names a helper that does not exist. Write it, or reuse the invoice export?
 options: reuse the invoice export | write the helper' \
@@ -439,7 +440,7 @@ options: reuse the invoice export | write the helper' \
 }
 
 handoff_records_a_failed_build() {
-  step_logged 'phase: build
+  step_logged 'step: build
 status: failed
 reason: The card has no Plan, so nothing was built.' \
     'build      failed' '    reason: The card has no Plan, so nothing was built.'
@@ -448,7 +449,7 @@ reason: The card has no Plan, so nothing was built.' \
 # The review hands off as review. When every Done when item is met, the pull
 # request is next; when one is not, the build is.
 handoff_records_a_review_that_passes() {
-  step_logged 'phase: review
+  step_logged 'step: review
 status: done
 next: pr
 summary: All three Done when items are met, each by its test. The tests pass.' \
@@ -456,7 +457,7 @@ summary: All three Done when items are met, each by its test. The tests pass.' \
 }
 
 handoff_records_a_review_that_sends_the_work_back() {
-  step_logged 'phase: review
+  step_logged 'step: review
 status: done
 next: build
 summary: Item 2 is not met: no test checks that the file has one row per order.' \
@@ -465,7 +466,7 @@ summary: Item 2 is not met: no test checks that the file has one row per order.'
 }
 
 handoff_records_a_review_that_needs_the_human() {
-  step_logged 'phase: review
+  step_logged 'step: review
 status: needs-human
 question: Item 2 is still not met after one send-back. Build again, or stop?
 options: build again | stop' \
@@ -474,7 +475,7 @@ options: build again | stop' \
 }
 
 handoff_records_a_failed_review() {
-  step_logged 'phase: review
+  step_logged 'step: review
 status: failed
 reason: No worktree has commits ahead of main, so nothing was built.' \
     'review     failed' '    reason: No worktree has commits ahead of main, so nothing was built.'
@@ -484,7 +485,7 @@ reason: No worktree has commits ahead of main, so nothing was built.' \
 # once every pull request for the card has merged, merged is next: where the
 # card ends.
 handoff_records_a_pull_request_waiting_to_merge() {
-  step_logged 'phase: pr
+  step_logged 'step: pr
 status: needs-human
 question: Merge https://github.com/acme/shop/pull/7, then tell me when it has merged.
 options: merged | stop here' \
@@ -493,7 +494,7 @@ options: merged | stop here' \
 }
 
 handoff_records_a_merge() {
-  step_logged 'phase: pr
+  step_logged 'step: pr
 status: done
 next: merged
 summary: https://github.com/acme/shop/pull/7 has merged into main.' \
@@ -501,7 +502,7 @@ summary: https://github.com/acme/shop/pull/7 has merged into main.' \
 }
 
 handoff_records_a_pull_request_that_cannot_be_opened() {
-  step_logged 'phase: pr
+  step_logged 'step: pr
 status: failed
 reason: gh is not signed in, so nothing was pushed. Run: gh auth login' \
     'pr         failed' '    reason: gh is not signed in, so nothing was pushed. Run: gh auth login'
@@ -509,20 +510,36 @@ reason: gh is not signed in, so nothing was pushed. Run: gh auth login' \
 
 # merged is where a card ends. A step can hand on to it, but nothing hands
 # off as it.
-handoff_refuses_merged_as_a_phase() {
+handoff_refuses_merged_as_a_step() {
   demo
-  refused 'phase: merged
+  refused 'step: merged
 status: done
 next: pr
 summary: Merged.' 'merged'
-  refused 'phase: merged
+  refused 'step: merged
 status: failed
 reason: Not merged.' 'merged'
 }
 
+# The line that names the step was called phase. A block that still has one,
+# from an agent that started before the rename, is refused with what to write
+# instead, even when it has a step: line too.
+handoff_refuses_a_phase_line() {
+  demo
+  refused 'phase: define
+status: done
+next: plan
+summary: Done.' "write 'step:'"
+  refused 'step: define
+phase: define
+status: done
+next: plan
+summary: Done.' "write 'step:'"
+}
+
 # --- the card moves to done on its merge ------------------------------------
 
-MERGE_BLOCK='phase: pr
+MERGE_BLOCK='step: pr
 status: done
 next: merged
 summary: https://github.com/acme/shop/pull/7 has merged into main.'
@@ -568,14 +585,14 @@ handoff_moves_the_card_only_on_the_merge() {
   demo
   linear_for_moves "$(move_answer ABC-122 'In Review')" "$(moved_answer Done)"
   local block
-  for block in 'phase: pr
+  for block in 'step: pr
 status: failed
-reason: https://github.com/acme/shop/pull/7 was closed without merging.' 'phase: pr
+reason: https://github.com/acme/shop/pull/7 was closed without merging.' 'step: pr
 status: needs-human
 question: https://github.com/acme/shop/pull/7 was closed without merging. Reopen it, or stop here?
-options: stop here | reopen it' 'phase: pr
+options: stop here | reopen it' 'step: pr
 status: answered
-answer: stop here' 'phase: review
+answer: stop here' 'step: review
 status: done
 next: pr
 summary: Every Done when item is met.' "$DONE_BLOCK"; do
@@ -613,7 +630,7 @@ handoff_records_the_merge_with_no_key_saved() {
 
 # --- the card and its slices move to not-started on approval ----------------
 
-APPROVE_BLOCK='phase: breakdown
+APPROVE_BLOCK='step: breakdown
 status: done
 next: start
 summary: Approved as one piece.'
@@ -727,12 +744,12 @@ handoff_moves_the_card_only_on_approval() {
   demo
   linear_for_moves "$(move_answer ABC-122 Backlog)" "$(moved_answer Todo)"
   local block
-  for block in 'phase: breakdown
+  for block in 'step: breakdown
 status: needs-human
 question: Approve ABC-122 as specified, planned and broken down?
-options: approve | change breakdown | change plan | change specification' 'phase: breakdown
+options: approve | change breakdown | change plan | change specification' 'step: breakdown
 status: answered
-answer: approve' 'phase: breakdown
+answer: approve' 'step: breakdown
 status: failed
 reason: Could not create the sub-issues.'; do
     hand "$block" >/dev/null 2>"$TMP/err" || fail "task handoff refused the block: $block: $(cat "$TMP/err")"
@@ -748,26 +765,26 @@ reason: Could not create the sub-issues.'; do
 handoff_takes_start_only_as_next() {
   demo
   local steps='The steps are: define plan breakdown start build review pr merged.'
-  refused 'phase: breakdown
+  refused 'step: breakdown
 status: done
 next: setup
 summary: Approved as one piece.' "'setup' is not a step that can come next. $steps"
-  refused 'phase: setup
+  refused 'step: setup
 status: done
 next: build
 summary: Set up.' "'setup' is not a step. $steps"
-  refused 'phase: start
+  refused 'step: start
 status: done
 next: build
 summary: Started.' 'entourage task start'
-  refused 'phase: start
+  refused 'step: start
 status: failed
 reason: Could not start.' 'entourage task start'
-  hand 'phase: breakdown
+  hand 'step: breakdown
 status: done
 next: start
 summary: Approved as one piece.' >/dev/null 2>&1 || fail "task handoff refused breakdown with next: start"
-  [ "$(q "select phase || '|' || status || '|' || next from handoffs")" = 'breakdown|done|start' ] ||
+  [ "$(q "select step || '|' || status || '|' || next from handoffs")" = 'breakdown|done|start' ] ||
     fail "wrong row: $(q 'select * from handoffs')"
 }
 
@@ -782,48 +799,148 @@ older_store() {
     values ('2026-01-01T10:00:00Z', 'demo', 'ABC-122', 'define', 'done', 'plan', 'From the older store.');"
 }
 
+# A store as the release before the rename leaves it: it has the answer
+# column, and names each hand-off's step in a phase column. The same one row.
+phase_store() {
+  mkdir -p "$HOME/.config/entourage"
+  sqlite3 "$(STORE)" "create table handoffs (
+    id integer primary key, at text not null, project text not null,
+    card text not null, phase text not null, status text not null,
+    next text, summary text, flags text, question text, options text,
+    answer text, reason text);
+    insert into handoffs (at, project, card, phase, status, next, summary)
+    values ('2026-01-01T10:00:00Z', 'demo', 'ABC-122', 'define', 'done', 'plan', 'From the older store.');"
+}
+
+# The store's columns, one per line.
+columns() { q "select name from pragma_table_info('handoffs')"; }
+# Has the store a column called $1?
+has_column() { columns | grep -qx "$1"; }
+
 # The first hand-off into an older store adds the column and keeps what was
 # there. Nothing reads the store first here, so only the hand-off can add it.
 an_older_store_gains_the_answer_column() {
   demo; older_store
-  hand 'phase: breakdown
+  hand 'step: breakdown
 status: answered
 answer: approve' >/dev/null || fail "could not record an answer in an older store"
   [ "$(q 'select count(*) from handoffs')" = 2 ] || fail "expected the old row and the new one: $(rows)"
   [ "$(q "select answer from handoffs where status = 'answered'")" = approve ] || fail "the answer was not kept"
-  [ "$(q "select summary from handoffs where phase = 'define'")" = 'From the older store.' ] || fail "lost the older row"
+  [ "$(q "select summary from handoffs where step = 'define'")" = 'From the older store.' ] || fail "lost the older row"
 }
 
 # Reading never changes the store: an older one is read as it is, even when
-# the file cannot be written.
+# the file cannot be written. Its phase column is read as the step, and it
+# stays a phase column.
 log_reads_an_older_store_without_changing_it() {
-  demo; older_store
-  chmod 444 "$(STORE)"
-  out=$("$E" task log demo ABC-122) || fail "task log failed on an older, read-only store: $out"
-  case $out in *'From the older store.'*) ;; *) fail "did not show the older row: $out" ;; esac
-  chmod 644 "$(STORE)"
-  if q 'select answer from handoffs limit 0' >/dev/null; then fail "task log changed the store"; fi
+  demo
+  local store
+  for store in older_store phase_store; do
+    rm -f "$(STORE)"; "$store"
+    chmod 444 "$(STORE)"
+    out=$("$E" task log demo ABC-122) || fail "task log failed on the $store, read-only: $out"
+    case $out in *'From the older store.'*) ;; *) fail "did not show the older row of the $store: $out" ;; esac
+    log_has '^2026-01-01T10:00:00Z  define +done, then plan$'
+    out=$("$E" task log demo ABC-122 --json) || fail "task log --json failed on the $store: $out"
+    j_is '.steps[0].step' define; j_is '.steps[0] | has("phase")' false
+    out=$("$E" task log demo --json) || fail "task log --json with no card failed on the $store: $out"
+    j_is '.cards[0].step' define; j_is '.cards[0] | has("phase")' false
+    chmod 644 "$(STORE)"
+    has_column phase && ! has_column step || fail "task log renamed the column of the $store: $(columns)"
+  done
+  rm -f "$(STORE)"; older_store
+  "$E" task log demo ABC-122 >/dev/null || fail "task log failed on the older store"
+  ! has_column answer || fail "task log added the answer column"
 }
 
 # Two tasks can hand off into an older store at the same moment. Both try to
-# add the column, one loses, and its hand-off must still be recorded.
+# add the column or rename it, one loses, and its hand-off must still be
+# recorded.
 hand_offs_at_once_into_an_older_store_are_all_recorded() {
-  demo; older_store
-  local i
-  for i in 1 2 3 4 5 6; do
-    printf 'phase: plan\nstatus: done\nnext: breakdown\nsummary: Writer %s.\n' "$i" |
-      "$E" task handoff demo "ABC-$i" >/dev/null 2>&1 &
+  demo
+  local store i
+  for store in older_store phase_store; do
+    rm -f "$(STORE)"; "$store"
+    for i in 1 2 3 4 5 6; do
+      printf 'step: plan\nstatus: done\nnext: breakdown\nsummary: Writer %s.\n' "$i" |
+        "$E" task handoff demo "ABC-$i" >/dev/null 2>&1 &
+    done
+    wait
+    [ "$(q "select count(*) from handoffs where step = 'plan'")" = 6 ] ||
+      fail "expected six hand-offs into the $store, got $(q "select count(*) from handoffs where step = 'plan'")"
+    [ "$(rows)" = 7 ] || fail "expected the older row and six more in the $store, got $(rows)"
   done
-  wait
-  [ "$(q "select count(*) from handoffs where phase = 'plan'")" = 6 ] ||
-    fail "expected six hand-offs, got $(q "select count(*) from handoffs where phase = 'plan'")"
+}
+
+# The first hand-off into a store from before the rename renames its phase
+# column to step, and every row it held is still there. So it does for a
+# store that has no answer column yet, which gains one too.
+an_older_store_has_its_phase_column_renamed() {
+  demo
+  local store
+  for store in older_store phase_store; do
+    rm -f "$(STORE)"; "$store"
+    hand 'step: plan
+status: done
+next: breakdown
+summary: After the rename.' >/dev/null || fail "could not hand off into the $store"
+    has_column step || fail "the $store has no step column: $(columns)"
+    ! has_column phase || fail "the $store still has a phase column: $(columns)"
+    has_column answer || fail "the $store has no answer column: $(columns)"
+    [ "$(rows)" = 2 ] || fail "expected the older row and the new one in the $store, got $(rows)"
+    [ "$(q "select step || '|' || summary from handoffs order by id limit 1")" = 'define|From the older store.' ] ||
+      fail "lost the older row of the $store: $(q 'select * from handoffs')"
+    [ "$(q "select step || '|' || summary from handoffs order by id desc limit 1")" = 'plan|After the rename.' ] ||
+      fail "did not record the new row in the $store: $(q 'select * from handoffs')"
+  done
+}
+
+# Put a row for ABC-122 into a store from before the rename, at a set time.
+#   put_phase <time> <step> <status> [<next>]
+put_phase() {
+  q "insert into handoffs (at, project, card, phase, status, next)
+     values ('$1', 'demo', 'ABC-122', '$2', '$3', nullif('${4:-}', ''));"
+}
+
+# What task log and the Steps panel show for a card is the same after the
+# rename as before it: the rows recorded before it read as they did, both in
+# the plain log and in the JSON the panel draws.
+log_reads_the_same_before_and_after_the_rename() {
+  demo
+  local store before_text before_json
+  for store in older_store phase_store; do
+    rm -f "$(STORE)"; "$store"
+    put_phase 2026-01-01T10:01:44Z plan done breakdown
+    put_phase 2026-01-01T10:01:49Z breakdown needs-human
+    put_phase 2026-01-01T10:08:53Z breakdown answered
+    put_phase 2026-01-01T10:10:00Z breakdown done start
+    put_phase 2026-01-01T11:00:00Z start done build
+    put_phase 2026-01-01T11:20:00Z build done review
+    [ "$store" != phase_store ] || q "update handoffs set answer = 'approve' where status = 'answered'"
+    before_text=$("$E" task log demo ABC-122) || fail "task log failed on the $store"
+    before_json=$("$E" task log demo ABC-122 --json) || fail "task log --json failed on the $store"
+    out=$before_text
+    log_has '^2026-01-01T10:01:44Z  plan +done, then breakdown +1m 44s$'
+    log_has 'breakdown +answered +waited 7m 04s$'
+    log_has 'start +done, then build$'
+    log_has 'build +done, then review +20m 00s$'
+    # A hand-off for another card renames the column.
+    printf '%s\n' "$DONE_BLOCK" | "$E" task handoff demo ABC-1 >/dev/null || fail "could not hand off into the $store"
+    has_column step && ! has_column phase || fail "the $store was not renamed: $(columns)"
+    out=$("$E" task log demo ABC-122) || fail "task log failed after the rename of the $store"
+    [ "$out" = "$before_text" ] || fail "the log of the $store changed with the rename: was $before_text, is $out"
+    out=$("$E" task log demo ABC-122 --json) || fail "task log --json failed after the rename of the $store"
+    [ "$out" = "$before_json" ] || fail "the JSON of the $store changed with the rename: was $before_json, is $out"
+    j_is '.steps[3].kind' wait; j_is '.steps[5].kind' start; j_is '.steps[6].step' build
+  done
+  j_is '.steps[3].answer' approve
 }
 
 # Put a row for ABC-122 straight into the store at a set time. The store has
 # to exist first, so each case that uses this records one row for another card.
-#   put <time> <phase> <status> [<next>] [<answer>]
+#   put <time> <step> <status> [<next>] [<answer>]
 put() {
-  q "insert into handoffs (at, project, card, phase, status, next, answer)
+  q "insert into handoffs (at, project, card, step, status, next, answer)
      values ('$1', 'demo', 'ABC-122', '$2', '$3', nullif('${4:-}', ''), nullif('${5:-}', ''));"
 }
 make_store() { printf '%s\n' "$DONE_BLOCK" | "$E" task handoff demo ABC-1 >/dev/null; }
@@ -923,7 +1040,7 @@ log_marks_a_step_that_includes_waiting() {
 log_shows_a_question_still_waiting() {
   demo; make_store
   put 2026-01-01T10:00:00Z plan done breakdown
-  q "insert into handoffs (at, project, card, phase, status, question, options)
+  q "insert into handoffs (at, project, card, step, status, question, options)
      values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-125 seconds'), 'demo', 'ABC-122', 'breakdown', 'needs-human', 'Approve?', 'approve | change plan');"
   out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
   log_has '^    waiting on the human for 2m [0-5][0-9]s$'
@@ -955,6 +1072,8 @@ log_json_is_the_same_view_on_one_line() {
   # Every label and time is worked out already: the reader formats nothing.
   j_is '.steps[0].label' started;                      j_is '.steps[0].took' '';  j_is '.steps[0].kind' start
   j_is '.steps[1].label' 'define done';                j_is '.steps[1].took' 50s; j_is '.steps[1].seconds' 50
+  # Each step names its step, under step: phase was the line's old name.
+  j_is '.steps[1].step' define;                        j_is '[.steps[] | has("phase")] | any' false
   j_is '.steps[2].took' '1m 44s'
   j_is '.steps[3].label' 'breakdown asked a question'; j_is '.steps[3].took' 5s
   j_is '.steps[4].label' answered;                     j_is '.steps[4].took' 'waited 7m 04s'
@@ -988,7 +1107,7 @@ log_json_with_nothing_recorded() {
 
 log_json_says_when_a_question_is_still_waiting() {
   demo; make_store
-  q "insert into handoffs (at, project, card, phase, status, question, options)
+  q "insert into handoffs (at, project, card, step, status, question, options)
      values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-125 seconds'), 'demo', 'ABC-122', 'breakdown', 'needs-human', 'Approve?', 'approve | change plan');"
   out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
   j_is .state 'waiting on the human'
@@ -1001,7 +1120,7 @@ log_json_keeps_awkward_text() {
   IFS= read -r text <<'EOF'
 It's "done" \ back\\slash, a `tick`, $HOME, <b>, café 日本語 and a 100% {brace}
 EOF
-  hand "phase: define
+  hand "step: define
 status: done
 next: plan
 summary: $text" >/dev/null || fail "task handoff exited non-zero"
@@ -1068,7 +1187,7 @@ an_old_setup_row_is_kept() {
   j_is '.steps[1].next' setup; j_is .state 'breakdown done, then setup'
   out=$("$E" task log demo --json) || fail "task log --json with no card exited non-zero"
   j_is '[.cards[] | select(.card == "ABC-122") | .next] | join(" ")' setup
-  [ "$(q "select phase || '|' || status || '|' || next from handoffs where card = 'ABC-122' order by id desc limit 1")" = 'breakdown|done|setup' ] ||
+  [ "$(q "select step || '|' || status || '|' || next from handoffs where card = 'ABC-122' order by id desc limit 1")" = 'breakdown|done|setup' ] ||
     fail "the old row was changed: $(q "select * from handoffs where card = 'ABC-122'")"
 }
 
@@ -1085,9 +1204,9 @@ log_json_fails_as_the_plain_log_does() {
 # --- the space's cards ------------------------------------------------------
 
 # Put a row for any card of demo straight into the store at a set time.
-#   put_for <card> <time> <phase> <status> [<next>]
+#   put_for <card> <time> <step> <status> [<next>]
 put_for() {
-  q "insert into handoffs (at, project, card, phase, status, next)
+  q "insert into handoffs (at, project, card, step, status, next)
      values ('$2', 'demo', '$1', '$3', '$4', nullif('${5:-}', ''));"
 }
 # Three cards of demo, put in so that the order their first rows came in is
@@ -1096,7 +1215,7 @@ put_for() {
 # space's card, which must not be listed.
 three_cards() {
   "$E" space new other >/dev/null
-  printf 'phase: define\nstatus: done\nnext: plan\nsummary: Another space entirely.\n' |
+  printf 'step: define\nstatus: done\nnext: plan\nsummary: Another space entirely.\n' |
     "$E" task handoff other ABC-9 >/dev/null
   put_for ABC-2 2026-01-01T09:00:00Z new done define
   put_for ABC-1 2026-01-01T10:00:00Z new done define
@@ -1104,7 +1223,7 @@ three_cards() {
   put_for ABC-1 2026-01-01T10:05:00Z plan done breakdown
   put_for ABC-3 2026-01-01T10:30:00Z new done define
   put_for ABC-2 2026-01-01T11:00:00Z define failed
-  q "insert into handoffs (at, project, card, phase, status, question, options)
+  q "insert into handoffs (at, project, card, step, status, question, options)
      values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-125 seconds'), 'demo', 'ABC-3', 'define', 'needs-human', 'Approve?', 'approve | change');"
 }
 
@@ -1128,6 +1247,7 @@ log_lists_the_spaces_cards_newest_first() {
   j_is '.cards[1].state' 'define failed';        j_is '.cards[1].waiting' null
   j_is '.cards[1] | has("waiting")' true
   j_is '.cards[2].state' 'plan done, then breakdown'; j_is '.cards[2].next' breakdown
+  j_is '.cards[2].step' plan;                         j_is '[.cards[] | has("phase")] | any' false
   j_is '.cards[2].at' 2026-01-01T10:05:00Z
   [ "$(j '.cards[2].seconds')" -gt 86400 ] 2>/dev/null || fail "ABC-1 has stood there for $(j '.cards[2].seconds') seconds"
   # How long, as the plain list words it. Each time is still running, so one
@@ -1194,7 +1314,8 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_review_that_passes handoff_records_a_review_that_sends_the_work_back
   handoff_records_a_review_that_needs_the_human handoff_records_a_failed_review
   handoff_records_a_pull_request_waiting_to_merge handoff_records_a_merge
-  handoff_records_a_pull_request_that_cannot_be_opened handoff_refuses_merged_as_a_phase
+  handoff_records_a_pull_request_that_cannot_be_opened handoff_refuses_merged_as_a_step
+  handoff_refuses_a_phase_line
   handoff_moves_the_card_to_done_on_the_merge handoff_moves_no_closed_card_on_the_merge
   handoff_moves_the_card_only_on_the_merge handoff_records_the_merge_when_linear_refuses_the_move
   handoff_records_the_merge_with_no_key_saved
@@ -1206,6 +1327,8 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   an_older_store_gains_the_answer_column
   log_reads_an_older_store_without_changing_it
   hand_offs_at_once_into_an_older_store_are_all_recorded
+  an_older_store_has_its_phase_column_renamed
+  log_reads_the_same_before_and_after_the_rename
   log_shows_how_long_each_step_took log_shows_how_long_each_review_took
   log_shows_a_pull_request_through_to_its_merge
   log_marks_a_step_that_includes_waiting
