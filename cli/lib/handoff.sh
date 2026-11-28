@@ -246,6 +246,11 @@ task_handoff() {
 # run: the time before it was the human's, and the build is timed from it.
 # A card whose row is done with merged next stands at merged: its pull
 # requests have merged, and nothing comes after.
+#
+# What Herdr says about each card's agent (agents.sh) is read for each run of
+# the log and never stored: it is joined onto the view, as the table agents,
+# after the view has worked out every step and its time, so no row and no
+# step's time depends on it.
 
 # SQL for a number of seconds as text: 50s, 1m 44s, 1h 02m, 3d 04h. @ stands
 # for the column that holds the seconds.
@@ -312,15 +317,16 @@ log_view() {
 LOG_USAGE='usage: entourage task log <project> [<card>] [--json]'
 
 # The project's cards that have hand-offs, newest first by their latest row:
-# where each stands and how long it has stood there. With --json, the same as
-# one line of JSON.
+# where each stands and how long it has stood there, or what its agent is
+# doing when Herdr says it is stuck or has stopped. With --json, the same as
+# one line of JSON, with the agent beside where the card stands.
 #   log_cards <project> <json: 1 or 0> <view>
 log_cards() {
   local name=$1 json=$2 list
   # Each card's latest row is the one with nothing after it.
   list="$3, latest as (
       select *, max(cast(strftime('%s', 'now') - strftime('%s', at) as integer), 0) as since
-      from shown where after is null)"
+      from shown where after is null), $AGENTS_SQL"
   if [ "$json" = 1 ]; then
     if [ ! -e "$STORE" ]; then
       printf '{"project":"%s","cards":[]}\n' "$(json_str "$name")"
@@ -331,8 +337,9 @@ log_cards() {
         'cards', (select json_group_array(json(c)) from (
           select json_object('card', card, 'at', at, 'state', state,
             'waiting', nullif(waiting, ''), 'for', $(sql_took since), 'seconds', since,
-            'run', run, 'phase', phase, 'status', status, 'next', next) as c
-          from latest order by at desc, id desc)));" ||
+            'run', run, 'phase', phase, 'status', status, 'next', next,
+            'agent', json(agent)) as c
+          from latest left join agents using (card) order by at desc, id desc)));" ||
       die "could not read the hand-offs in $STORE. It may not be entourage's store."
     return
   fi
@@ -340,7 +347,9 @@ log_cards() {
   local sep=$'\x1f' found='' count=0 card state for
   if [ -e "$STORE" ]; then
     found=$(store -separator "$sep" "$STORE" "$list
-      select card, state, $(sql_took since) from latest order by at desc, id desc;") ||
+      select card, coalesce(json_extract(agent, '\$.label'), state),
+        coalesce(json_extract(agent, '\$.for'), $(sql_took since))
+      from latest left join agents using (card) order by at desc, id desc;") ||
       die "could not read the hand-offs in $STORE. It may not be entourage's store."
   fi
   while IFS=$sep read -r card state for; do
@@ -380,6 +389,8 @@ task_log() {
     ! has_answer_column || answer_column=answer
     view=$(log_view "$name" "$card" "$answer_column")
   fi
+  # What each card's agent is doing, from Herdr, as the table agents.
+  agents_table "$view" "$(cd -P "$PROJECTS/$name" && pwd)"
   if [ -z "$card" ]; then
     log_cards "$name" "$json" "$view"
     return
@@ -387,17 +398,18 @@ task_log() {
 
   if [ "$json" = 1 ]; then
     if [ ! -e "$STORE" ]; then
-      printf '{"project":"%s","card":"%s","state":null,"waiting":null,"run":null,"steps":[]}\n' \
+      printf '{"project":"%s","card":"%s","state":null,"waiting":null,"run":null,"agent":null,"steps":[]}\n' \
         "$(json_str "$name")" "$(json_str "$card")"
       return
     fi
     # SQLite builds the JSON, so no value is escaped by hand. A store that
     # cannot be read is an error, not an empty history.
-    store "$STORE" "$view
+    store "$STORE" "$view, $AGENTS_SQL
       select json_object('project', $(sql_str "$name"), 'card', $(sql_str "$card"),
         'state', (select state from shown order by id desc limit 1),
         'waiting', (select nullif(waiting, '') from shown order by id desc limit 1),
         'run', (select max(run) from shown),
+        'agent', json((select agent from agents limit 1)),
         'steps', (select json_group_array(json(step)) from (
           select json_object('run', run, 'at', at, 'clock', strftime('%H:%M', at, 'localtime'),
             'phase', phase, 'status', status, 'next', next, 'kind', kind, 'label', label,
@@ -434,4 +446,9 @@ task_log() {
     [ -z "$waiting" ] || printf '    %s\n' "$waiting"
   done <<< "$found"
   [ "$count" -gt 0 ] || say "No hand-offs recorded for $card in '$name'."
+  # Last, what the card's agent is doing, when Herdr says it is stuck or has
+  # stopped. An agent is only ever worked out with jq to hand.
+  if [ "$count" -gt 0 ] && [ -n "$AGENT_LAST" ]; then
+    printf '    now: %s\n' "$(printf '%s' "$AGENT_LAST" | jq -r '"\(.label), for \(.for)"')"
+  fi
 }
