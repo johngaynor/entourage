@@ -943,6 +943,19 @@ task_start_runs_setup_several_repos() {
   case $out in *"setup     docs (running in the tab)"*) ;; *) fail "did not report docs: $out" ;; esac
 }
 
+# entourage's own repo provides what it asks of others: with its justfile, a
+# task on it types `just setup` into the tab and skips nothing. Without the
+# file, give_setup would fall back to its own recipe, so the case checks first.
+task_start_runs_entourages_own_setup() {
+  setup_on
+  [ -f "$ROOT/justfile" ] || { fail "entourage has no justfile at its root"; return; }
+  stub_just; stub_hc; task_demo entourage; give_setup entourage "$(cat "$ROOT/justfile")"
+  out=$("$E" task start demo ABC-1) || fail "task start exited non-zero"
+  [ "$(hc_calls)" = "send t9 just setup && entourage task build demo ABC-1" ] || fail "did not type just setup into the tab: $(hc_calls)"
+  case $out in *"setup     entourage (running in the tab)"*) ;; *) fail "did not report setup: $out" ;; esac
+  case $out in *skipped*) fail "said setup was skipped: $out" ;; esac
+}
+
 task_start_skips_setup_without_a_recipe() {
   setup_on
   stub_just; stub_hc; task_demo api; give_setup api 'setup-db:\n\techo\npresetup:\n\techo\n'
@@ -1021,7 +1034,8 @@ task_start_when_hc_send_fails() {
 
 SETUP_CASES="task_start_leaves_setup_off task_start_turns_setup_on_from_the_env_file
   task_start_runs_setup_one_repo task_start_sends_setup_to_the_new_tab
-  task_start_runs_setup_several_repos task_start_skips_setup_without_a_recipe
+  task_start_runs_setup_several_repos task_start_runs_entourages_own_setup
+  task_start_skips_setup_without_a_recipe
   task_start_skips_an_unreadable_justfile task_start_ignores_a_parent_justfile
   task_start_quotes_repo_names task_start_without_just task_start_without_hc
   task_start_without_a_terminal task_start_when_hc_send_fails"
@@ -1078,6 +1092,25 @@ task_start_records_the_start() {
   "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
   out=$("$E" task log demo ABC-1) || fail "task log exited non-zero"
   case $out in *"start      done, then build"*) ;; *) fail "the log does not show the start: $out" ;; esac
+}
+
+# The log reads straight through from the approval to the build: breakdown
+# hands on to start, and start is the row task start records.
+task_start_follows_breakdown_by_one_name() {
+  task_demo api
+  printf 'phase: breakdown\nstatus: done\nnext: start\nsummary: Approved as one piece.\n' |
+    "$E" task handoff demo ABC-1 >/dev/null || fail "task handoff refused breakdown with next: start"
+  out=$("$E" task log demo) || fail "task log with no card exited non-zero"
+  printf '%s\n' "$out" | grep -Eq '^ABC-1 +breakdown done, then start +for ' ||
+    fail "the card list does not show breakdown done, then start: $out"
+  "$E" task start demo ABC-1 >/dev/null || fail "task start exited non-zero"
+  out=$("$E" task log demo ABC-1) || fail "task log exited non-zero"
+  printf '%s\n' "$out" | grep -Eq '  breakdown  done, then start( |$)' ||
+    fail "the log does not show breakdown done, then start: $out"
+  printf '%s\n' "$out" | grep -Eq '  start      done, then build$' ||
+    fail "the log does not show start done, then build: $out"
+  [ "$(printf '%s\n' "$out" | grep -Eo '(breakdown|start) +done, then [a-z]+' | tr -s ' ' | tr '\n' '|')" = \
+    'breakdown done, then start|start done, then build|' ] || fail "not breakdown, then start, in that order: $out"
 }
 
 task_start_starts_when_the_store_cannot_be_written() {
@@ -1163,6 +1196,7 @@ task_build_needs_the_skills_linked() {
 BUILD_CASES="task_start_starts_the_agent_in_the_tab task_start_says_how_to_start_the_agent_without_hc
   task_start_notes_a_repo_claude_code_has_not_trusted task_start_says_nothing_of_a_trusted_repo
   task_start_says_nothing_of_trust_for_several_repos task_start_records_the_start
+  task_start_follows_breakdown_by_one_name
   task_start_starts_when_the_store_cannot_be_written task_build_starts_the_agent
   task_build_refuses_outside_the_cards_task task_build_needs_an_agent task_build_needs_the_skills_linked"
 

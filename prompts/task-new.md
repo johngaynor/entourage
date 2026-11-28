@@ -10,7 +10,7 @@ If I ask for a change when I'm approving, sdlc-breakdown tells you which skill m
 
 Do every step yourself, in this session. Don't hand a step to a subagent.
 
-sdlc-breakdown asks me to approve the card. When it hands off with `next: setup`, the card is approved. Give me the command that starts the work, and don't run it yourself:
+sdlc-breakdown asks me to approve the card. When it hands off with `next: start`, the card is approved. Give me the command that starts the work, and don't run it yourself:
 
     entourage task start {project} {card}
 

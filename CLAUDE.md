@@ -18,6 +18,10 @@ process of its own, so a case must not depend on another case or on anything
 outside its own throwaway folder. To run one case at a time, set
 `ENTOURAGE_TEST_JOBS=1`.
 
+The `justfile` at the root has the `setup` recipe entourage asks every repo
+for. It installs nothing today, since the tests need nothing installed in the
+checkout; anything a new worktree comes to need goes there.
+
 The CLI is `cli/entourage`, which sets the paths and sources the files in
 `cli/lib/`. A new file in `cli/lib/` must be added to the list in
 `cli/entourage`; a new test case must be added to `CASES` in its test file; a
