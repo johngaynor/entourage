@@ -514,6 +514,169 @@ pr_checks_it_can_push_before_pushing() {
   ! grep -qE -- 'git push[^`]*--force' "$skill" || fail "sdlc-pr shows a forced push"
 }
 
+# Once every pull request for the card is open and read back, sdlc-pr moves
+# the card to In Review with one run of linear move: after the read-back, and
+# after the steps it takes for each repo, so a card with pull requests in
+# several repos does not move before the last one is open.
+pr_moves_the_card_to_review_once_every_pull_request_is_open() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md section readback last_step move
+  section=$(awk '/^## / { if (on) exit } /^## [0-9]+\. Push the branch/ { on = 1 } on' "$skill")
+  [ -n "$section" ] || { fail "sdlc-pr has no section that pushes the branch and opens the pull requests"; return; }
+  readback=$(printf '%s\n' "$section" | grep -nF 'gh pr view <url> --json url,title,body,baseRefName,headRefName' | head -n1 | cut -d: -f1)
+  last_step=$(printf '%s\n' "$section" | grep -nE '^[0-9]+\. ' | tail -n1 | cut -d: -f1)
+  move=$(printf '%s\n' "$section" | grep -nF 'entourage linear move <card ID> review' | head -n1 | cut -d: -f1)
+  if [ -z "$move" ]; then
+    fail "sdlc-pr's section that opens the pull requests does not run entourage linear move <card ID> review"
+    return
+  elif [ -z "$readback" ] || [ "$move" -le "$readback" ]; then
+    fail "sdlc-pr moves the card before it reads every pull request back"
+  elif [ "$move" -le "$last_step" ]; then
+    fail "sdlc-pr moves the card in the steps it takes for each repo"
+  fi
+  # The move comes before the wait for the merge.
+  [ "$(grep -nF 'entourage linear move' "$skill" | head -n1 | cut -d: -f1)" -lt \
+    "$(grep -nE '^## [0-9]+\. Wait for the merge' "$skill" | cut -d: -f1)" ] ||
+    fail "sdlc-pr moves the card after it waits for the merge"
+}
+
+# A move that fails does not stop the step: sdlc-pr says that the card was not
+# moved, and why, in flags, and goes on to wait for the merge.
+pr_goes_on_when_the_card_cannot_be_moved() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md section row
+  section=$(awk '/^## / { if (on) exit } /^## [0-9]+\. Push the branch/ { on = 1 } on' "$skill")
+  case $section in
+    *'exits non-zero'*'not moved'*'wait for the merge'*'`flags`'*) ;;
+    *) fail "sdlc-pr does not say to go on to wait for the merge, with the move in flags, when the card is not moved" ;;
+  esac
+  row=$(grep -F '| `entourage linear move` exits non-zero |' "$skill")
+  [ -n "$row" ] || fail "sdlc-pr's table of what goes wrong has no row for a move that fails"
+  case $row in
+    *'`flags`'*'wait for the merge'*) ;;
+    *) fail "sdlc-pr's row for a move that fails does not say to flag it and wait for the merge: $row" ;;
+  esac
+  # The hand-off that ends the step has room for it.
+  grep -A5 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -E '^flags: ' | grep -q 'not moved' ||
+    fail "sdlc-pr's done hand-off does not say a card that was not moved goes in flags"
+}
+
+# entourage moves the card now, so the skill no longer leaves it to the human.
+pr_no_longer_leaves_the_status_to_the_human() {
+  ! grep -qF "is the human's to move" "$REPO/skills/sdlc-pr/SKILL.md" ||
+    fail "sdlc-pr still says the card's status is the human's to move"
+}
+
+# --- agent profiles ---------------------------------------------------------
+
+# A profile is a Claude Code agent definition: frontmatter between two ---
+# lines, then the agent's instructions. The reviewer and the verifier are for
+# work on entourage itself, in the repo's own .claude/agents/, which is not
+# copied into a case's repo. The write-up and the build ship in agents/.
+REVIEW_PROFILES="$ROOT/.claude/agents/reviewer.md $ROOT/.claude/agents/verifier.md"
+factory_profiles() { printf '%s\n' "$REPO/agents/entourage-write-up.md" "$REPO/agents/entourage-build.md"; }
+
+# Print the value of one key in a profile's frontmatter, or nothing.
+profile_field() {
+  awk -v k="$2" '
+    NR == 1 { if ($0 != "---") exit; next }
+    $0 == "---" { exit }
+    { i = index($0, ":"); if (i && substr($0, 1, i - 1) == k) { v = substr($0, i + 1); sub(/^[ \t]+/, "", v); print v } }
+  ' "$1"
+}
+
+# Fail unless a profile's tools are exactly the list given.
+profile_tools_are() {
+  local tools
+  tools=$(profile_field "$1" tools)
+  [ "$tools" = "$2" ] || fail "${1##*/} has the tools '$tools', not '$2'"
+}
+
+# In a session on entourage, a reviewer and a verifier can be started by name,
+# each with only the tools it uses. Those include writing files: reviewers
+# write throwaway copies and repro scripts.
+review_profiles_are_named_with_only_their_tools() {
+  local f name
+  for f in $REVIEW_PROFILES; do
+    [ -f "$f" ] || { fail "there is no ${f#"$ROOT"/}"; continue; }
+    name=${f##*/}; name=${name%.md}
+    [ "$(profile_field "$f" name)" = "$name" ] || fail "${f##*/} is not named $name: '$(profile_field "$f" name)'"
+    [ -n "$(profile_field "$f" description)" ] || fail "${f##*/} has no description, so the Agent tool cannot list it"
+    profile_tools_are "$f" 'Read, Bash, Edit, Write'
+  done
+}
+
+# Without the Skill and ToolSearch tools a session starts without the skill
+# listing and the deferred tool list, and without Agent it starts no
+# subagents of its own.
+review_profiles_leave_out_the_listing_tools() {
+  local f tool
+  for f in $REVIEW_PROFILES; do
+    for tool in Skill ToolSearch Agent; do
+      case ", $(profile_field "$f" tools), " in
+        *", $tool, "*) fail "${f##*/} has the $tool tool" ;;
+      esac
+    done
+  done
+}
+
+# The rules that every review prompt used to repeat are in the profiles, so a
+# prompt can leave them out.
+review_profiles_carry_the_review_rules() {
+  local f want
+  for f in $REVIEW_PROFILES; do
+    for want in '~/.config/entourage/.env' LINEAR_API_KEY api.linear.app herdr-app 'mktemp -d' \
+        ENTOURAGE_HOME '~/Dev/entourage' 'bash 3.2' subagents CLAUDE.md README.md herdr/README.md; do
+      grep -qF -- "$want" "$f" || fail "${f##*/} does not mention $want"
+    done
+  done
+  for want in Critical Important Minor verdict; do
+    grep -qF -- "$want" "$ROOT/.claude/agents/reviewer.md" || fail "reviewer.md does not mention $want"
+  done
+  for want in fix-now fix-later skip refute; do
+    grep -qF -- "$want" "$ROOT/.claude/agents/verifier.md" || fail "verifier.md does not mention $want"
+  done
+}
+
+# The write-up profile has only the tools a write-up uses, and the Linear
+# server its session is given is the only one it has.
+write_up_profile_has_only_its_tools() {
+  local f=$REPO/agents/entourage-write-up.md mcp=$REPO/agents/linear-mcp.json
+  [ -f "$f" ] || { fail "there is no agents/entourage-write-up.md"; return; }
+  [ "$(profile_field "$f" name)" = entourage-write-up ] || fail "the write-up profile is not named entourage-write-up"
+  profile_tools_are "$f" 'Bash, Read, Skill, mcp__linear-server__get_issue, mcp__linear-server__list_comments, mcp__linear-server__list_issues, mcp__linear-server__save_issue'
+  jq -e '.mcpServers | keys == ["linear-server"]' "$mcp" >/dev/null 2>&1 ||
+    fail "agents/linear-mcp.json does not parse, or names other servers than linear-server: $(cat "$mcp" 2>&1)"
+  jq -e '.mcpServers["linear-server"] | .type == "http" and .url == "https://mcp.linear.app/mcp"' "$mcp" >/dev/null 2>&1 ||
+    fail "agents/linear-mcp.json does not give Linear's own server: $(cat "$mcp" 2>&1)"
+}
+
+# The build profile has only the tools a build and a review use.
+build_profile_has_only_its_tools() {
+  local f=$REPO/agents/entourage-build.md
+  [ -f "$f" ] || { fail "there is no agents/entourage-build.md"; return; }
+  [ "$(profile_field "$f" name)" = entourage-build ] || fail "the build profile is not named entourage-build"
+  profile_tools_are "$f" 'Bash, Read, Edit, Write, Skill, mcp__linear-server__get_issue, mcp__linear-server__list_comments, mcp__linear-server__save_issue'
+}
+
+# Every profile runs on Opus, whatever the human's own sessions use. None
+# sets an effort yet, so that still comes from the human's own sessions.
+every_profile_runs_on_opus() {
+  local f
+  for f in $REVIEW_PROFILES $(factory_profiles); do
+    [ -f "$f" ] || { fail "there is no $f"; continue; }
+    [ "$(profile_field "$f" model)" = opus ] || fail "${f##*/} does not say model: opus"
+    [ -z "$(profile_field "$f" effort)" ] || fail "${f##*/} sets an effort"
+  done
+}
+
+# The factory's profiles ship to everyone who installs entourage, so they
+# name no one.
+no_profile_names_a_person() {
+  local f
+  for f in $(factory_profiles); do
+    ! grep -qw 'John' "$f" || fail "${f##*/} names John; say 'the human'"
+  done
+}
+
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
   each_skill_writes_its_section_with_the_command no_skill_writes_a_section_itself
   each_skill_revises_its_section_with_replace each_skill_falls_back_without_a_key
@@ -527,9 +690,14 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   no_agent_merges_a_pull_request pr_checks_it_can_push_before_pushing
   pr_makes_a_change_asked_for_in_the_tab
   pr_watches_the_pull_requests pr_records_a_merge_the_watch_sees pr_asks_when_a_pull_request_is_closed
+  pr_moves_the_card_to_review_once_every_pull_request_is_open pr_goes_on_when_the_card_cannot_be_moved
+  pr_no_longer_leaves_the_status_to_the_human
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop
+  review_profiles_are_named_with_only_their_tools review_profiles_leave_out_the_listing_tools
+  review_profiles_carry_the_review_rules write_up_profile_has_only_its_tools
+  build_profile_has_only_its_tools every_profile_runs_on_opus no_profile_names_a_person
   no_skill_names_a_person a_routed_change_returns_to_breakdown
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card

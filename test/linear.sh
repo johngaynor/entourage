@@ -1379,6 +1379,132 @@ linear_type_fails_when_linear_drops_another_label() {
   case $out in *Bug*) ;; *) fail "did not name the label Linear dropped: $out" ;; esac
 }
 
+# --- moving a card: linear move ---------------------------------------------
+
+# A team with one started status, which is both its first and its last.
+ONE_STARTED='[{"id":"w-todo","name":"Todo","type":"unstarted","position":1},
+  {"id":"w-doing","name":"Doing","type":"started","position":2},
+  {"id":"w-done","name":"Done","type":"completed","position":3}]'
+
+# review is the team's last started status by its place, not the last that
+# Linear lists: Lab's statuses list In Review first.
+linear_move_moves_a_card_to_review() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 'In Progress')" "$(moved_answer 'In Review')"
+  out=$("$E" linear move abc-122 review) || fail "linear move exited non-zero: $out"
+  [ "$(curl_count)" = 2 ] || fail "asked Linear $(curl_count) times, not 2: $(curl_calls)"
+  case $(changes_sent) in
+    *'"id":"id-ABC-122"'*'"stateId":"s-review"'*) ;;
+    *) fail "did not move the card to In Review: $(changes_sent)" ;;
+  esac
+  [ "$out" = 'ABC-122 moved to In Review in Linear (it was In Progress)' ] || fail "did not say the card moved: $out"
+}
+
+# The same in a team of other names, whose last started status is Checking.
+linear_move_moves_a_card_to_review_in_a_team_of_other_names() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Doing "$OTHER_STATUSES")" "$(moved_answer Checking "$OTHER_STATUSES")"
+  out=$("$E" linear move ABC-122 review) || fail "linear move exited non-zero: $out"
+  case $(changes_sent) in *'"stateId":"o-checking"'*) ;; *) fail "did not move the card to Checking: $(changes_sent)" ;; esac
+  case $out in *"ABC-122 moved to Checking in Linear (it was Doing)"*) ;; *) fail "did not say the card moved: $out" ;; esac
+}
+
+# A team with three started statuses, listed out of their order: the last by
+# place, Shipping, is neither the first nor the last that Linear lists.
+THREE_STARTED='[{"id":"t-doing","name":"Doing","type":"started","position":20},
+  {"id":"t-shipping","name":"Shipping","type":"started","position":40},
+  {"id":"t-checking","name":"Checking","type":"started","position":30},
+  {"id":"t-todo","name":"Todo","type":"unstarted","position":10},
+  {"id":"t-done","name":"Done","type":"completed","position":50}]'
+
+# review is picked by place, whatever order Linear lists the statuses in.
+linear_move_takes_the_last_started_status_by_place() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Doing "$THREE_STARTED")" "$(moved_answer Shipping "$THREE_STARTED")"
+  out=$("$E" linear move ABC-122 review) || fail "linear move exited non-zero: $out"
+  case $(changes_sent) in
+    *'"stateId":"t-shipping"'*) ;;
+    *) fail "did not move the card to Shipping, the last started status by place: $(changes_sent)" ;;
+  esac
+  [ "$out" = 'ABC-122 moved to Shipping in Linear (it was Doing)' ] || fail "did not say the card moved: $out"
+}
+
+# In a team with one started status, review is that status, so a card in it
+# already stays there, and the command has done all it is asked.
+linear_move_leaves_a_card_in_a_teams_only_started_status() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Doing "$ONE_STARTED")"
+  out=$("$E" linear move ABC-122 review 2>&1) || fail "linear move exited non-zero: $out"
+  [ "$(curl_count)" = 1 ] || fail "asked Linear $(curl_count) times, not 1: $(curl_calls)"
+  [ -z "$(changes_sent)" ] || fail "asked Linear to change the card: $(changes_sent)"
+  [ "$out" = 'ABC-122 is in Doing already' ] || fail "did not say the card is there already: $out"
+}
+
+# started and done are the moves task start and the merge make.
+linear_move_takes_started_and_done() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Todo)" "$(moved_answer 'In Progress')" \
+    "$(move_answer ABC-122 'In Review')" "$(moved_answer Done)"
+  out=$("$E" linear move ABC-122 started) || fail "linear move started exited non-zero: $out"
+  case $out in *"moved to In Progress"*) ;; *) fail "did not move the card to In Progress: $out" ;; esac
+  out=$("$E" linear move ABC-122 done) || fail "linear move done exited non-zero: $out"
+  case $out in *"moved to Done"*) ;; *) fail "did not move the card to Done: $out" ;; esac
+  case $(changes_sent | tr '\n' ' ') in
+    *'"stateId":"s-progress"'*'"stateId":"s-done"'*) ;;
+    *) fail "did not send In Progress, then Done: $(changes_sent)" ;;
+  esac
+}
+
+# The rules of a move hold for review too: a card that is done or canceled
+# is never moved.
+linear_move_never_moves_a_closed_card() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 Done)"
+  out=$("$E" linear move ABC-122 review 2>&1) || fail "linear move exited non-zero: $out"
+  [ -z "$(changes_sent)" ] || fail "asked Linear to change the card: $(changes_sent)"
+  case $out in *"ABC-122 stays in Done, which is closed"*) ;; *) fail "did not say why the card stays: $out" ;; esac
+}
+
+# The move is the command's whole work, so a move that fails exits non-zero,
+# saying that the card was not moved and why.
+linear_move_fails_when_linear_is_out_of_reach() {
+  saved_key; stub_linear
+  echo 6 > "$TMP/linear/exit"
+  out=$("$E" linear move ABC-122 review 2>&1) && fail "exited zero when Linear was out of reach: $out"
+  case $out in
+    *"ABC-122 was not moved in Linear: could not reach Linear (curl: (6) Could not resolve host: api.linear.app)"*) ;;
+    *) fail "did not say the card was not moved, and why: $out" ;;
+  esac
+}
+
+linear_move_fails_when_linear_refuses_the_change() {
+  saved_key; stub_linear
+  linear_answers "$(move_answer ABC-122 'In Progress')" "$NO_WRITE"
+  linear_status_at 2 400
+  out=$("$E" linear move ABC-122 review 2>&1) && fail "exited zero when Linear refused the move: $out"
+  case $out in
+    *'ABC-122 was not moved in Linear: Linear answered with an error: Invalid scope: `write` required'*) ;;
+    *) fail "did not say the card was not moved, and why: $out" ;;
+  esac
+}
+
+linear_move_refuses_what_is_not_a_move() {
+  saved_key; stub_linear
+  out=$("$E" linear move ABC-122 todo 2>&1) && fail "accepted the move 'todo'"
+  case $out in *started*review*done*) ;; *) fail "did not name the moves there are: $out" ;; esac
+  "$E" linear move ABC-122 >/dev/null 2>&1 && fail "accepted no move"
+  "$E" linear move >/dev/null 2>&1 && fail "accepted no card"
+  out=$("$E" linear move ABC review 2>&1) && fail "accepted the card 'ABC'"
+  case $out in *"not a card ID"*) ;; *) fail "did not say ABC is not a card ID: $out" ;; esac
+  [ "$(curl_count)" = 0 ] || fail "asked Linear about a move that is not one: $(curl_calls)"
+}
+
+MOVE_CASES="linear_move_moves_a_card_to_review linear_move_moves_a_card_to_review_in_a_team_of_other_names
+  linear_move_takes_the_last_started_status_by_place
+  linear_move_leaves_a_card_in_a_teams_only_started_status linear_move_takes_started_and_done
+  linear_move_never_moves_a_closed_card linear_move_fails_when_linear_is_out_of_reach
+  linear_move_fails_when_linear_refuses_the_change linear_move_refuses_what_is_not_a_move"
+
 REVIEW_CASES="linear_section_refuses_a_body_with_its_own_heading linear_section_replace_refuses_a_card_without_the_section
   linear_section_refuses_a_second_breakdown linear_section_fails_when_linear_has_the_section_twice
   linear_section_replaces_a_section_folded_with_the_other_mark linear_section_replaces_an_open_breakdown_with_a_section_below
@@ -1406,7 +1532,7 @@ env_file_that_is_not_a_file_says_so() {
   case $out in *"$(env_file) is not a file"*) ;; *) fail "did not say the env file is not a file: $out" ;; esac
 }
 
-CASES="$CARD_LOOKUP_CASES $WRITE_CASES
+CASES="$CARD_LOOKUP_CASES $WRITE_CASES $MOVE_CASES
   linear_key_saves_the_key linear_key_keeps_the_env_file_private linear_key_closes_an_env_file_others_could_read
   linear_key_says_whose_key_it_is linear_key_never_shows_the_key linear_key_gives_curl_the_key_on_stdin
   linear_key_replaces_the_old_key_and_keeps_the_other_lines linear_key_says_when_an_exported_key_is_used_instead

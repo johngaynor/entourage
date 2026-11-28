@@ -18,7 +18,9 @@ layouts (whole-window arrangements of mods).
 
 The skills are in [../skills/](../skills/), outside this folder. They are
 linked into `~/.claude/skills` (`CLAUDE_CONFIG_DIR` picks another `~/.claude`)
-by the same `entourage install` and `entourage update`.
+by the same `entourage install` and `entourage update`. So are the agent
+profiles in [../agents/](../agents/), into `~/.claude/agents`: the ones
+`task new` and `task build` start `claude` with.
 
 ## How it works
 
@@ -56,9 +58,10 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
    entourage install
    ```
 
-   It links every mod and layout into Herdr and refreshes Herdr if it is
-   running. It is safe to re-run, and it never replaces a real file that is
-   already in Herdr's folder.
+   It links every mod and layout into Herdr, every skill into
+   `~/.claude/skills` and both agent profiles into `~/.claude/agents`, and
+   refreshes Herdr if it is running. It is safe to re-run, and it never
+   replaces a real file or someone else's link that is already there.
 
 5. Pick a layout from the Layout dropdown at the top of the sidebar, or press
    `ctrl-shift-l` to cycle. The dropdown only appears on our layouts, so the
@@ -70,12 +73,12 @@ Per-machine things stay out of the repo: the Herdr account, `settings.json`,
 entourage update
 ```
 
-This reinstalls the latest entourage through npm, links any mod or layout that
-is new, removes links to ones that were deleted, and refreshes Herdr so it
-re-reads everything.
+This reinstalls the latest entourage through npm, links any mod, layout,
+skill or agent profile that is new, removes links to ones that were deleted,
+and refreshes Herdr so it re-reads everything.
 
-- **Check a machine:** `entourage status` lists each mod and layout and whether
-  it is linked.
+- **Check a machine:** `entourage status` lists each mod, layout, skill and
+  agent profile and whether it is linked.
 - **Remove one from a machine:** delete its link in `~/.config/herdr-app/mods`
   or `layouts`. The next `entourage update` will link it again, so remove it
   from the repo to drop it everywhere.
@@ -194,6 +197,15 @@ entourage task new <project> <card>
 - **It opens a tab named after the card** in the project's space, in the
   project folder, and starts an agent in it. The agent is `claude`;
   `ENTOURAGE_AGENT` picks another command.
+- **`claude` starts with the write-up profile**,
+  [../agents/entourage-write-up.md](../agents/entourage-write-up.md), linked
+  into `~/.claude/agents`: `claude --agent=entourage-write-up
+  --strict-mcp-config --mcp-config=<repo>/agents/linear-mcp.json`. The profile
+  gives the session only the tools a write-up uses and runs it on Opus, and the
+  MCP config gives it Linear's server alone, whatever your own sessions have.
+  Claude Code asks once to sign in to Linear as `linear-server` on a machine
+  where it is not signed in under that name. Another agent starts as it is,
+  with no profile.
 - **The project folder is trusted first.** Claude Code asks "do you trust this
   folder?" the first time it starts somewhere, which would leave the agent
   waiting. So `project new`, and `task new` before it opens the tab, mark the
@@ -210,9 +222,10 @@ entourage task new <project> <card>
 - **It makes no branch, worktree or task folder.** The card has no type until
   the agent has defined it, and the type is the start of the branch name.
 - **It checks first.** An unknown project, something that is not a card ID,
-  Herdr not running, no agent on your `PATH`, or the skills not linked into
-  `~/.claude/skills` stops it before anything is opened. Run
-  `entourage update` to link the skills.
+  Herdr not running, no agent on your `PATH`, the skills not linked into
+  `~/.claude/skills`, or, for `claude`, the write-up profile not linked into
+  `~/.claude/agents` stops it before anything is opened. Run
+  `entourage update` to link them.
 - **With a Linear key saved, it checks that Linear has the card**, so a
   mistyped ID stops it before an agent starts. It looks the card up by its
   team's key and number, so it does not check that the card is one of the
@@ -221,26 +234,31 @@ entourage task new <project> <card>
   `curl` or `jq`), the card starts as before, with a note saying why.
 - **The skills write to the card through entourage.** The agent reads the card
   with its own Linear tools, but sets the type and writes each section with two
-  entourage commands, so those steps go the same way on every run:
+  entourage commands, so those steps go the same way on every run. A third,
+  which `sdlc-pr` runs once its pull requests are open, moves the card (see
+  [Hand-offs](#hand-offs)):
 
   | Command | What it does |
   |---|---|
   | `entourage linear type <card> <feat\|fix\|chore>` | Sets the card's type: its one label in the `Type` label group, the team's or else the workspace's. Any other type comes off; the card's other labels are never touched. A missing label is refused, never made. |
   | `entourage linear section <card> <Specification\|Plan\|Breakdown> [--replace]` | Adds the section, its body on stdin, below the description. Specification and Plan are folded away, in the form Linear keeps them in, `+++ ## <name>` … `+++` (one written as `>>>` is read the same); the Breakdown is left open, because you read it to approve the card. A section of that name already there is refused, unless `--replace` puts the new one in its place; `--replace` with none there is refused too. A body is refused when a line in it would end the section early or start a second one: a fold line, and in the Breakdown a `#` or `##` heading. A line inside a fenced code block is never taken for a section. |
+  | `entourage linear move <card> <started\|review\|done>` | Moves the card forward to its team's first started status (In Progress), its last started one (In Review), or its first completed one (Done), picked by its kind and its place in the team's order, not by its name. In a team with one started status, `review` is that status. A card already there, further on, done or canceled stays where it is, and the command says so and exits zero. A move that cannot be made, such as with Linear out of reach or a key without Write permission, exits non-zero, saying that the card was not moved and why. |
 
-  Both read the card back before they say they are done: one type, the one
-  asked for; the section there once, and the text above it as it was. Both need
-  your key to have Write permission. With no key saved, the skills write with
-  the agent's Linear tools instead, and say so.
+  All three read the card back before they say they are done: one type, the
+  one asked for; the section there once, and the text above it as it was; the
+  card in the status it was moved to. All three need your key to have Write
+  permission. With no key saved, the skills write the type and the sections
+  with the agent's Linear tools instead, and say so; the card is not moved then,
+  and `sdlc-pr` says so.
 
 ### The Cards panel
 
 On the `test` layout, the Cards panel under the projects list shows the open
 cards of the project whose space is showing, each with a button that writes
 the card up. Each card is under its status in Linear, which shows where its
-work is: `task start` moves a card to In Progress, and recording its merge
-moves it to Done, which takes it off the list (see
-[Starting the work](#starting-the-work)).
+work is: `task start` moves a card to In Progress, opening its pull requests
+moves it to In Review, and recording its merge moves it to Done, which takes
+it off the list (see [Starting the work](#starting-the-work)).
 
 - **It shows what `task ls` lists**: the same statuses in the same order, each
   with its count, and the cards under them. A click on a status closes its
@@ -278,7 +296,11 @@ it, which the `sdlc-review` skill runs: it hands off as `review`, `done` with
 `pr` next when every Done when item is met, or with `build` next, naming each
 item that is not. Once it has sent the work back, it asks you instead,
 as `needs-human`, whether to build again. So does the pull request after
-that, which the `sdlc-pr` skill runs: it hands off as `pr`. With the pull
+that, which the `sdlc-pr` skill runs: it hands off as `pr`. Once every pull
+request for the card is open, it moves the card in Linear to its team's last
+started status (In Review) with `entourage linear move <card> review`; in a
+team with one started status the card stays in it. When the card cannot be
+moved, it still goes on, and says so, and why, in its hand-offs. With the pull
 requests open it waits as `needs-human`, with their links, while you merge
 them, and watches them on GitHub with `entourage task watch`, run in the
 background, so you don't have to tell it they have merged. A change you ask
@@ -286,11 +308,12 @@ for in the tab instead goes on the task's branch and into the same pull
 requests, and it waits as `needs-human` again. Once GitHub says every pull
 request for the card has merged, it records that as your answer, `answered`,
 so the log shows how long the pull requests waited on you, and hands off
-`done` with `merged` next. When one is closed without merging, it records
-that the same way and asks you whether to stop. Recording that hand-off moves the card in Linear to its team's
-first completed status (Done), whatever recorded it: your answer, or a watch
-on the pull requests. A card that is done or canceled already stays as it is,
-and a pull request closed without merging moves nothing. What happened to the
+`done` with `merged` next. Recording that hand-off moves the card in Linear
+to its team's first completed status (Done), whatever recorded it: your
+answer, or a watch on the pull requests. A card that is done or canceled
+already stays as it is. When a pull request is closed without merging, it
+records that the same way and asks you whether to stop, and the card is not
+moved. What happened to the
 card is said on stderr, so the block printed is the one recorded; when the
 card cannot be moved, the hand-off is still recorded, and the note says why.
 When it cannot push or open a pull request, such as when `gh`
@@ -421,7 +444,11 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   setup runs, so the agent starts on the card with no one typing there, and
   not before setup has finished. `task build` starts the agent
   (`ENTOURAGE_AGENT`, or `claude`) in the folder it is run in, with the first
-  message in [prompts/task-build.md](../prompts/task-build.md): build the card
+  message in [prompts/task-build.md](../prompts/task-build.md). `claude` starts
+  with the build profile,
+  [../agents/entourage-build.md](../agents/entourage-build.md), and Linear's
+  server alone, as `task new` starts the write-up's: the tools a build and a
+  review use, on Opus. The first message has it build the card
   with `sdlc-build`, then review the build with `sdlc-review`, and back to the
   build when the review sends it back. When the review finds every item met,
   `sdlc-pr` pushes the branch and opens the pull requests, and waits for you
@@ -434,10 +461,10 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   changes nothing, and wakes the agent only when it ends. Telling the agent in
   the tab that they have merged makes it check at once, with `--once`, which
   checks once and exits 2 while one is still open. The run ends when it hands
-  off with `merged` next. No agent merges a pull request. `task build` refuses to run
-  outside the card's own task folder, with no agent on your `PATH`, or with
-  the skills not linked. If the agent stops, run the same command again in
-  the tab.
+  off with `merged` next. No agent merges a pull request. `task build` refuses
+  to run outside the card's own task folder, with no agent on your `PATH`,
+  with the skills not linked, or, for `claude`, with the build profile not
+  linked. If the agent stops, run the same command again in the tab.
 - **The card moves to In Progress.** Once the tab is open, `task start` moves
   the card in Linear to its team's first started status: picked by its kind
   and its place in the team's order, not by its name, so it is In Progress in
@@ -447,8 +474,9 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   move needs your key to have Write permission. When Linear cannot be
   reached, or refuses the move, the task is still made and open, and the
   output says that the card was not moved, and why. Move it by hand then.
-  Once every pull request has merged, recording the merge moves the card to
-  Done (see [Hand-offs](#hand-offs)).
+  Once every pull request is open, `sdlc-pr` moves it to In Review, and once
+  every one has merged, recording the merge moves it to Done (see
+  [Hand-offs](#hand-offs)).
 - **Claude Code asks once to trust a repo it does not know.** With one repo,
   the tab starts in its worktree, and a worktree takes the trust of its repo's
   own checkout, not of the project folder above it. When Claude Code's file
@@ -584,11 +612,11 @@ shell, or written as a `NAME=value` line in entourage's env file,
 | Variable | What it sets |
 |---|---|
 | `LINEAR_API_KEY` | Your Linear API key. `entourage linear key` writes this line for you. |
-| `ENTOURAGE_AGENT` | The agent `task new` and `task build` start. `claude` when it is not set. |
+| `ENTOURAGE_AGENT` | The agent `task new` and `task build` start. `claude` when it is not set, which starts with an agent profile. Another agent starts as it is, with no profile. |
 | `ENTOURAGE_SQLITE` | The command that records hand-offs. `sqlite3` when it is not set. |
 | `ENTOURAGE_SETUP` | `1` makes `task start` run each repo's `setup` recipe. Off when it is not set, for now. |
 | `HERDR_APP_HOME` | Herdr's folder. `~/.config/herdr-app` when it is not set. |
-| `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills are linked. `~/.claude` when it is not set. |
+| `CLAUDE_CONFIG_DIR` | Claude Code's folder, where skills and agent profiles are linked. `~/.claude` when it is not set. |
 | `ENTOURAGE_HOME` | entourage's own folder. `~/.config/entourage` when it is not set. Export only: it says where the env file is, so the file cannot set it. |
 | `ENTOURAGE_LIVE` | `1` lets the copy of entourage in a git worktree of its repo change the machine, for that run (see [Changing things](#changing-things)). Export only, best on the command line: the file cannot set it, so it is never left on. |
 

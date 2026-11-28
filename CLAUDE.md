@@ -9,9 +9,10 @@ machine running from a clone gets whatever `git pull` brings.
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
 are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
 `linear`, `runner`, `release`, `guard`, `after-merge`). The `handoff` tests use
-the real `sqlite3` and `jq`, the `linear` and `task` tests the real `jq`, the
-`release` tests the real `git` and `jq`, the `guard` tests all three, and the
-`after-merge` tests the real `git`; they have to be in `/usr/bin` or `/bin`.
+the real `sqlite3` and `jq`, the `linear`, `task` and `skills` tests the real
+`jq`, the `release` tests the real `git` and `jq`, the `guard` tests all three,
+and the `after-merge` tests the real `git`; they have to be in `/usr/bin` or
+`/bin`.
 No test reaches Linear: a
 stand-in `curl` answers from canned files. Cases run side by side, each in a
 process of its own, so a case must not depend on another case or on anything
@@ -50,6 +51,23 @@ being built. Which copy to run for what:
 The guard is `cli/lib/guard.sh`. It lists the commands a worktree's copy may
 run, so a new command is refused there until it is added to that list, and
 it is added only if it changes nothing.
+
+## Reviewing a change
+
+To review a change, or to check what a review found, start the `reviewer` or
+the `verifier` subagent, not `general-purpose`. They are in `.claude/agents/`,
+so a session in any checkout or worktree of this repo can start them by name.
+Each has only the tools it uses and runs on Opus, and carries the rules every
+review prompt used to repeat: which docs to read, bash 3.2, the read-only
+worktree and the `mktemp -d` scratch folders, the real Herdr and Linear left
+alone, the env file and its key never read, no subagents of its own, and how
+to report. So give it only what to check: the branch, diff or files, and
+what to look for. The `reviewer` grades what it finds; the `verifier` tries to
+refute each finding and judges it `fix-now`, `fix-later` or `skip`.
+
+The profiles in `agents/` are a different thing: the ones `task new` and
+`task build` start `claude` with, which `entourage install` links into
+`~/.claude/agents`.
 
 ## Herdr's docs
 

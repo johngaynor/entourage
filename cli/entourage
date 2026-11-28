@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # entourage: set up and maintain this machine's copy of the software factory.
-# It links the Herdr mods and layouts under herdr/ and the agent skills under
-# skills/, and manages projects (groups of repos that show up in Herdr as
+# It links the Herdr mods and layouts under herdr/, the agent skills under
+# skills/ and the agent profiles under agents/, and manages projects (groups of repos that show up in Herdr as
 # spaces) and their tasks (a card an agent writes up, then a worktree of each
 # repo on one branch, each shown as a tab in the project's space).
 set -euo pipefail
@@ -39,6 +39,9 @@ Usage:
                                            set a card's type, its label in the Type group
   entourage linear section <card> <Specification|Plan|Breakdown> [--replace]
                                            add a section to a card, its body on stdin
+  entourage linear move <card> <started|review|done>
+                                           move a card forward in Linear: to its team's first
+                                           started status, its last started one (In Review), or Done
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
@@ -53,7 +56,8 @@ project's Linear teams that is not done, cancelled or a duplicate, under its
 status. It needs two things set once. `linear key` asks for a Linear API key
 and saves it (make one in Linear, under Settings, Account, Security & access,
 Personal API keys; Read permission is enough to list cards, and the card
-skills' writes, `linear type` and `linear section`, need Write too).
+skills' writes, `linear type`, `linear section` and `linear move`, need
+Write too).
 `project team` names the project's teams by their keys: ABC for the team
 whose cards are ABC-122. A project can name several teams, and several
 projects can name the same one. Linear is asked with curl and its answer read
@@ -61,6 +65,7 @@ with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
+claude starts with the entourage-write-up profile (see below).
 With a Linear key saved, it first checks that Linear has the card, and stops
 on a mistyped ID; when Linear cannot be asked, it starts the card anyway.
 `task start` takes the card's ID too, once the card is written up. It asks
@@ -81,7 +86,8 @@ Targets after the card narrow the task: `app` takes only that repo, and
 `app:athlete` sets it up for its athlete group (`just setup athlete`).
 Join several groups with a comma: `app:athlete,coach`.
 `task build` starts the agent in the folder it is run in, which has to be the
-card's task, with the first message in prompts/task-build.md: build the card
+card's task, with the entourage-build profile when it is claude (see below),
+and with the first message in prompts/task-build.md: build the card
 with the sdlc-build skill, review the build with the sdlc-review skill, then
 put it up as a pull request with the sdlc-pr skill.
 Run it again in the tab if the agent stops. The build makes the change the
@@ -97,12 +103,16 @@ requests on GitHub with `task watch`, and records the merge once every pull
 request for the card has merged, with no one typing in the tab; telling it in
 the tab that they have merged makes it check at once. When one is closed
 without merging, it asks you whether to stop. No agent merges a pull request.
-entourage moves the card in Linear at two points: once `task start` has
-opened the tab, to the team's first started status (In Progress), and once
-the merge is recorded, to its first completed one (Done). A status is picked
-by its kind and its place in the team's order, not by its name; a card only
-moves forward, one that is done or canceled is never moved, the key needs
-Write permission, and a move that cannot be made is a note, never a failure.
+entourage moves the card in Linear at three points: once `task start` has
+opened the tab, to the team's first started status (In Progress); once
+sdlc-pr has opened every pull request, with `linear move <card> review`, to
+its last started one (In Review); and once the merge is recorded, to its
+first completed one (Done). A status is picked by its kind and its place in
+the team's order, not by its name; a card only moves forward, one that is
+done or canceled is never moved, and the key needs Write permission. A move
+that cannot be made never stops the step: `task start` and the merge say so
+in a note, and sdlc-pr in its hand-off. `linear move` alone exits non-zero
+then, saying why.
 Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122`, `/sdlc-pr ABC-122`.
 `task watch` asks GitHub, with gh, for the pull request of each worktree of
@@ -131,11 +141,21 @@ programs: the Steps panel in Herdr draws it. Run
 `entourage task handoff <project> <card>` with no block to see the rules.
 
 Herdr's folder is ~/.config/herdr-app (HERDR_APP_HOME picks another).
-Skills are linked into ~/.claude/skills (CLAUDE_CONFIG_DIR picks another
-~/.claude). The agent is claude (ENTOURAGE_AGENT picks another command).
+Skills are linked into ~/.claude/skills, and agent profiles into
+~/.claude/agents (CLAUDE_CONFIG_DIR picks another ~/.claude). The agent is
+claude (ENTOURAGE_AGENT picks another command).
 Your projects are in ~/.config/entourage/projects (ENTOURAGE_HOME picks
 another ~/.config/entourage). Hand-offs are recorded beside them, in
 entourage.db, with sqlite3 (ENTOURAGE_SQLITE picks another command).
+
+A profile is a Claude Code agent definition: the tools a session has and the
+model it runs on, whatever your own sessions use. claude starts with one,
+entourage-write-up for `task new` and entourage-build for `task build`, and
+with Linear's MCP server alone (agents/linear-mcp.json), not the servers of
+your own sessions. Claude Code asks once to sign in to Linear as
+linear-server on a machine where it is not signed in under that name. When
+the profile is not linked, both stop before starting anything; run
+`entourage update`. Another agent starts as it is, with no profile.
 
 These variables, and your Linear key as LINEAR_API_KEY, can be exported in
 your shell or written as NAME=value lines in ~/.config/entourage/.env, which
@@ -257,6 +277,9 @@ load_env
 APP_HOME=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
 # Where Claude Code looks for a person's own skills.
 SKILLS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills
+# Where Claude Code looks for a person's own agent definitions: the profiles
+# `task new` and `task build` start claude with.
+AGENTS_HOME=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/agents
 # Claude Code's own record for this machine. Among much else it holds the
 # folders Claude Code starts in without asking.
 CLAUDE_STATE=${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json

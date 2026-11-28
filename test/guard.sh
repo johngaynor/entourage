@@ -90,6 +90,13 @@ guard_refuses_linear_section() {
   refused linear section ABC-122 Plan <<< "**Approach:** Build it."
   refused linear section ABC-122 Plan --replace <<< "**Approach:** Build it."
 }
+# Moving a card, as sdlc-pr does once its pull requests are open.
+guard_refuses_linear_move() {
+  guard_machine
+  refused linear move ABC-122 review
+  refused linear move ABC-122 started
+  refused linear move ABC-122 done
+}
 
 # The guard lists what may run, so a command it does not know is refused,
 # such as one added after it.
@@ -321,6 +328,7 @@ CASES="guard_refuses_install guard_refuses_update guard_refuses_project_new
 guard_refuses_project_add guard_refuses_project_open guard_refuses_setting_a_projects_teams
 guard_refuses_task_new guard_refuses_task_start guard_refuses_task_build
 guard_refuses_task_handoff guard_refuses_linear_key guard_refuses_linear_type guard_refuses_linear_section
+guard_refuses_linear_move
 guard_refuses_a_command_it_does_not_know
 guard_knows_a_worktree_git_made
 guard_runs_the_reads_and_changes_nothing guard_opens_the_store_read_only

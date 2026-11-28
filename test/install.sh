@@ -180,6 +180,63 @@ honors_claude_config_dir() {
   "$E" install >/dev/null || fail "install exited non-zero"
   is_link_to "$CLAUDE_CONFIG_DIR/skills/sdlc-define" "$REPO/skills/sdlc-define" || fail "did not link into CLAUDE_CONFIG_DIR"
   [ ! -e "$SK/sdlc-define" ] || fail "linked into the default folder too"
+  is_link_to "$CLAUDE_CONFIG_DIR/agents/entourage-build.md" "$REPO/agents/entourage-build.md" ||
+    fail "did not link the profiles into CLAUDE_CONFIG_DIR"
+  [ ! -e "$HOME/.claude/agents/entourage-build.md" ] || fail "linked a profile into the default folder too"
+}
+
+# --- agent profiles ---------------------------------------------------------
+
+install_links_the_profiles() {
+  "$E" install >/dev/null || fail "install exited non-zero"
+  for a in entourage-write-up.md entourage-build.md; do
+    is_link_to "$AG/$a" "$REPO/agents/$a" || fail "$a not linked into $AG"
+    [ -f "$AG/$a" ] || fail "$a cannot be read through the link"
+  done
+  # The MCP config is handed to the agent by its path in the repo, not linked.
+  [ ! -e "$AG/linear-mcp.json" ] && [ ! -L "$AG/linear-mcp.json" ] || fail "linked linear-mcp.json"
+}
+
+status_lists_the_profiles() {
+  out=$("$E" status) && fail "status exited zero with no profiles linked"
+  case $out in *"missing    agents/entourage-write-up.md"*) ;; *) fail "status did not report the missing profile: $out" ;; esac
+  case $out in *"Agents: $HOME/.claude/agents"*) ;; *) fail "status did not say where profiles are linked: $out" ;; esac
+  "$E" install >/dev/null
+  out=$("$E" status) || fail "status exited non-zero after install"
+  case $out in *"linked     agents/entourage-build.md"*) ;; *) fail "status did not list the linked profile: $out" ;; esac
+  case $out in *linear-mcp*) fail "status lists linear-mcp.json: $out" ;; esac
+}
+
+update_links_a_new_profile() {
+  "$E" install >/dev/null
+  echo x > "$REPO/agents/made-up-profile.md"
+  "$E" update --no-pull >/dev/null || fail "update exited non-zero"
+  is_link_to "$AG/made-up-profile.md" "$REPO/agents/made-up-profile.md" || fail "new profile not linked"
+}
+
+update_removes_a_stale_profile_link() {
+  "$E" install >/dev/null
+  rm "$REPO/agents/entourage-build.md"
+  out=$("$E" update --no-pull) || fail "update exited non-zero"
+  [ ! -L "$AG/entourage-build.md" ] || fail "stale profile link left behind"
+  [ -L "$AG/entourage-write-up.md" ] || fail "a live profile link was removed"
+  case $out in *"removed  agents/entourage-build.md"*) ;; *) fail "did not say the stale link was removed: $out" ;; esac
+}
+
+someone_elses_agents_are_left_alone() {
+  mkdir -p "$AG" "$TMP/elsewhere"
+  echo mine > "$AG/mine.md"
+  echo theirs > "$TMP/elsewhere/theirs.md"
+  ln -s "$TMP/elsewhere/theirs.md" "$AG/theirs.md"
+  ln -s "$TMP/elsewhere/gone.md" "$AG/dangling.md"
+  echo mine > "$AG/entourage-build.md"
+  out=$("$E" install) || fail "install exited non-zero"
+  "$E" update --no-pull >/dev/null
+  [ "$(cat "$AG/mine.md")" = mine ] || fail "someone's own agent was changed"
+  [ -L "$AG/theirs.md" ] || fail "someone else's agent link was removed"
+  [ -L "$AG/dangling.md" ] || fail "someone else's dangling agent link was removed"
+  [ "$(cat "$AG/entourage-build.md")" = mine ] || fail "a real agent file was replaced"
+  case $out in *"agents/entourage-build.md (a real file is in the way"*) ;; *) fail "no warning about the real agent file: $out" ;; esac
 }
 
 CASES="install_links_everything install_is_repeatable works_through_the_path_link
@@ -190,4 +247,5 @@ CASES="install_links_everything install_is_repeatable works_through_the_path_lin
   install_links_skills status_lists_skills update_links_a_new_skill
   update_removes_a_stale_skill_link someone_elses_skills_are_left_alone
   a_real_skill_folder_is_never_replaced a_folder_without_a_skill_file_is_not_linked
-  honors_claude_config_dir"
+  honors_claude_config_dir install_links_the_profiles status_lists_the_profiles
+  update_links_a_new_profile update_removes_a_stale_profile_link someone_elses_agents_are_left_alone"
