@@ -1,15 +1,15 @@
 ---
 name: sdlc-build
-description: Build an approved Linear card in the task that `entourage task start` made for it, by reading the card's Plan, making the change in the task's worktree, installing what its tests need and running them, and committing on the task's branch, then recording how the build ended. Use this once a card is approved and its task started, whenever asked to build, implement or code a card in that task, even if the request only says "build ABC-123". It pushes nothing and opens no pull request.
+description: Build an approved Linear card in the task that `entourage task start` made for it, by reading the card's Plan, making the change in the task's worktree, installing what its tests need and running them, and committing on the task's branch, then recording how the build step ended. Use this once a card is approved and its task started, whenever asked to build, implement or code a card in that task, even if the request only says "build ABC-123". It pushes nothing and opens no pull request.
 ---
 
 # Build a card
 
-Build is the step after the human has approved the card. Define said what is wanted, plan said how it will be built, and breakdown cut it into pieces the human approved. Build makes the change that the Plan describes, in the task's worktree, and shows that each Done when item is true.
+The build step comes after the human has approved the card. Define said what is wanted, plan said how it will be built, and breakdown cut it into pieces the human approved. The build step makes the change that the Plan describes, in the task's worktree, and shows that each Done when item is true.
 
-The human is not watching while it runs. They read the commits and the hand-off afterwards, so the commits have to match the Plan, and the hand-off has to say plainly how the build ended and what it could not show.
+The human is not watching while it runs. They read the commits and the hand-off afterwards, so the commits have to match the Plan, and the hand-off has to say plainly how the build step ended and what it could not show.
 
-Build ends with commits on the task's branch. Push nothing and open no pull request. Review, pushing and the pull request come after this step.
+The build step ends with commits on the task's branch. Push nothing and open no pull request. The review step, pushing and the pull request come after this step.
 
 ## Before you change anything
 
@@ -19,7 +19,7 @@ Build ends with commits on the task's branch. Push nothing and open no pull requ
 4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a Plan of its own. Build the sub-issue, not this card. Change nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Check where you are. The work goes in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, change nothing and hand off as `failed`, saying where you are.
 6. Run `git status` in each worktree. A new task's worktree has no changes. If one has changes that aren't yours, don't touch them: ask the human what to do with them.
-7. If the card has a Review with items not met, this is a later round: the `sdlc-review` skill checked an earlier build and sent it back. Build only what those items need, on top of the commits already there, and leave the items it found met as they are. A test that fails for one of those items is the work, not a reason to ask.
+7. If the card has a Review with items not met, this is a later round: the `sdlc-review` skill checked an earlier round and sent it back. Build only what those items need, on top of the commits already there, and leave the items it found met as they are. A test that fails for one of those items is the work, not a reason to ask.
 
 ## 1. Read how the repo works
 
@@ -52,11 +52,11 @@ Stay inside the Plan. The human approved this Plan, not a better one you could w
 - **The Plan can't be built as written.** Following it would change what they approved: a Done when item that can't be met, a different approach, a new dependency, or a repo the task has no worktree of. Ask the human before going any further, in a handoff block with `status: needs-human` and your recommendation first in `options`.
 - **Something outside the Plan.** You may find a nearby bug, a missing test or a refactor that would help. Leave it alone and put it in `flags` when you hand off.
 
-Build changes nothing on the card. The hand-off records how the build ended.
+The build step changes nothing on the card. The hand-off records how it ended.
 
 ## 3. Run the tests
 
-When every Done when item has its change, run the repo's whole test suite, in every worktree you changed. A build is done only when the tests pass.
+When every Done when item has its change, run the repo's whole test suite, in every worktree you changed. The build step is done only when the tests pass.
 
 If a test fails, find out why and fix it. Change a test only when the Plan changes what that test checks. A test made to pass by weakening it is a failure you have hidden from the human.
 
@@ -73,7 +73,7 @@ Commit on the task's branch, in each worktree you changed, by the repo's own rul
 
 ## 5. Hand off
 
-When the commits are made and the tests pass, record the hand-off. Build is not finished until it is recorded:
+When the commits are made and the tests pass, record the hand-off. The build step is not finished until it is recorded:
 
 ```
 entourage task handoff <project> <card ID> <<'EOF'
@@ -87,7 +87,7 @@ EOF
 
 Put your own words in place of each hint in angle brackets, and leave the `flags` line out when there is nothing to flag. Hand off as `done` only when the tests pass. When they can't be made to pass, or something is missing, hand off as `failed`, with what is wrong and what you tried in `reason`, and leave the work as it is for the human.
 
-In a later round, say in `summary` what was done for each item the Review found not met. The step that follows is review, which the `sdlc-review` skill runs: it checks the work against the card's Done when, and sends what is not met back here as a later round.
+In a later round, say in `summary` what was done for each item the Review found not met. The step that follows is the review step, which the `sdlc-review` skill runs: it checks the work against the card's Done when, and sends what is not met back here as a later round.
 
 ## The handoff block
 
@@ -109,7 +109,7 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<project>` is the entourage project this session is in. The `phase:` line names this step, not a phase. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|
