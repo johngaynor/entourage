@@ -1295,6 +1295,344 @@ log_list_fails_when_the_store_cannot_be_read() {
   case $out in *'[<card>]'*) ;; *) fail "the usage does not say the card can be left out: $out" ;; esac
 }
 
+# --- the agent on a card's step, as Herdr sees it ---------------------------
+
+# What hc says about the terminal $1: its status $2 (blocked, error, working,
+# done or idle, or none for one that has reported none), the kind $3 a
+# blocked one gives (permission, question or auth, or nothing), and $4 what
+# is in its foreground: agent, a program other than its shell (the default),
+# or shell, its own shell, as when the agent has exited or never started. A
+# status changed 125 seconds ago.
+hc_term() {
+  local t=$1 state=$2 kind=${3:-} fg=${4:-agent} status=null ms=null fgpid=4201
+  [ "$fg" = agent ] || fgpid=4200
+  if [ "$state" != none ]; then
+    status=$(jq -cn --arg s "$state" --arg k "$kind" \
+      '{app: "claude-code", state: $s} + (if $k == "" then {} else {kind: $k} end)')
+    ms=$(( ($(date +%s) - 125) * 1000 ))
+  fi
+  printf '{"address":"%s","pid":4200,"state":"live","argv":["/bin/zsh","-l"],"foreground":{"pid":%s,"name":"2.1.332"},"status":%s,"status_ms":%s,"reported":%s}\n' \
+    "$t" "$fgpid" "$status" "$ms" "$([ "$state" = none ] && echo false || echo true)" > "$TMP/hc-get-$t.json"
+}
+
+# What the label for an agent blocked with the kind $1 reads.
+blocked_label() {
+  case $1 in
+    permission) echo 'agent waiting on a permission prompt' ;;
+    question) echo 'agent asking a question in its tab' ;;
+    auth) echo 'agent waiting for a sign-in' ;;
+    *) echo 'agent waiting on you in its tab' ;;
+  esac
+}
+
+# ABC-122 in the list's JSON in $out.
+CARD='.cards[] | select(.card == "ABC-122")'
+
+# A write-up whose define step is done, with plan under way. It is the only
+# card in the store.
+planning() {
+  demo; make_store
+  q 'delete from handoffs'
+  put 2026-01-01T10:00:00Z new done define
+  put 2026-01-01T10:00:50Z define done plan
+}
+# The log on stdin, with how long each card has stood where it is
+# left out, since that counts on while a case runs.
+untimed() { sed -E 's/ for [0-9][0-9dhms ]*$/ for (time)/'; }
+# The JSON in $out with the agent left out, sorted.
+no_agent() { printf '%s' "$out" | jq -cS 'del(.agent)'; }
+
+# When hc says the card's agent is blocked, the log says so in place of where
+# the card stands, naming what it is waiting on, and the card's own log ends
+# with it. The card's own state keeps its meaning, so a reader can tell the
+# two apart.
+log_shows_a_blocked_agent() {
+  planning
+  stub_hc_status
+  herdr_tabs ABC-122:t1 1:t5
+  local kind label
+  for kind in permission question auth ''; do
+    hc_term t1 blocked "$kind"
+    label=$(blocked_label "$kind")
+    rm -f "$TMP/hc-calls.log"
+    out=$("$E" task log demo) || fail "task log exited non-zero"
+    log_has "^ABC-122 +$label +for 2m [0-5][0-9]s$"
+    out=$("$E" task log demo --json) || fail "task log --json exited non-zero"
+    j_is "$CARD | .agent.state" blocked
+    j_is "$CARD | .agent.kind" "${kind:-null}"
+    j_is "$CARD | .agent.label" "$label"
+    j_is "$CARD | .agent.tab" ABC-122
+    j_is "$CARD | .state" 'define done, then plan'
+    j "$CARD | .agent.for" | grep -Eq '^2m [0-5][0-9]s$' || fail "the agent has been blocked for '$(j "$CARD | .agent.for")'"
+    [ "$(j "$CARD | .agent.seconds")" -ge 125 ] 2>/dev/null || fail "the agent has been blocked for $(j "$CARD | .agent.seconds") seconds"
+    out=$("$E" task log demo ABC-122) || fail "task log for the card exited non-zero"
+    printf '%s\n' "$out" | tail -n 1 | grep -Eq "^    now: $label, for 2m [0-5][0-9]s$" ||
+      fail "the card's log does not end with what its agent is doing: $out"
+    log_has 'define +done, then plan +50s$'
+    out=$("$E" task log demo ABC-122 --json) || fail "task log --json for the card exited non-zero"
+    j_is .agent.state blocked; j_is .agent.kind "${kind:-null}"; j_is .agent.label "$label"
+    j_is .state 'define done, then plan'
+    # Only the card's own tab, in its project's space, is asked about.
+    [ -z "$(hc_calls | grep -v '^get t1 --json$')" ] || fail "asked hc about another terminal: $(hc_calls)"
+  done
+}
+
+# An agent that hit an error shows too, and both show for a card waiting on
+# the human, whose log ends with it after the wait.
+log_shows_an_agent_that_hit_an_error() {
+  planning
+  stub_hc_status
+  herdr_tabs ABC-122:t1
+  hc_term t1 error
+  out=$("$E" task log demo) || fail "task log exited non-zero"
+  log_has '^ABC-122 +agent hit an error +for 2m [0-5][0-9]s$'
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+  j_is .agent.state error; j_is .agent.kind null; j_is .agent.label 'agent hit an error'
+  put 2026-01-01T10:02:00Z plan needs-human
+  for state in error blocked; do
+    hc_term t1 "$state" question
+    out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+    log_has '^    waiting on the human for '
+    label='agent hit an error'
+    [ "$state" = error ] || label=$(blocked_label question)
+    printf '%s\n' "$out" | tail -n 1 | grep -Eq "^    now: $label, for 2m [0-5][0-9]s$" ||
+      fail "the log of a card waiting on the human does not end with its agent: $out"
+    out=$("$E" task log demo --json)
+    j_is "$CARD | .state" 'waiting on the human'; j_is "$CARD | .agent.state" "$state"
+  done
+}
+
+# While a step is under way, an agent whose turn has ended without a hand-off
+# has stopped: hc says done, or idle once someone has looked.
+log_shows_an_agent_that_stopped() {
+  planning
+  stub_hc_status
+  herdr_tabs ABC-122:t1
+  for state in done idle; do
+    hc_term t1 "$state"
+    out=$("$E" task log demo) || fail "task log exited non-zero"
+    log_has '^ABC-122 +agent stopped without handing off +for 2m [0-5][0-9]s$'
+    out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+    j_is .agent.state stopped; j_is .agent.kind null; j_is .agent.tab ABC-122
+    j_is .agent.label 'agent stopped without handing off'
+  done
+  # A working agent is where it should be, and the card shows as today.
+  hc_term t1 working
+  out=$("$E" task log demo) || fail "task log exited non-zero"
+  log_has '^ABC-122 +define done, then plan +for '
+  out=$("$E" task log demo ABC-122 --json); j_is .agent null; j_is 'has("agent")' true
+  # So does an answer, which the agent goes on from.
+  put 2026-01-01T10:02:00Z plan needs-human
+  put 2026-01-01T10:04:00Z plan answered '' approve
+  hc_term t1 done
+  out=$("$E" task log demo ABC-122 --json); j_is .agent.state stopped
+}
+
+# Once the work has started, the card's agent is the build phase's, in the
+# tab named after the task's folder. The write-up phase's tab is not looked at.
+log_looks_at_the_tab_of_the_step_under_way() {
+  demo; make_store
+  put 2026-01-01T10:02:34Z plan done breakdown
+  put 2026-01-01T10:05:00Z breakdown done start
+  put 2026-01-01T11:00:00Z start done build
+  stub_hc_status
+  herdr_tabs ABC-122:t1 abc-122-fix-it:t2
+  hc_term t1 done
+  hc_term t2 done
+  out=$("$E" task log demo) || fail "task log exited non-zero"
+  log_has '^ABC-122 +agent stopped without handing off +for 2m [0-5][0-9]s$'
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+  j_is .agent.state stopped; j_is .agent.tab abc-122-fix-it
+  [ -z "$(hc_calls | grep -v '^get t2 --json$')" ] || fail "asked hc about a terminal other than the task's: $(hc_calls)"
+  # The task's tab is not taken for another card's whose ID it starts with.
+  put_for ABC-12 2026-01-01T11:00:00Z start done build
+  out=$("$E" task log demo --json)
+  j_is '.cards[] | select(.card == "ABC-12") | .agent.state' 'not running'
+  j_is '.cards[] | select(.card == "ABC-12") | .agent.tab' null
+  # The review step and the pr step are the build phase's too.
+  put 2026-01-01T11:20:00Z build done review
+  hc_term t2 idle
+  out=$("$E" task log demo ABC-122 --json); j_is .agent.state stopped; j_is .agent.tab abc-122-fix-it
+  put 2026-01-01T11:25:00Z review done pr
+  out=$("$E" task log demo ABC-122 --json); j_is .agent.state stopped
+}
+
+# While a step is under way, an agent whose tab is closed, has exited or never
+# started is not running, for as long as the hand-off before it.
+log_shows_an_agent_that_is_not_running() {
+  planning
+  stub_hc_status
+  herdr_tabs 1:t5
+  out=$("$E" task log demo) || fail "task log exited non-zero"
+  log_has '^ABC-122 +agent not running +for [0-9]+d [0-9]{2}h$'
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+  j_is .agent.state 'not running'; j_is .agent.tab null; j_is .agent.kind null
+  j_is .agent.label 'agent not running'
+  j .agent.for | grep -Eq '^[0-9]+d [0-9]{2}h$' || fail "not running for '$(j .agent.for)'"
+  out=$("$E" task log demo ABC-122) || fail "task log exited non-zero"
+  printf '%s\n' "$out" | tail -n 1 | grep -Eq '^    now: agent not running, for [0-9]+d [0-9]{2}h$' ||
+    fail "the card's log does not end with its agent: $out"
+  # The tab is open, but its shell is in the foreground with no status: the
+  # agent has exited, or never started.
+  herdr_tabs ABC-122:t1
+  hc_term t1 none '' shell
+  out=$("$E" task log demo ABC-122 --json)
+  j_is .agent.state 'not running'; j_is .agent.tab ABC-122
+  # A tab with no terminal in it.
+  herdr_tabs ABC-122:
+  out=$("$E" task log demo ABC-122 --json); j_is .agent.state 'not running'
+  # Something other than its shell is running there but reports no status, as
+  # an agent that never reported does: what it is doing is not known, so
+  # nothing is said about it.
+  herdr_tabs ABC-122:t1
+  hc_term t1 none
+  out=$("$E" task log demo ABC-122 --json); j_is .agent null
+  # A terminal hc cannot answer for says nothing either.
+  herdr_tabs ABC-122:t7
+  out=$("$E" task log demo ABC-122 --json); j_is .agent null
+  # After `task start`, the task's tab missing is the agent not running.
+  put 2026-01-01T10:05:00Z breakdown done start
+  put 2026-01-01T11:00:00Z start done build
+  herdr_tabs ABC-122:t1
+  hc_term t1 working
+  out=$("$E" task log demo ABC-122 --json); j_is .agent.state 'not running'; j_is .agent.tab null
+}
+
+# For 15 seconds after `task new` or `task start` records its start, the
+# agent is still starting, so no tab or no status yet says nothing.
+log_gives_a_starting_agent_time() {
+  demo; make_store
+  stub_hc_status
+  herdr_tabs 1:t5
+  local step next
+  for step in new start; do
+    next=define
+    [ "$step" = new ] || next=build
+    q "insert into handoffs (at, project, card, step, status, next)
+       values (strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-3 seconds'), 'demo', 'ABC-122', '$step', 'done', '$next');"
+    out=$("$E" task log demo ABC-122 --json) || fail "task log --json exited non-zero"
+    j_is .agent null; j_is .state started
+    out=$("$E" task log demo) || fail "task log exited non-zero"
+    log_has '^ABC-122 +started +for [0-9]s$'
+    q "update handoffs set at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-20 seconds') where card = 'ABC-122' and step = '$step';"
+    out=$("$E" task log demo ABC-122 --json); j_is .agent.state 'not running'
+  done
+}
+
+# A card with no step under way (waiting on the human, failed, approved and
+# not yet started, or merged) shows as it does today, whatever its tab is
+# doing, unless its agent is blocked or hit an error.
+log_shows_a_card_with_no_step_under_way_as_today() {
+  demo; make_store
+  q 'delete from handoffs'
+  put_for ABC-1 2026-01-01T10:00:00Z define needs-human
+  put_for ABC-2 2026-01-01T10:01:00Z plan failed
+  put_for ABC-3 2026-01-01T10:02:00Z breakdown done start
+  put_for ABC-4 2026-01-01T10:03:00Z pr done merged
+  put_for ABC-5 2026-01-01T10:04:00Z breakdown done setup
+  local today
+  today=$("$E" task log demo) || fail "task log exited non-zero"
+  stub_hc_status
+  # Each tab closed.
+  herdr_tabs 1:t5
+  out=$("$E" task log demo) || fail "task log exited non-zero"
+  [ "$out" = "$today" ] || fail "with every tab closed, the list changed: $(diff <(printf '%s\n' "$today") <(printf '%s\n' "$out"))"
+  out=$("$E" task log demo --json)
+  j_is '[.cards[] | .agent] | unique | tostring' '[null]'
+  # Each tab open, with its agent done.
+  herdr_tabs ABC-1:t1 ABC-2:t2 ABC-3:t3 abc-4-ship-it:t4 abc-5-old:t6
+  for t in t1 t2 t3 t4 t6; do hc_term "$t" done; done
+  out=$("$E" task log demo) || fail "task log exited non-zero"
+  [ "$out" = "$today" ] || fail "with each agent done, the list changed: $(diff <(printf '%s\n' "$today") <(printf '%s\n' "$out"))"
+  out=$("$E" task log demo --json)
+  j_is '[.cards[] | .agent] | unique | tostring' '[null]'
+  out=$("$E" task log demo ABC-1)
+  case $out in *'now:'*) fail "a card waiting on the human says what its agent is doing: $out" ;; esac
+  # Blocked still shows.
+  hc_term t4 blocked permission
+  out=$("$E" task log demo)
+  log_has '^ABC-4 +agent waiting on a permission prompt +for 2m [0-5][0-9]s$'
+}
+
+# A stand-in for herdr-app that logs its calls, says Herdr is running only
+# when $1 is running, and answers `ls` with the tabs herdr_tabs wrote,
+# exiting with $2 (0 when left out).
+herdr_as() {
+  cat > "$TMP/bin/herdr-app" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/herdr-calls.log"
+if [ "\$1" = status ] && [ "$1" = running ]; then echo '  "layout": "test",'; fi
+if [ "\$1" = ls ]; then cat "$TMP/herdr-ls.json"; exit ${2:-0}; fi
+exit 0
+EOF
+  chmod +x "$TMP/bin/herdr-app"
+}
+
+# With no hc, no Herdr running, Herdr unable to list its tabs or no jq, every
+# card shows as it does today, and hc is never asked.
+log_without_herdr_shows_as_today() {
+  planning
+  local today json
+  today=$("$E" task log demo | untimed) || fail "task log exited non-zero"
+  out=$("$E" task log demo ABC-122 --json); json=$(no_agent)
+  herdr_tabs ABC-122:t1
+  hc_term t1 blocked permission
+  # No hc.
+  out=$("$E" task log demo | untimed); [ "$out" = "$today" ] || fail "with no hc, the list changed: $out"
+  out=$("$E" task log demo ABC-122 --json); j_is .agent null; j_is 'has("agent")' true
+  [ "$(no_agent)" = "$json" ] || fail "with no hc, the card's view changed: $out"
+  # With hc, the agent shows.
+  stub_hc_status
+  out=$("$E" task log demo --json); j_is "$CARD | .agent.state" blocked
+  rm -f "$TMP/hc-calls.log" "$TMP/herdr-calls.log"
+  # Herdr not running.
+  herdr_as stopped
+  out=$("$E" task log demo | untimed); [ "$out" = "$today" ] || fail "with Herdr not running, the list changed: $out"
+  out=$("$E" task log demo ABC-122 --json); j_is .agent null
+  # Herdr running, but `herdr-app ls` fails.
+  herdr_as running 1
+  out=$("$E" task log demo | untimed); [ "$out" = "$today" ] || fail "with herdr-app ls failing, the list changed: $out"
+  out=$("$E" task log demo --json); j_is "$CARD | .agent" null
+  grep -q '^ls' "$TMP/herdr-calls.log" || fail "never asked Herdr for its tabs"
+  [ -z "$(hc_calls)" ] || fail "asked hc with Herdr not running or unable to list its tabs: $(hc_calls)"
+  # No jq.
+  herdr_as running
+  hide_jq
+  out=$("$E" task log demo | untimed); [ "$out" = "$today" ] || fail "with no jq, the list changed: $out"
+  out=$("$E" task log demo ABC-122)
+  case $out in *'now:'*) fail "with no jq, the card's log says what its agent is doing: $out" ;; esac
+  json=$("$E" task log demo ABC-122 --json)
+  [ -z "$(hc_calls)" ] || fail "asked hc with no jq: $(hc_calls)"
+  export PATH=$TMP/bin:/usr/bin:/bin
+  out=$json; j_is .agent null; j_is 'has("agent")' true
+}
+
+# What Herdr says is read for each run and never stored: the store's rows,
+# and how long each step took, are the same with it as without it.
+log_stores_none_of_the_agent_state() {
+  planning
+  put 2026-01-01T10:02:00Z plan needs-human
+  put 2026-01-01T10:04:00Z plan answered '' approve
+  local rows times sum
+  rows=$(q 'select * from handoffs order by id')
+  sum=$(cksum < "$(STORE)")
+  times=$("$E" task log demo ABC-122 --json | jq -c '[.steps[] | {took, seconds, short}]')
+  stub_hc_status
+  herdr_tabs ABC-122:t1
+  hc_term t1 blocked question
+  "$E" task log demo >/dev/null || fail "task log exited non-zero"
+  "$E" task log demo --json >/dev/null || fail "task log --json exited non-zero"
+  "$E" task log demo ABC-122 >/dev/null || fail "task log for the card exited non-zero"
+  out=$("$E" task log demo ABC-122 --json) || fail "task log --json for the card exited non-zero"
+  j_is .agent.state blocked
+  local now
+  now=$(printf '%s' "$out" | jq -c '[.steps[] | {took, seconds, short}]')
+  [ "$now" = "$times" ] || fail "the steps' times changed: $times became $now"
+  [ "$(q 'select * from handoffs order by id')" = "$rows" ] || fail "the store's rows changed"
+  [ "$(cksum < "$(STORE)")" = "$sum" ] || fail "the store changed"
+  [ -z "$(q "select name from sqlite_master where name != 'handoffs'")" ] || fail "a table was added to the store"
+}
+
 CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   handoff_records_a_question handoff_records_a_failure handoff_refuses_a_missing_line
   handoff_refuses_what_it_does_not_know handoff_refuses_a_line_that_does_not_belong
@@ -1337,4 +1675,9 @@ CASES="handoff_records_a_done_step handoff_prints_the_block_in_the_usual_order
   log_json_says_when_a_question_is_still_waiting log_json_keeps_awkward_text
   a_start_row_shows_no_time a_task_start_row_keeps_the_run log_json_fails_as_the_plain_log_does
   log_lists_the_projects_cards_newest_first log_list_with_nothing_recorded
-  log_list_fails_when_the_store_cannot_be_read"
+  log_list_fails_when_the_store_cannot_be_read
+  log_shows_a_blocked_agent log_shows_an_agent_that_hit_an_error
+  log_shows_an_agent_that_stopped log_looks_at_the_tab_of_the_step_under_way
+  log_shows_an_agent_that_is_not_running log_gives_a_starting_agent_time
+  log_shows_a_card_with_no_step_under_way_as_today log_without_herdr_shows_as_today
+  log_stores_none_of_the_agent_state"

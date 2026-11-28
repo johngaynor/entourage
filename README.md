@@ -164,6 +164,14 @@ newest first, with where each stands, such as waiting on you, or merged:
 entourage task log my-project
 ```
 
+It also asks Herdr what each card's agent is doing, and says so when the
+agent needs you or is not getting on with its step: waiting in its tab on a
+permission prompt, a question or a sign-in, hit an error, stopped without
+handing off, or not running. That shows in place of where the card stands,
+and as the last line of the card's own log. It is read from Herdr each time
+and never stored; with Herdr closed, `task log` shows what it always has. See
+[herdr/README.md](herdr/README.md#hand-offs).
+
 `task start` starts the work, once you have approved the card. It takes the
 card too, makes a branch and a git worktree of it in every repo of the
 project, opens a tab for it, and starts the agent there that runs the build

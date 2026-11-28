@@ -449,6 +449,38 @@ entourage task log <project> [<card>]
   and the one that comes next, or merged once its pull requests have) and
   for how long. A card with no hand-offs is
   not listed: `task ls` lists the cards in Linear.
+- **It says when a card's agent is stuck or has stopped.** A card's agent is
+  the one running its current phase. That is the write-up phase, in the tab
+  named after the card, until the work starts, then the build phase, in the
+  task's tab, named after its folder. The card's latest hand-off says
+  which, and the tab is found by its name in the project's space. For each
+  terminal in it, `hc` says what the agent last reported. When the tab has several, the most
+  urgent counts. What `task log` says:
+
+  | When | It shows |
+  |---|---|
+  | The agent is blocked, on any card | agent waiting on a permission prompt, agent asking a question in its tab, agent waiting for a sign-in, or agent waiting on you in its tab when hc does not say which |
+  | The agent hit an error, on any card | agent hit an error |
+  | A step is under way, and the agent's turn has ended without a hand-off | agent stopped without handing off |
+  | A step is under way, and the tab is closed, or its shell is back in the foreground: the agent has exited or never started | agent not running |
+
+  A step is under way when the latest hand-off is an answer, or `done` with
+  a step an agent runs next. A card waiting on you, failed, approved and not
+  yet started, or merged has none, so it shows as before unless its agent is
+  blocked or hit an error. For 15 seconds after `task new` or `task start`
+  records its start the agent is still starting, so it is not yet called
+  stopped or not running. A program in the tab that reports nothing, or a
+  terminal hc cannot answer for, says nothing either way. The plain list
+  shows it in place of where the card stands, with how long it has been so,
+  counted from when the agent's status last changed, or else from the
+  latest hand-off. A card's own log ends with `now:` and the same.
+  `--json` gives each card an `agent`: null, or its `state` (`blocked`,
+  `error`, `stopped` or `not running`), its `kind` (`permission`,
+  `question`, `auth` or null), its `tab` (null when closed), its `label`,
+  `for` and `seconds`. The card's own `state`, `for` and `seconds` keep
+  their meaning. None of it is stored: it is read from Herdr each time, and
+  no row or step's time changes with it. With `hc` or `jq` missing, Herdr
+  not running, or Herdr unable to list its tabs, every card shows as before.
 - **They are kept in `~/.config/entourage/entourage.db`,** a SQLite file
   beside your projects, on this machine only. It needs `sqlite3`, which macOS
   ships; `ENTOURAGE_SQLITE` picks another command. Without it `task new`
