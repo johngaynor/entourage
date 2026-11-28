@@ -19,7 +19,7 @@ HANDOFF_KEYS='phase status next summary flags question options answer reason'
 # start (record_start). Breakdown hands on to it once the human approves the
 # card, but it is only ever what comes next in a block, since it is a command
 # that records its own row, not a skill: the write-up agent runs it, or the
-# human does when they hold the build for later. A review that finds the work done hands on to pr, the step that pushes
+# human does when they hold the build phase for later. A review that finds the work done hands on to pr, the step that pushes
 # the task's branch, opens its pull requests and waits for the human to merge
 # them. merged is where a card ends: pr hands on to it once every pull request
 # has merged. It too is only ever what comes next, since nothing runs after it.

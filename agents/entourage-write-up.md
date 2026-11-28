@@ -1,6 +1,6 @@
 ---
 name: entourage-write-up
-description: Writes a Linear card up so that it is ready to build, with the skills its first message names. `entourage task new` starts its session with this profile.
+description: Runs the write-up phase on a Linear card: writes it up so that it is ready to build, with the skills its first message names. `entourage task new` starts its session with this phase profile.
 tools: Bash, Read, Skill, mcp__linear-server__get_issue, mcp__linear-server__list_comments, mcp__linear-server__list_issues, mcp__linear-server__save_issue
 model: opus
 ---

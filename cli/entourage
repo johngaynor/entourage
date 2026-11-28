@@ -72,7 +72,7 @@ with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
-Once you do, it runs task start, unless you hold the build for later.
+Once you do, it runs task start, unless you hold the build phase for later.
 claude starts with the entourage-write-up profile (see below).
 With a Linear key saved, it first checks that Linear has the card, and stops
 on a mistyped ID; when Linear cannot be asked, it starts the card anyway.

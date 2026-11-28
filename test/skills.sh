@@ -82,25 +82,25 @@ breakdown_hands_on_to_start() {
   return 0
 }
 
-# Approving the card starts its build, unless the human holds it for later:
+# Approving the card starts its build phase, unless the human holds it for later:
 # breakdown asks which, and the task-new prompt has the agent run task start
 # itself only for an approval to start now.
 approval_starts_the_build_unless_held() {
   local skill=$REPO/skills/sdlc-breakdown/SKILL.md prompt=$REPO/prompts/task-new.md section want
-  grep -qxF 'question: Approve <card ID> as specified, planned and broken down, and start its build now?' "$skill" ||
-    fail "the approval's question does not ask whether to start the build now"
+  grep -qxF 'question: Approve <card ID> as specified, planned and broken down, and start its build phase now?' "$skill" ||
+    fail "the approval's question does not ask whether to start the build phase now"
   grep -qxF 'options: approve and start | approve, start later | change breakdown | change plan | change specification' "$skill" ||
     fail "sdlc-breakdown does not offer to start now or later"
   grep -qF 'Go by what they mean, not by the exact words.' "$skill" ||
     fail "sdlc-breakdown does not tell a start now from a start later by what the human means"
-  section=$(sed -n '/^### Start the build/,/^## /p' "$skill")
-  [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build section"; return; }
+  section=$(sed -n '/^### Start the build phase/,/^## /p' "$skill")
+  [ -n "$section" ] || { fail "sdlc-breakdown has no Start the build phase section"; return; }
   for want in 'the first sub-issue in order that is not already started, done or canceled' \
       'start later:** give them the command, `entourage task start <project> <ID>`, and run nothing' \
       'start now:** run that command yourself, once, after the hand-off above is recorded' \
       'every `agent` and `note` line' "If it stops, don't run it again." \
       'it says `made the task at <folder>`' 'run `entourage task build <project> <ID>` there'; do
-    case $section in *"$want"*) ;; *) fail "sdlc-breakdown's Start the build does not say: $want" ;; esac
+    case $section in *"$want"*) ;; *) fail "sdlc-breakdown's Start the build phase does not say: $want" ;; esac
   done
   ! grep -qF 'which the human runs' "$skill" || fail "sdlc-breakdown still says the human always runs task start"
   ! grep -qF "don't run it yourself" "$prompt" || fail "the task-new prompt still has the agent never run task start"
@@ -356,12 +356,13 @@ review_sends_what_is_not_met_back_to_build() {
   done
 }
 
-# Build and review must not send the work back and forth with no one watching.
-# After one send-back, the review asks the human instead.
+# The build step and the review step must not send the work back and forth
+# with no one watching. After one send-back, the review step asks the human
+# instead.
 review_asks_the_human_after_one_send_back() {
   local skill=$REPO/skills/sdlc-review/SKILL.md
-  grep -qF 'already shows a review with `next: build`' "$skill" ||
-    fail "sdlc-review does not look in the log for a review that sent the work back"
+  grep -qF 'already shows a hand-off from the review step with `next: build`' "$skill" ||
+    fail "sdlc-review does not look in the log for a hand-off from the review step that sent the work back"
   grep -qF 'entourage task log <project> <card ID>' "$skill" ||
     fail "sdlc-review does not say how to read the card's log"
   grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" "$skill" | grep -qx 'status: needs-human' ||
@@ -408,11 +409,11 @@ pr_pushes_only_the_worktrees_with_commits() {
 }
 
 # A pull request follows the repo's own rules, and says, for each Done when
-# item, how the review showed it.
+# item, how the review step showed it.
 pr_follows_the_repos_rules_for_pull_requests() {
   local skill=$REPO/skills/sdlc-pr/SKILL.md want
   for want in 'CLAUDE.md' 'CONTRIBUTING' '.github/pull_request_template.md' \
-      'links the card' 'each Done when item' 'how the review showed it' 'left to the human'; do
+      'links the card' 'each Done when item' 'how the review step showed it' 'left to the human'; do
     grep -qF -- "$want" "$skill" || fail "sdlc-pr does not mention $want"
   done
   # A description written on the command line would have its backticks run
