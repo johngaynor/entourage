@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# after-merge: clean up in one call once a pull request on entourage merges.
+#
+#   scripts/after-merge <name>
+#
+# <name> is a worktree's folder under .claude/worktrees/, where a Claude Code
+# session works. Run it from the live checkout, the clone that this machine's
+# entourage command and Herdr's links run from, once the session has left the
+# worktree. It is only for working on entourage from a clone, and is not
+# shipped: scripts/ is not in package.json's files. The task worktrees that
+# `entourage task start` makes are not its business.
+#
+# It checks everything before it changes anything, and changes nothing when a
+# check fails:
+#   - it is run from the live checkout's top level, not from a worktree;
+#   - the worktree is not locked: a Claude Code session still in it locks it;
+#   - every commit up to the worktree's HEAD is in origin/main;
+#   - the worktree has no changes and no untracked or ignored files, which
+#     `git worktree remove` would delete without a word.
+# Then, when the live checkout is on main, has no changes to tracked files and
+# can fast-forward to origin/main, it runs the checkout's own
+# `cli/entourage update`, which pulls. Otherwise it says why and leaves the
+# checkout as it was. It removes the worktree, deletes its branch with
+# `git branch -d`, and runs `cli/entourage status` when it ran update. When
+# git keeps the branch, it says why and leaves it.
+#
+# It never merges, and never forces anything.
+set -euo pipefail
+
+usage() { echo "Usage: scripts/after-merge <name>   (the worktree's folder under .claude/worktrees/)"; }
+say() { printf '%s\n' "$*"; }
+die() { printf 'after-merge: %s\n' "$*" >&2; exit 1; }
+# Lines of git's output, indented under what the script says about them.
+indent() { sed 's/^/  /'; }
+
+case ${1:-} in
+  -h | --help) usage; exit 0 ;;
+  '') usage >&2; exit 2 ;;
+esac
+[ "$#" = 1 ] || { usage >&2; exit 2; }
+name=$1
+
+# --- where it runs ----------------------------------------------------------
+
+# The checkout this copy of the script is in.
+live=$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+here=$(pwd -P)
+
+# A worktree's .git is a file; the main checkout's is a folder.
+if [ ! -d "$live/.git" ]; then
+  main=$(cd "$live" && cd "$(git rev-parse --git-common-dir)" && cd -P .. && pwd) ||
+    die "this copy of the script is in $live, which is not the live checkout. Nothing was changed."
+  die "this copy of the script is in a worktree, $live. Nothing was changed. Leave the worktree, then run it from the live checkout:
+  cd $main && scripts/after-merge $name"
+fi
+[ "$here" = "$live" ] ||
+  die "run this from the live checkout, $live, not from $here. Nothing was changed. If the session is still in the worktree, leave it first, then:
+  cd $live && scripts/after-merge $name"
+
+case $name in
+  */* | . | ..)
+    die "give the worktree's name, its folder under .claude/worktrees/, not a path: $name. Nothing was changed." ;;
+esac
+rel=.claude/worktrees/$name
+wt=$live/$rel
+[ -d "$wt" ] || die "there is no worktree at $rel. Nothing was changed."
+
+# git's record of the worktree: its HEAD, its branch, and whether it is locked.
+entry= on=0
+while IFS= read -r line; do
+  case $line in
+    'worktree '*)
+      on=0 path=${line#worktree }
+      if [ "$path" = "$wt" ] || [ "$(cd -P "$path" 2>/dev/null && pwd)" = "$wt" ]; then on=1; fi
+      ;;
+  esac
+  [ "$on" = 0 ] || entry=$entry$line$'\n'
+done < <(git -C "$live" worktree list --porcelain)
+[ -n "$entry" ] || die "$rel is not a worktree of $live. Nothing was changed."
+
+head=$(printf '%s' "$entry" | sed -n 's/^HEAD //p')
+branch=$(printf '%s' "$entry" | sed -n 's|^branch refs/heads/||p')
+
+# --- the checks -------------------------------------------------------------
+
+git -C "$live" fetch -q origin ||
+  die "git fetch origin failed, so it cannot tell whether the branch is merged. Nothing was changed."
+git -C "$live" rev-parse -q --verify refs/remotes/origin/main >/dev/null ||
+  die "there is no origin/main to check the branch against. Nothing was changed."
+
+problems=0
+problem() { printf '%s\n' "$*" >&2; problems=$((problems + 1)); }
+
+if printf '%s' "$entry" | grep -q '^locked\( \|$\)'; then
+  reason=$(printf '%s' "$entry" | sed -n 's/^locked \{0,1\}//p')
+  problem "$rel is locked${reason:+ ($reason)}: a Claude Code session may still be in it. Leave the worktree in that session, or end the session, then run this again."
+fi
+
+what="the worktree's detached HEAD"
+[ -z "$branch" ] || what="the branch $branch"
+if ! git -C "$live" merge-base --is-ancestor "$head" refs/remotes/origin/main 2>/dev/null; then
+  problem "$what is not merged: these commits on it are not in origin/main:"
+  git -C "$live" log --oneline "refs/remotes/origin/main..$head" 2>&1 | indent >&2
+fi
+
+# Untracked and ignored files one by one, so that each is named.
+lose=$(git -C "$wt" status --porcelain --ignored --untracked-files=all) ||
+  die "git status failed in $rel. Nothing was changed."
+if [ -n "$lose" ]; then
+  problem "$rel has files that removing it would lose (M changed, ?? untracked, !! ignored):"
+  printf '%s\n' "$lose" | awk 'NR <= 20 { print "  " $0 } END { if (NR > 20) print "  and " NR - 20 " more" }' >&2
+fi
+
+[ "$problems" = 0 ] || die "nothing was changed."
+
+# --- the live checkout ------------------------------------------------------
+
+updated=0 update_failed=0
+on_branch=$(git -C "$live" symbolic-ref -q --short HEAD || true)
+changes=$(git -C "$live" status --porcelain --untracked-files=no)
+if [ "$on_branch" != main ]; then
+  say "Left the live checkout as it was: it is on ${on_branch:-a detached HEAD}, not main."
+elif [ -n "$changes" ]; then
+  say "Left the live checkout as it was: it has changes to tracked files:"
+  printf '%s\n' "$changes" | indent
+elif ! git -C "$live" merge-base --is-ancestor main refs/remotes/origin/main; then
+  say "Left the live checkout as it was: main has commits that are not in origin/main, so it cannot fast-forward:"
+  git -C "$live" log --oneline refs/remotes/origin/main..main | indent
+else
+  # update pulls, fast-forward only, and refreshes Herdr when that changed
+  # anything. Pulling here first would leave it nothing to see.
+  say "== entourage update =="
+  if "$live/cli/entourage" update; then updated=1; else update_failed=1; fi
+  say
+fi
+
+# --- the worktree and its branch --------------------------------------------
+
+git -C "$live" worktree remove "$wt" ||
+  die "git worktree remove failed (above), so $rel is still there."
+say "Removed the worktree $rel."
+
+if [ -z "$branch" ]; then
+  say "It had a detached HEAD, so there was no branch to delete."
+elif out=$(git -C "$live" branch -d "$branch" 2>&1); then
+  say "$out"
+else
+  # git's hint is to force it, which this script never does.
+  say "Kept the branch $branch: git branch -d refused it:"
+  printf '%s\n' "$out" | sed '/^hint:/d' | indent
+  say "Its commits are all in origin/main, so git branch -d deletes it once the live checkout's main has them."
+fi
+
+if [ "$update_failed" = 1 ]; then
+  die "entourage update failed (above), so the live checkout may not be up to date, and entourage status was not run."
+fi
+if [ "$updated" = 1 ]; then
+  say
+  say "== entourage status =="
+  "$live/cli/entourage" status || true
+fi

@@ -8,10 +8,11 @@ machine running from a clone gets whatever `git pull` brings.
 
 Run the tests with `npm test`, or one area with `npm test -- task` (the areas
 are the files in `test/`: `install`, `project`, `task`, `skills`, `handoff`,
-`linear`, `runner`, `release`, `guard`). The `handoff` tests use the real
-`sqlite3`, the `linear` and `task` tests the real `jq`, the `release` tests the
-real `git` and `jq`, and the `guard` tests all three; they have to be in
-`/usr/bin` or `/bin`. No test reaches Linear: a
+`linear`, `runner`, `release`, `guard`, `after-merge`). The `handoff` tests use
+the real `sqlite3`, the `linear` and `task` tests the real `jq`, the `release`
+tests the real `git` and `jq`, the `guard` tests all three, and the
+`after-merge` tests the real `git`; they have to be in `/usr/bin` or `/bin`.
+No test reaches Linear: a
 stand-in `curl` answers from canned files. Cases run side by side, each in a
 process of its own, so a case must not depend on another case or on anything
 outside its own throwaway folder. To run one case at a time, set
@@ -54,6 +55,30 @@ you need: list the headings with `grep -n '^#' ~/.config/herdr-app/AGENTS.md`,
 where a section ends at the next heading of its level, or grep a `.d.ts` file
 for the declaration, such as `export function exec`. Then read only that
 range, with `sed -n '<from>,<to>p'` or `Read` with an offset and a limit.
+
+## After a pull request merges
+
+This is for working on entourage from a clone that is the live copy: the one
+this machine's `entourage` command and Herdr's links run from. A Claude Code
+session that worked in a worktree under `.claude/worktrees/` cleans up in one
+call once its pull request has merged. Leave the worktree first, so that the
+session is back in the live checkout, then run this there:
+
+```sh
+scripts/after-merge <name>
+```
+
+`<name>` is the worktree's folder under `.claude/worktrees/`. Run it instead
+of doing its steps by hand. It checks that every commit on the branch is in
+`main` on GitHub, and that the worktree has nothing that removing it would
+lose, such as uncommitted changes or ignored specs under `docs/`. Then it
+removes the worktree and deletes its branch with `git branch -d`. When the
+live checkout is on `main` with no changes and can fast-forward, it also runs
+`cli/entourage update`, which pulls, and `cli/entourage status`; otherwise it
+says why it left the checkout alone. When a check fails, or the session still
+has the worktree locked, it changes nothing and says why. It never merges and
+never forces anything. It is not for the task worktrees that
+`entourage task start` makes.
 
 ## Versions and releases
 
