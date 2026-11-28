@@ -223,9 +223,9 @@ shows the card as merged, and recording it moves the card to Done in Linear,
 as `task start` moved it to In Progress and opening the pull requests moved
 it to In Review. Each move picks the team's own status of that kind, goes
 only forward, never touches a card that is done or canceled, and needs your
-Linear key to have Write permission. A move that
-cannot be made is a note saying why, and the step goes on. Telling the agent
-in the tab that they have merged makes it check at once, with
+Linear key to have Write permission. A move that cannot be made is a note
+saying why, and the step goes on. Telling the agent in the tab that they have
+merged makes it check at once, with
 `task watch --once`; if one has not merged yet, it names it and asks again.
 When one is closed without merging, it asks you whether to stop. No agent
 merges a pull request.
@@ -249,18 +249,22 @@ that would alter what you approved on the card, such as a Done when item or a
 new dependency, it asks you about before it makes it. It takes changes only
 from what you say in the tab, not from review comments or CI on GitHub.
 
-Once the pull requests have merged, `task finish` ends the task:
+Once the merge is recorded, the agent ends the task with `task finish`, as its
+last command, so you remove nothing by hand:
 
 ```sh
 entourage task finish my-project ABC-122
 ```
 
 It removes the task's worktrees, deletes its branch in each repo, deletes its
-folder and closes its tab, and it works the same from the task's own tab. It
-checks every repo first, and removes nothing when that would lose work:
+folder and, last, closes its tab, the one the agent runs in. It checks every
+repo first, and removes nothing when that would lose work:
 changes that are not committed, commits that never reached the default
 branch (pushed or not), or git-ignored files that the repo's `made-by-setup`
-recipe does not say its setup makes again. It names each one. See
+recipe does not say its setup makes again. It names each one, and the agent
+tells you all of it and leaves the task as it is. A pull request closed
+without merging leaves the task too. Run the command yourself for a task the
+agent left, once you have kept what it named. See
 [herdr/README.md](herdr/README.md#finishing-a-task).
 
 Each skill also runs on its own in any agent, as `/sdlc-build ABC-122`,
