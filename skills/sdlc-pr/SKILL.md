@@ -1,13 +1,13 @@
 ---
 name: sdlc-pr
-description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review showed each Done when item, moving the card to In Review once they are all open, waiting for the human to merge them while watching them on GitHub, making in the same pull requests any change they ask for in the tab and bringing one that comes to conflict with its default branch up to date, recording the merge once GitHub shows it, without being told, and then finishing the task. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
+description: Put a reviewed Linear card up as pull requests, by pushing the task's branch in each repo the work changed, opening a pull request into that repo's default branch that names the card and says how the review step showed each Done when item, moving the card to In Review once they are all open, waiting for the human to merge them while watching them on GitHub, making in the same pull requests any change they ask for in the tab and bringing one that comes to conflict with its default branch up to date, recording the merge once GitHub shows it, without being told, and then finishing the task. Use this once sdlc-review has handed off done with pr next, whenever asked to push, open the pull request for, or put up a reviewed card in its task, even if the request only says "pr ABC-123". It never merges a pull request.
 ---
 
 # Open the pull request
 
-Pull request is the step after review. Build made the change the Plan describes and committed it on the task's branch, and review checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, moves the card to In Review once they are all open, watches them on GitHub while the human merges them, makes in the same pull requests any change they ask for in the tab while they wait, brings a pull request up to date when it comes to conflict with its default branch, records the merge once GitHub shows it, without the human having to say so, and then finishes the task, which removes its worktrees and closes its tab.
+Pull request is the step after the review step. The build step made the change the Plan describes and committed it on the task's branch, and the review step checked that work against the card's Done when and wrote what it found on the card as its Review. This step pushes the branch, opens a pull request in each repo the work changed, moves the card to In Review once they are all open, watches them on GitHub while the human merges them, makes in the same pull requests any change they ask for in the tab while they wait, brings a pull request up to date when it comes to conflict with its default branch, records the merge once GitHub shows it, without the human having to say so, and then finishes the task, which removes its worktrees and closes its tab.
 
-The human reads the pull request, not this session. So each pull request has to name the card and say, for each Done when item, how the review showed that it is met and what is left to the human to check.
+The human reads the pull request, not this session. So each pull request has to name the card and say, for each Done when item, how the review step showed that it is met and what is left to the human to check.
 
 The human merges. Never run `gh pr merge`, not even with `--auto`, and never turn on auto-merge in the repo's settings on GitHub. Push the task's branch and nothing else, and never forced.
 
@@ -16,10 +16,10 @@ The human merges. Never run `gh pr merge`, not even with `--auto`, and never tur
 1. Get the card. If you weren't given a card ID, ask for one.
 2. Read the card with `entourage linear read <card ID>`: the original description, the Specification, the Plan, the Breakdown, the Review and the comments.
 3. If the card has no Plan, it was not approved to build. Push nothing, and hand off as `failed`, saying so.
-4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a build, a review and a pull request of its own. Push nothing, and hand off as `failed`, naming the sub-issue that comes first.
+4. If the Breakdown cut the card into several slices, each slice is a sub-issue that is built, reviewed and put up as a pull request on its own. Push nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Open nothing unless the Review passed the work. The `sdlc-review` skill writes the Review on the card, as a collapsed section after the Breakdown, and marks each Done when item **Met.**, **Not met.** or **For the human.** If the card has no Review, an item in it is **Not met.**, or it says the tests fail, the work has not passed: push nothing, and hand off as `failed`, saying which. An item **For the human.** does not hold the pull request back. It goes in the description, as what is left to the human.
-6. Check where you are, as the build did. The work is in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, push nothing and hand off as `failed`, saying where you are.
-7. Run `git status` in each worktree. Review leaves nothing uncommitted, and nothing uncommitted goes into a pull request. If a worktree has changes, push nothing, and hand off as `failed`, naming the worktree and its changed files.
+6. Check where you are, as the build step did. The work is in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, push nothing and hand off as `failed`, saying where you are.
+7. Run `git status` in each worktree. The review step leaves nothing uncommitted, and nothing uncommitted goes into a pull request. If a worktree has changes, push nothing, and hand off as `failed`, naming the worktree and its changed files.
 
 ## 1. Find what the work changed
 
@@ -42,18 +42,18 @@ Check everything that could stop the push or the pull request before you push an
 Read the guidance in each worktree with commits: its `CLAUDE.md`, `AGENTS.md`, `README` and any `CONTRIBUTING` file, and its pull request template, `.github/pull_request_template.md`. GitHub also takes the template at the repo's root, in `docs/`, or as a file in `.github/PULL_REQUEST_TEMPLATE/`. Look for three things:
 
 - **How a pull request is written.** The form of its title, the sections its description must have, and a line or a checklist it must hold.
-- **How commits are written.** The review checked the commits, and its Review says so in its **Commits:** line. If that line names a commit that breaks one of the repo's rules, push nothing and ask the human whether to open the pull request anyway, in a handoff block with `status: needs-human`. Rewriting commits is not for this step.
+- **How commits are written.** The review step checked the commits, and its Review says so in its **Commits:** line. If that line names a commit that breaks one of the repo's rules, push nothing and ask the human whether to open the pull request anyway, in a handoff block with `status: needs-human`. Rewriting commits is not for this step.
 - **Rules for a change like this one.** A version that only a release changes, or a file that must not be in a commit. Check the commits against a rule the Review does not mention, and ask the human the same way if one breaks it.
 
 ## 4. Push the branch and open the pull request
 
-**Back from section 8.** When this step runs again after section 8 brought a pull request up to date and the review passed the work again, the pull requests are open already: `entourage task log <project> <card ID>` shows the last `pr` hand-off as `done`, with `review` next. Push only a branch that moved. In each worktree with commits, run `git fetch origin`, then `git log --oneline origin/<branch>..HEAD`: when it shows nothing, GitHub has every commit already, so push nothing in that worktree and leave its pull request as it is, open or merged. A branch that moved goes through the steps below, but its pull request keeps the title and the description it has, **Changes asked for:** lines and all. Read the description with `gh pr view <url> --json body`, add a line at its end under **Brought up to date:**, putting that heading in the first time, and give it to `gh pr edit` in step 5. The line says what the hand-off of section 8 said in its summary: the merge commit, the files that conflicted and what the fix changed.
+**Back from section 8.** When this step runs again after section 8 brought a pull request up to date and the review step passed the work again, the pull requests are open already: `entourage task log <project> <card ID>` shows the last `pr` hand-off as `done`, with `review` next. Push only a branch that moved. In each worktree with commits, run `git fetch origin`, then `git log --oneline origin/<branch>..HEAD`: when it shows nothing, GitHub has every commit already, so push nothing in that worktree and leave its pull request as it is, open or merged. A branch that moved goes through the list below, but its pull request keeps the title and the description it has, **Changes asked for:** lines and all. Read the description with `gh pr view <url> --json body`, add a line at its end under **Brought up to date:**, putting that heading in the first time, and give it to `gh pr edit` in item 5. The line says what the hand-off of section 8 said in its summary: the merge commit, the files that conflicted and what the fix changed.
 
 For each worktree with commits, and no other:
 
 1. Push the task's branch: `git push -u origin <branch>`. It is never forced: no `--force` and no `--force-with-lease`. If the push is refused, for example because the branch on GitHub has commits this one doesn't, don't force it, pull or rebase. Hand off as `failed`, with what git said, and name any repo already pushed.
-2. Write the title by the repo's rules. Where it has none, write it as the build's commits are written, such as `feat: export orders as CSV`.
-3. Write the description, by the repo's template where it has one. It links the card, with its ID and its Linear URL. It lists each Done when item, in the card's words, with how the review showed it, taken from the Review. An item for the human says what is left to the human: what to run, and what they should see. When the card has pull requests in several repos, each one links the others.
+2. Write the title by the repo's rules. Where it has none, write it as the build step's commits are written, such as `feat: export orders as CSV`.
+3. Write the description, by the repo's template where it has one. It links the card, with its ID and its Linear URL. It lists each Done when item, in the card's words, with how the review step showed it, taken from the Review. An item for the human says what is left to the human: what to run, and what they should see. When the card has pull requests in several repos, each one links the others.
 4. Write the description to a file, and give it with `--body-file`. On the command line, the shell would run what is between backticks in it.
 5. Run `gh pr list --head <branch> --state open --json number,url`. If the branch already has an open pull request, update it with `gh pr edit <number> --title <title> --body-file <file>` rather than opening another. Otherwise open one into the default branch: `gh pr create --base <default branch> --head <branch> --title <title> --body-file <file>`. If it fails, hand off as `failed`, with what `gh` said and which branches are already pushed.
 6. With several repos, open them all first, then edit each description to link the others.
@@ -65,7 +65,7 @@ Then, once every pull request is open and read back, move the card in Linear to 
 entourage linear move <card ID> review
 ```
 
-Run it once, after the last pull request is read back, never in the steps above: with pull requests in several repos, the card does not move before the last one is open. The status is picked by its kind and its place in the team's order, so in a team with only one started status the card stays in it. A card that is there already, further on, done or canceled stays where it is, and the command says so. Change nothing else on the card.
+Run it once, after the last pull request is read back, never in the list above: with pull requests in several repos, the card does not move before the last one is open. The status is picked by its kind and its place in the team's order, so in a team with only one started status the card stays in it. A card that is there already, further on, done or canceled stays where it is, and the command says so. Change nothing else on the card.
 
 If the command exits non-zero, the card was not moved, and what it printed says why, such as Linear out of reach or a key without Write permission. Don't stop for it, don't run it again, and don't move the card with the Linear tools instead: go on to wait for the merge. Say in the summary of the hand-off that waits that the card was not moved, and why, and put the same in `flags` when the step hands off `done`.
 
@@ -130,13 +130,13 @@ Record the merge once, whichever saw it first: a watch that ends after the merge
 
 ## 6. Make a change asked for in the tab
 
-The human reads the pull requests, and may want something changed before they merge. They say so in the tab, as their answer to the wait. The change goes into the same pull requests: on the task's branch, in the worktree of the repo it belongs in. Only what the human says in the tab is a change to make here. Review comments and CI results on GitHub are not read in this step.
+The human reads the pull requests, and may want something changed before they merge. They say so in the tab, as their answer to the wait. The change goes into the same pull requests: on the task's branch, in the worktree of the repo it belongs in. Only what the human says in the tab is a change to make here. Comments from a GitHub review, and CI results, are not read in this step.
 
 Ask first, as `needs-human`, before you make a change that would alter what the human approved on the card: one that adds, drops or changes a Done when item, takes another approach than the Plan's, or brings in a new dependency. Ask first too when the change belongs in a repo that has no open pull request for the card, because the pull request there has merged or there never was one; `gh pr view <url> --json state` says which. Say what the change would alter, and make it only once they say yes. A repo that has no open pull request gets one once the change is pushed, opened as section 4 says.
 
 Then, for each change asked for:
 
-1. Make it in the worktree, on the task's branch, as the build does: by the repo's rules for a change like this one, which section 3 found, and with a test where it changes what the code does, written first and seen to fail.
+1. Make it in the worktree, on the task's branch, as the build step does: by the repo's rules for a change like this one, which section 3 found, and with a test where it changes what the code does, written first and seen to fail.
 2. Run the repo's whole test suite. If a test fails, find out why and fix it. Change a test only when the change asked for changes what that test checks. If the tests can't be made to pass, commit and push nothing, leave the change in the worktree as it is, and hand off as `failed`, with the failing tests and what you tried in `reason`. The pull requests stay open as they are.
 3. Commit on the task's branch with `git commit`, by the repo's rules for commits. Don't skip its commit hooks. `git status` shows no changes after.
 4. Push it with `git push`, never forced. If the push is refused, don't force it, pull or rebase. Hand off as `failed`, with what git said.
@@ -189,11 +189,11 @@ Take the default branch by a merge, never a rebase. A rebase rewrites the branch
 
 In the worktree of each repo whose pull request is in conflict, on the task's branch:
 
-1. Run `git fetch origin`, then `git merge origin/<default branch>`, with the default branch section 2 found. git stops with the files in conflict, and `git status` lists them. Note them: the hand-off and the pull request name them. When git merges it with no conflict, as it does when the default branch has moved again since GitHub looked, it commits the merge itself: go on to step 3.
+1. Run `git fetch origin`, then `git merge origin/<default branch>`, with the default branch section 2 found. git stops with the files in conflict, and `git status` lists them. Note them: the hand-off and the pull request name them. When git merges it with no conflict, as it does when the default branch has moved again since GitHub looked, it commits the merge itself: go on to item 3.
 2. Resolve each one, keeping both what the card's work does and what the default branch has done since. `git log HEAD..origin/<default branch> -- <file>` lists the commits that changed it there.
 3. Run the repo's whole test suite, as section 6 does. If a test fails, find out why and fix it. Change a test only when the default branch changed what that test checks.
 4. Commit the merge with `git commit`, by the repo's rules for commits. Where they say nothing of a merge, keep the message git wrote for it, with `git commit --no-edit`. Don't skip its commit hooks. A fix the tests needed goes in the merge, or in a commit after it. `git status` shows no changes after.
-5. Push nothing yet. The review checks the merge first, and section 4 pushes it once the review has passed the work again.
+5. Push nothing yet. The review step checks the merge first, and section 4 pushes it once the review step has passed the work again.
 
 Ask the human only when you cannot settle the conflict: when the tests cannot be made to pass, or when a resolution would change what a Done when item says, such as when the default branch now does what an item asks for in another way, or has taken away something the work builds on. Then leave the merge in the worktree as it is, and hand off as `needs-human`, naming the pull request and the files in conflict:
 
@@ -207,7 +207,7 @@ options: <your recommendation> | <another resolution> | stop here
 EOF
 ```
 
-Until they answer, commit and push nothing. When they answer, record the answer first, as the handoff block section says, then settle the conflict the way they say, from step 2 above. If they say to stop, hand off as `failed`, with the pull request and the files in conflict in `reason`, and leave the merge in the worktree as it is, for them.
+Until they answer, commit and push nothing. When they answer, record the answer first, as the handoff block section says, then settle the conflict the way they say, from item 2 above. If they say to stop, hand off as `failed`, with the pull request and the files in conflict in `reason`, and leave the merge in the worktree as it is, for them.
 
 Once the merge is committed and the tests pass, record the hand-off:
 
@@ -242,7 +242,7 @@ reason: <what went wrong, and what you already tried>
 EOF
 ```
 
-`<project>` is the entourage project this session is in. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
+`<project>` is the entourage project this session is in. The `phase:` line names this step, not a phase. The words in angle brackets are hints: put your own in their place. The command checks the block, records it and prints it back. Which lines you write depends on the status:
 
 | Status | Use it when | Lines |
 |---|---|---|

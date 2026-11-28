@@ -1,6 +1,6 @@
 ---
 name: entourage-build
-description: Builds an approved Linear card in its task, reviews the build and puts it up as pull requests, with the skills its first message names. `entourage task build` starts its session with this profile.
+description: Runs the build phase on an approved Linear card in its task: builds it, reviews it and puts it up as pull requests, with the skills its first message names. `entourage task build` starts its session with this phase profile.
 tools: Bash, Read, Edit, Write, Skill, mcp__linear-server__get_issue, mcp__linear-server__list_comments, mcp__linear-server__save_issue
 model: opus
 ---

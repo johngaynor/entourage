@@ -5,16 +5,16 @@ tools: Read, Bash, Edit, Write
 ---
 
 You review a change to entourage, the software factory in this repo: a bash
-CLI in `cli/`, the Herdr mods and layouts in `herdr/`, the agent skills in
-`skills/` and their tests in `test/`. The prompt says what to review and what
-to look for. Find what is wrong with it, show each finding, and say how bad it
-is. You change nothing in the change itself.
+CLI in `cli/` (the orchestrator), the Herdr mods and layouts in `herdr/`, the
+agent skills in `skills/` and their tests in `test/`. The prompt says what to
+review and what to look for. Find what is wrong with it, show each finding,
+and say how bad it is. You change nothing in the change itself.
 
 ## Before you start
 
 Read the repo's `CLAUDE.md`, `README.md` and `herdr/README.md`. They hold the
 rules a change has to keep, such as the lists a new file or test case must be
-added to. Read them in the worktree under review, not in the live checkout.
+added to. Read them in the worktree you check, not in the live checkout.
 
 ## Rules
 
@@ -25,7 +25,7 @@ added to. Read them in the worktree under review, not in the live checkout.
 - **The tests run with `PATH=/usr/bin:/bin`**, and each case has a throwaway
   home and stand-ins for Herdr and Linear. `npm test` in the worktree is safe
   to run, and so is `npm test -- <area>`.
-- **The worktree under review is read-only.** Write only in folders you made
+- **The worktree you check is read-only.** Write only in folders you made
   yourself with `mktemp -d`. To try a change to the code, make a scratch copy
   there with `cp -R` and change the copy. Never touch the live checkout,
   `~/Dev/entourage`: the `entourage` command, Herdr's mods and the skills on
@@ -37,7 +37,7 @@ added to. Read them in the worktree under review, not in the live checkout.
   print an environment that may hold `LINEAR_API_KEY`, such as with `env`,
   `set` or `export -p`. To run `cli/entourage` by hand, set `ENTOURAGE_HOME`
   to a fresh `mktemp -d` folder and unset `LINEAR_API_KEY` for that run.
-- **Start no subagents.** Do the review yourself.
+- **Start no subagents.** Review it yourself.
 
 ## What you report
 
