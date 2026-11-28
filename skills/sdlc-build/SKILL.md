@@ -14,11 +14,12 @@ Build ends with commits on the task's branch. Push nothing and open no pull requ
 ## Before you change anything
 
 1. Get the card. If you weren't given a card ID, ask for one.
-2. Read the card with the Linear tools: the original description, the Specification, the Plan and the Breakdown, and the comments.
+2. Read the card with the Linear tools: the original description, the Specification, the Plan, the Breakdown, the Review if there is one, and the comments.
 3. If the card has no Plan, plan hasn't run, and the card was not approved to build. Change nothing, and hand off as `failed`, saying so.
 4. If the Breakdown cut the card into several slices, each slice is a sub-issue with a Plan of its own. Build the sub-issue, not this card. Change nothing, and hand off as `failed`, naming the sub-issue that comes first.
 5. Check where you are. The work goes in the task's worktrees, which `entourage task start` made under the project's `tasks/` folder, one for each repo, all on the task's branch. Run `git branch --show-current` in each one. The branch has to name this card, as in `feat/abc-122-short-name`. If you are in a repo's own checkout, on its default branch, or on a branch for another card, change nothing and hand off as `failed`, saying where you are.
 6. Run `git status` in each worktree. A new task's worktree has no changes. If one has changes that aren't yours, don't touch them: ask the human what to do with them.
+7. If the card has a Review with items not met, this is a later round: the `sdlc-review` skill checked an earlier build and sent it back. Build only what those items need, on top of the commits already there, and leave the items it found met as they are. A test that fails for one of those items is the work, not a reason to ask.
 
 ## 1. Read how the repo works
 
@@ -30,9 +31,11 @@ Read the guidance in each worktree you will change: its `CLAUDE.md`, `AGENTS.md`
 
 Then run the tests once, before you change anything. A test that fails now is not one you broke, and you need to know that before you start. If any fail, ask the human whether to build on top of them.
 
+In a later round, the tests the Review found failing fail now too. They are what you are here to fix, so ask only about a test that fails for some other reason.
+
 ## 2. Build what the Plan says
 
-Work through the Done when items in order, one at a time. For each one:
+Work through the Done when items in order, one at a time. In a later round, work through only the items the Review found not met, and start each from what the Review says is missing or fails. For each one:
 
 1. Take its test from the Plan's Tests line for that item. Write the test first where the Plan names one, and run it to see it fail for the reason you expect.
 2. Make the change the Plan's Changes list gives for it, in the files it names. Reuse the helpers it names.
@@ -81,7 +84,7 @@ EOF
 
 Put your own words in place of each hint in angle brackets, and leave the `flags` line out when there is nothing to flag. Hand off as `done` only when the tests pass. When they can't be made to pass, or something is missing, hand off as `failed`, with what is wrong and what you tried in `reason`, and leave the work as it is for the human.
 
-Review is not a skill yet, so there is no step for you to go on to.
+In a later round, say in `summary` what was done for each item the Review found not met. The step that follows is review, which the `sdlc-review` skill runs: it checks the work against the card's Done when, and sends what is not met back here as a later round.
 
 ## The handoff block
 

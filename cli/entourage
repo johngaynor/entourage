@@ -61,6 +61,11 @@ To build the card once its task is started, start an agent in the task's tab
 and ask it to build the card with the sdlc-build skill (`/sdlc-build ABC-122`).
 It makes the change the card's Plan describes, runs the tests and commits on
 the task's branch. It pushes nothing and opens no pull request.
+Then ask it to review the build with the sdlc-review skill
+(`/sdlc-review ABC-122`). It runs the tests, checks each Done when item
+against the card's Plan and writes what it found on the card as a Review.
+What is not met goes back to sdlc-build; when all is met, the commits wait on
+the task's branch. It changes no code and pushes nothing.
 `task handoff` is run by the agent each time a step ends or pauses, and
 when the human answers a question. It reads a handoff block on stdin (phase,
 status, next and so on, one per line), refuses one that breaks the rules, and

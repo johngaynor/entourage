@@ -4,7 +4,7 @@ A collection of agent skills for the software development lifecycle (SDLC).
 
 ## Status
 
-Early setup. Four skills are in, and they have had only a few runs on real cards:
+Early setup. Five skills are in, and they have had only a few runs on real cards:
 
 | Skill | What it does |
 |---|---|
@@ -12,6 +12,7 @@ Early setup. Four skills are in, and they have had only a few runs on real cards
 | `sdlc-plan` | Reads the card and the code, and writes the Plan |
 | `sdlc-breakdown` | Decides whether the card is one piece or several slices, then asks you to approve it |
 | `sdlc-build` | Builds an approved card in its task: makes the change the Plan describes, runs the tests and commits, pushing nothing |
+| `sdlc-review` | Reviews the build against the card's Done when, writes what it found on the card, and sends what is not met back to build |
 
 They live in [skills/](skills/). `entourage install` links them into
 `~/.claude/skills`, so any Claude Code session on the machine can run one by
@@ -151,6 +152,21 @@ request, so the commits wait for you there. Like the write-up, it records how
 it ended, and `task log` shows it: `done` only when the tests pass,
 `needs-human` with a question, or `failed` with the reason. A card with no
 Plan is not built.
+
+Then ask it to review the build with the `sdlc-review` skill, or ask for both
+at once and it goes on from the build to the review:
+
+```
+/sdlc-review ABC-122
+```
+
+It runs the tests itself, checks each Done when item against the test the
+Plan names for it, and writes what it found on the card as a Review. It
+changes no code, pushes nothing and opens no pull request. When every item is
+met, it hands off `done` with `pr` next, and the reviewed commits wait for you
+on the task's branch. When an item is not met or a test fails, it hands off
+with `build` next, and `sdlc-build` builds only what the Review names. After
+one send-back, it asks you whether to build again or stop.
 
 To work on entourage itself, clone the repo and run `cli/entourage install`
 from the clone instead. Run the CLI's tests with `npm test`. The cases run
