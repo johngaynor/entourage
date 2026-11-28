@@ -480,6 +480,15 @@ status_is_quiet_when_setup_exists() {
   case $out in *note*) fail "a note for repos that have setup: $out" ;; esac
 }
 
+# entourage's own repo provides what it asks of others: its justfile, copied
+# into a repo of the project, gets no note.
+status_is_quiet_for_entourages_own_justfile() {
+  stub_just; status_demo entourage
+  cp "$ROOT/justfile" "$HOME/Dev/entourage/justfile" || fail "entourage has no justfile at its root"
+  out=$("$E" status) || fail "status exited non-zero"
+  case $out in *note*) fail "a note for entourage's own justfile: $out" ;; esac
+}
+
 status_ignores_a_parent_justfile() {
   stub_just; status_demo api
   printf 'setup:\n\techo\n' > "$HOME/Dev/justfile"
@@ -624,8 +633,9 @@ project_team_unknown_project() {
 }
 
 CASES="status_is_quiet_about_just_without_projects status_notes_a_repo_without_a_justfile status_notes_a_justfile_without_setup
-  status_is_quiet_when_setup_exists status_ignores_a_parent_justfile
-  status_notes_an_unreadable_justfile status_says_once_when_just_is_missing
+  status_is_quiet_when_setup_exists status_is_quiet_for_entourages_own_justfile
+  status_ignores_a_parent_justfile status_notes_an_unreadable_justfile
+  status_says_once_when_just_is_missing
   project_new_creates_from_template project_new_refuses_existing project_new_refuses_bad_name
   project_new_takes_repos project_new_makes_nothing_when_a_repo_is_bad
   project_new_trusts_its_folder project_new_without_claude_state_writes_none
