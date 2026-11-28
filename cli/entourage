@@ -48,6 +48,8 @@ same one. Linear is asked with curl and its answer read with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.
+With a Linear key saved, it first checks that Linear has the card, and stops
+on a mistyped ID; when Linear cannot be asked, it starts the card anyway.
 `task start` takes the card's ID too, once the card is written up. It asks
 Linear for the card and names the branch from it, <type>/<card-id>-<short-name>
 (https://conventionalbranch.org): the type is the card's label in the Type

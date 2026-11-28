@@ -17,6 +17,24 @@ CARD_PROMPT=$REPO/prompts/task-new.md
 # The agent a new task's tab runs: one word, a command on PATH.
 AGENT=${ENTOURAGE_AGENT:-claude}
 
+# Stop if Linear has no such card, before an agent is started on it: a
+# mistyped ID is caught now, not by the agent after it has looked for the card.
+# Only a definite no stops it. With no key saved, Linear is not asked; when it
+# cannot be asked, the card starts as before, with a note saying why.
+check_card() {
+  local card=$1 why rc=0
+  why=$(linear_card_known "$card" 2>&1 >/dev/null) || rc=$?
+  case $rc in
+    0 | 2) ;;
+    1) die "Linear has no card $card that the saved key can see. Check the ID, then run this again." ;;
+    # Only the first sentence of why: the rest of linear_ask's message is
+    # advice for a command that stops, such as to run it again, which here
+    # would start a second agent on the card.
+    *) why=${why#entourage: }; why=${why%%$'\n'*}; why=${why%%. *}; why=${why%.}
+       say "  note      could not check $card with Linear${why:+: $why}. Starting it anyway." ;;
+  esac
+}
+
 # Start writing a card up: a tab in the project's space, in the project's
 # folder, running an agent whose first message names the card and the skills.
 # It makes no branch, worktree or task folder; `task start` does that once the
@@ -40,6 +58,7 @@ task_new() {
   done
   [ -f "$CARD_PROMPT" ] || die "the agent's first message is missing from $CARD_PROMPT"
   prompt=$(sed -e "s/{card}/$card/g" -e "s/{project}/$name/g" "$CARD_PROMPT")
+  check_card "$card"
 
   sync_links "$dir"
   # `project new` does this too. Here it covers a project made before it did,
