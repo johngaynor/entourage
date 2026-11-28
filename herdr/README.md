@@ -438,12 +438,14 @@ One branch for an approved card, checked out as a git worktree of the repos
 the task needs, and shown as a tab in the project's space.
 
 ```sh
-entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
+entourage task start <project> <card> [--type <type> --title <title>] [<repo>[:<group>[,<group>...]] ...]
 ```
 
 - **The card is its ID**, like `ABC-122`, as for `task new`. The write-up
   phase gives you this command once you approve the card. For a card that was
-  sliced, it gives the first sub-issue's ID.
+  sliced, it gives the first sub-issue's ID. When no Linear key is saved, or
+  Linear rejected the key, the command it gives has the card's type and title
+  too.
 - **Linear names the branch.** `task start` asks Linear for the card, with
   the key `linear key` saved (see
   [Seeing a project's cards](#seeing-a-projects-cards)), and makes the branch
@@ -452,10 +454,26 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   of the card's title, in lowercase with hyphens, leaving out a, an and the,
   and anything a branch name cannot hold. "Insert the task here" gives
   `feat/abc-122-insert-task-here`.
-- **It stops before it makes anything** when Linear has no such card, the
-  card has no type yet (write it up first with `task new`), no key is saved,
-  or Linear cannot be asked. It says what to do. A branch in place of the
-  card is refused too, with a note that `task start` takes the card now.
+- **The type and title given name it when Linear cannot.**
+  `--type <type> --title <title>`, given anywhere after the card, before or
+  among the targets, name the branch the way Linear's would:
+  `--type feat --title 'Insert the task here'` gives
+  `feat/abc-122-insert-task-here`. They are used only when no key is saved,
+  or when Linear cannot be asked: it rejects the key, it is out of reach,
+  `LINEAR_API_KEY` does not hold a key, or `curl` or `jq` is missing. A note
+  says why Linear was not used. With a key Linear accepts, Linear's type and
+  title name the branch even when others are given, and a note names each
+  given one that differs, with what Linear has. The title goes between single
+  quotes, with each `'` in it written as `'\''`, as the write-up phase gives
+  it, so that the shell takes it as it is.
+- **It stops before it makes anything** when Linear has no such card or the
+  card has no type yet (write it up first with `task new`), and, with no type
+  and title given, when no key is saved or Linear cannot be asked. It says
+  what to do: with no key, that the card can be started with `--type` and
+  `--title`. A given type that is not a branch type, only one of the two, a
+  flag with no value, or an option it does not know stops it too, before
+  Herdr or Linear is asked. A branch in place of the card is refused too,
+  with a note that `task start` takes the card now.
 - **Targets say what the task works on.** Each one names a repo of the
   project by its folder name, and optionally groups inside it:
 
@@ -524,9 +542,9 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
   a team that calls it that and Doing in one that calls it Doing. A card only
   moves forward: one already further along, such as In Review, stays there,
   and one that is done or canceled is never moved; the output says why. The
-  move needs your key to have Write permission. When Linear cannot be
-  reached, or refuses the move, the task is still made and open, and the
-  output says that the card was not moved, and why. Move it by hand then.
+  move needs your key to have Write permission. When no key is saved,
+  Linear cannot be reached, or it refuses the move, the task is still made
+  and open, and the output says that the card was not moved, and why. Move it by hand then.
   Once every pull request is open, `sdlc-pr` moves it to In Review, and once
   every one has merged, recording the merge moves it to Done (see
   [Hand-offs](#hand-offs)).

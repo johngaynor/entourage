@@ -165,6 +165,14 @@ Put your own words in place of each hint in angle brackets, and leave the `flags
 
 Recording this hand-off moves the card in Linear to its team's first not-started status, Todo in Lab or Ready for Dev in PHY, and, when the card was sliced, each of its sub-issues too. A card already further along, done or canceled stays where it is. Below the block, the command says what happened to each card. When it says a card was not moved, tell the human in your message which card was not moved, and why, such as no Linear key saved or a key without Write permission. They can move it in Linear, or run `entourage linear move <card ID> approved` with the parent's ID once what stopped it is fixed. The hand-off is recorded either way, so don't record it again.
 
+When the note says the card was not moved because no Linear key is saved, or because Linear rejected the key, `entourage task start` can't read the card's type and title from Linear either. So the command you give the human carries them. Read the type and title with the Linear tools, the first sub-issue's when the card was sliced, and give the command with them after the card ID:
+
+```
+entourage task start <project> <card ID> --type <type> --title '<title>'
+```
+
+Put the title between single quotes as Linear has it, and write each `'` in it as `'\''`, so the command runs as pasted whatever the title holds: `Ada's export` is `--title 'Ada'\''s export'`. With any other note, or none, the command is the plain `entourage task start <project> <card ID>`.
+
 Start is not a skill. It is the `entourage task start` command, which the human runs, so there is no skill for you to go on to.
 
 ## The handoff block

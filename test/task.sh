@@ -381,6 +381,8 @@ task_start_needs_a_saved_key() {
   task_demo api
   unset LINEAR_API_KEY
   start_refused 'entourage linear key' ABC-1
+  # It also says the card can be started with its type and title given.
+  start_refused "entourage task start demo ABC-1 --type <type> --title '<title>'" ABC-1
   [ "$(curl_count)" = 0 ] || fail "asked Linear with no key"
 }
 
@@ -480,6 +482,163 @@ task_start_goes_on_when_the_card_cannot_be_moved() {
 
 CARD_MOVE_CASES="task_start_moves_the_card_to_started task_start_moves_the_card_in_a_team_of_other_names
   task_start_moves_no_card_back task_start_goes_on_when_the_card_cannot_be_moved"
+
+# --- tasks: a card started with its type and title given --------------------
+
+# With no key saved, the type and title given name the branch as Linear's
+# would, and Linear is asked nothing. The card is not moved, which the note
+# says as it does for any card that cannot be moved, and the task stays open.
+task_start_names_the_branch_from_the_given_type_and_title() {
+  task_demo api
+  unset LINEAR_API_KEY
+  out=$("$E" task start demo ABC-122 --type fix --title "The project's \`task start\` takes a Card, at last!" 2>&1) ||
+    fail "task start exited non-zero: $out"
+  local task=abc-122-projects-task-start-takes
+  [ "$(branch_of "$T/$task/api" 2>&1)" = "fix/$task" ] || fail "the worktree is not on fix/$task: $(ls "$T" 2>&1)"
+  [ "$(last_call)" = "do tab.new {\"name\":\"$task\",\"folder\":\"$T/$task/api\"}" ] || fail "did not open the tab: $(last_call)"
+  [ "$(curl_count)" = 0 ] || fail "asked Linear with no key: $(curl_calls)"
+  case $out in
+    *"note      the branch is named from the type and title given, since no Linear key is saved"*) ;;
+    *) fail "did not say why the given ones name the branch: $out" ;;
+  esac
+  case $out in
+    *"note      ABC-122 was not moved in Linear: no Linear key is saved"*) ;;
+    *) fail "did not say the card was not moved, and why: $out" ;;
+  esac
+  case $out in *"Opened task '$task' on branch fix/$task"*) ;; *) fail "did not say the task was opened: $out" ;; esac
+}
+
+# The title is given as sdlc-breakdown gives it: between single quotes, with
+# each ' in it written as '\''. Pasted into a shell, that runs as it is, and
+# nothing in the title is run or expanded.
+task_start_takes_a_title_quoted_for_the_shell() {
+  task_demo api
+  unset LINEAR_API_KEY
+  # Should the backticks run, this is what they would start.
+  printf '#!/usr/bin/env bash\n: > "%s"\n' "$TMP/title-ran" > "$TMP/bin/task"
+  chmod +x "$TMP/bin/task"
+  cat > "$TMP/start.sh" <<'EOF'
+"$E" task start demo ABC-1 --type feat --title 'Ada'\''s `task start` $HOME'
+EOF
+  out=$(E=$E bash -c "$(cat "$TMP/start.sh")" 2>&1) || fail "the command did not run as pasted: $out"
+  local task=abc-1-adas-task-start-home
+  [ "$(branch_of "$T/$task/api" 2>&1)" = "feat/$task" ] || fail "the worktree is not on feat/$task: $(ls "$T" 2>&1)"
+  [ ! -e "$TMP/title-ran" ] || fail "ran the backticks in the title"
+}
+
+# Targets work as they do without the type and title, wherever the two flags
+# are among them.
+task_start_takes_targets_with_the_given_type_and_title() {
+  task_demo api web db
+  unset LINEAR_API_KEY
+  "$E" task start demo ABC-1 --type feat --title X web >/dev/null 2>&1 || fail "exited non-zero with the flags before a target"
+  [ "$(ls "$T/abc-1-x" 2>&1)" = web ] || fail "the flags before a target: $(ls "$T/abc-1-x" 2>&1)"
+  "$E" task start demo ABC-2 api --type feat db --title Y >/dev/null 2>&1 || fail "exited non-zero with the flags between targets"
+  [ -d "$T/abc-2-y/api" ] && [ -d "$T/abc-2-y/db" ] && [ ! -e "$T/abc-2-y/web" ] ||
+    fail "the flags between targets: $(ls "$T/abc-2-y" 2>&1)"
+  "$E" task start demo ABC-3 web --type feat --title Z >/dev/null 2>&1 || fail "exited non-zero with the flags after a target"
+  [ "$(ls "$T/abc-3-z" 2>&1)" = web ] || fail "the flags after a target: $(ls "$T/abc-3-z" 2>&1)"
+  [ "$(branch_of "$T/abc-2-y/db" 2>&1)" = feat/abc-2-y ] || fail "a worktree is not on the branch the flags name"
+}
+
+# With a key Linear accepts, Linear's type and title name the branch, and a
+# note says which given one differs. Linear's title is made plain in it, as
+# task ls makes it.
+task_start_prefers_linears_type_and_title() {
+  task_demo api
+  local esc=$'\033'
+  linear_answers "$(card_answer ABC-1 X feat)" "$(move_answer ABC-1 'In Progress')" \
+    "$(card_answer ABC-2 'Z\u001b[2J' feat)" "$(move_answer ABC-2 'In Progress')"
+  out=$("$E" task start demo ABC-1 --type fix --title Y 2>&1) || fail "task start exited non-zero: $out"
+  [ "$(branch_of "$T/abc-1-x/api" 2>&1)" = feat/abc-1-x ] || fail "the branch is not Linear's feat/abc-1-x: $(ls "$T" 2>&1)"
+  case $out in
+    *"note      the type given is fix, but ABC-1's in Linear is feat: the branch is named from Linear's"*) ;;
+    *) fail "did not say the type differs: $out" ;;
+  esac
+  case $out in
+    *"note      the title given is not ABC-1's in Linear, which is 'X': the branch is named from Linear's"*) ;;
+    *) fail "did not say the title differs: $out" ;;
+  esac
+  out=$("$E" task start demo ABC-2 --type feat --title Z 2>&1) || fail "task start exited non-zero: $out"
+  case $out in *"$esc"*) fail "printed Linear's title with its escape sequence: $out" ;; esac
+  case $out in
+    *"which is 'Z [2J'"*) ;;
+    *) fail "did not name Linear's title, made plain: $out" ;;
+  esac
+  case $out in *"type given"*) fail "said a type differs that does not: $out" ;; esac
+}
+
+task_start_says_nothing_when_the_given_ones_match() {
+  task_demo api
+  out=$("$E" task start demo ABC-1 --type feat --title X 2>&1) || fail "task start exited non-zero: $out"
+  [ "$(branch_of "$T/abc-1-x/api" 2>&1)" = feat/abc-1-x ] || fail "no task on feat/abc-1-x: $(ls "$T" 2>&1)"
+  [ "$(curl_count)" -ge 1 ] || fail "did not ask Linear"
+  case $out in *"given"*) fail "gave a note when the given ones match Linear's: $out" ;; esac
+}
+
+# With a key Linear accepts, Linear's own checks still stop it: a card it does
+# not have, and a card with no type, whatever type and title are given.
+task_start_keeps_linears_checks_with_the_given_ones() {
+  task_demo api
+  linear_answers "$NO_CARD"
+  start_refused 'Linear has no card ABC-1' ABC-1 --type feat --title X
+  linear_answers "$(card_answer ABC-1 X)"
+  start_refused 'has no type' ABC-1 --type feat --title X
+}
+
+# A saved key that fails is no reason to stop when the type and title are
+# given: they name the branch, with a note on why Linear was not used, and the
+# key is never shown.
+task_start_goes_on_when_linear_cannot_be_asked() {
+  task_demo api
+  local n=0 why
+  while IFS= read -r why; do
+    n=$((n + 1))
+    case $n in
+      1) linear_answers '{"errors":[{"message":"Authentication required, not authenticated","extensions":{"type":"authentication error"}}]}'
+         linear_status 401 ;;
+      2) rm "$TMP/linear/status"; echo 6 > "$TMP/linear/exit" ;;
+      3) rm "$TMP/linear/exit"; export LINEAR_API_KEY='two words' ;;
+      4) export LINEAR_API_KEY=$KEY; hide_curl ;;
+    esac
+    out=$("$E" task start demo "ABC-$n" --type fix --title Y 2>&1 </dev/null) || fail "exited non-zero when $why: $out"
+    [ "$(branch_of "$T/abc-$n-y/api" 2>&1)" = "fix/abc-$n-y" ] || fail "no task on fix/abc-$n-y when $why: $(ls "$T" 2>&1)"
+    case $out in
+      *"note      the branch is named from the type and title given, since Linear could not be asked: $why"*) ;;
+      *) fail "did not say why Linear was not used when $why: $out" ;;
+    esac
+    case $out in *"$KEY"* | *"two words"*) fail "printed the key when $why: $out" ;; esac
+    case $out in *"run this again"*) fail "said to run task start again when $why: $out" ;; esac
+  done <<'EOF'
+Linear rejected the key
+could not reach Linear (curl: (6) Could not resolve host: api.linear.app)
+LINEAR_API_KEY does not hold a Linear API key
+curl is not installed
+EOF
+}
+
+# A type Linear's would be refused for, only one of the two, a flag with no
+# value or one task start does not know stops it before Herdr or Linear is
+# asked anything.
+task_start_refuses_bad_given_ones() {
+  task_demo api
+  : > "$TMP/herdr-calls.log"
+  start_refused "'docs' is not a branch type" ABC-1 --type docs --title X
+  start_refused 'give --type and --title together' ABC-1 --type feat
+  start_refused 'give --type and --title together' ABC-1 --title X
+  start_refused '--type needs a value' ABC-1 --type
+  start_refused '--title needs a value' ABC-1 --type feat --title
+  start_refused "unknown option for task start: --colour" ABC-1 --colour red
+  start_refused '--type is given twice' ABC-1 --type feat --type fix --title X
+  start_refused '[--type <type> --title <title>]' ABC-1 --colour red
+  [ "$(curl_count)" = 0 ] || fail "asked Linear: $(curl_calls)"
+  [ ! -s "$TMP/herdr-calls.log" ] || fail "asked Herdr: $(cat "$TMP/herdr-calls.log")"
+}
+
+GIVEN_CASES="task_start_names_the_branch_from_the_given_type_and_title task_start_takes_a_title_quoted_for_the_shell
+  task_start_takes_targets_with_the_given_type_and_title task_start_prefers_linears_type_and_title
+  task_start_says_nothing_when_the_given_ones_match task_start_keeps_linears_checks_with_the_given_ones
+  task_start_goes_on_when_linear_cannot_be_asked task_start_refuses_bad_given_ones"
 
 CARD_START_CASES="task_start_names_the_branch_from_the_card task_start_takes_the_cards_type
   task_start_with_a_title_of_no_plain_words task_start_takes_a_lowercase_card
@@ -1949,7 +2108,7 @@ FINISH_CASES="task_finish_removes_the_task task_finish_removes_a_task_of_two_rep
   task_finish_refuses_a_locked_or_moved_worktree task_finish_refusal_changes_nothing
   task_finish_from_its_own_tab task_finish_with_no_task"
 
-CASES="$WATCH_CASES $FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES $PROFILE_CASES
+CASES="$WATCH_CASES $FINISH_CASES $TARGET_CASES $SETUP_CASES $BUILD_CASES $CARD_CASES $CARD_START_CASES $CARD_MOVE_CASES $GIVEN_CASES $PROFILE_CASES
   task_start_refuses_a_repo_with_no_commits task_start_undoes_an_interrupted_run
   task_start_keeps_the_task_when_the_space_fails task_start_branch_has_no_upstream
   task_start_refusal_keeps_the_first_task task_start_refusal_keeps_an_existing_branch

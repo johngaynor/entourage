@@ -14,4 +14,4 @@ sdlc-breakdown asks me to approve the card. When it hands off with `next: start`
 
     entourage task start {project} {card}
 
-It names the branch from the type you set on the card and from its title. If the card was sliced, give the command with the first sub-issue's ID in place of {card}.
+It names the branch from the type you set on the card and from its title. If the card was sliced, give the command with the first sub-issue's ID in place of {card}. When sdlc-breakdown says to give the card's type and title, add `--type` and `--title` to the command, as the skill shows.

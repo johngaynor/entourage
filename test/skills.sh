@@ -104,6 +104,27 @@ breakdown_tells_the_human_when_the_approval_did_not_move_a_card() {
   esac
 }
 
+# Without a key Linear accepts, task start cannot read the card's type and
+# title, so the command sdlc-breakdown gives the human carries them, quoted
+# so that it runs as pasted whatever the title holds. The approval's note is
+# what says the key is missing or was rejected.
+breakdown_gives_the_type_and_title_without_a_key() {
+  local skill=$REPO/skills/sdlc-breakdown/SKILL.md prompt=$REPO/prompts/task-new.md section want
+  section=$(awk '/^## / { if (on) exit } /^## Hand off$/ { on = 1 } on' "$skill")
+  [ -n "$section" ] || { fail "sdlc-breakdown has no Hand off section"; return; }
+  for want in "entourage task start <project> <card ID> --type <type> --title '<title>'" \
+      'no Linear key is saved' 'Linear rejected the key' 'first sub-issue' "'\\''" \
+      'entourage task start <project> <card ID>`'; do
+    case $section in
+      *"$want"*) ;;
+      *) fail "sdlc-breakdown's Hand off does not say: $want" ;;
+    esac
+  done
+  for want in '--type' '--title'; do
+    grep -qF -- "$want" "$prompt" || fail "the task-new prompt does not name $want"
+  done
+}
+
 # The build's agent starts from prompts/task-build.md, which drives build,
 # review and the pull request as task-new.md drives the write-up, and ends the
 # run when the pull request has merged.
@@ -950,4 +971,4 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   a_done_block_is_written_before_the_next_step
   task_new_prompt_follows_the_block task_new_prompt_gives_task_start_the_card
   task_build_prompt_drives_build_and_review breakdown_hands_on_to_start
-  breakdown_tells_the_human_when_the_approval_did_not_move_a_card"
+  breakdown_tells_the_human_when_the_approval_did_not_move_a_card breakdown_gives_the_type_and_title_without_a_key"
