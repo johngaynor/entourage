@@ -149,9 +149,10 @@ template is in this repo. Your own projects are in
 
 ## Tasks
 
-A task is one piece of work in a project, usually a Linear card. You run two
-commands, in this order: `task new`, then `task start`. Two more, `task
-handoff` and `task log`, record and show how each step ended.
+A task is one piece of work in a project, usually a Linear card. Two
+commands make it, in this order: `task new`, then `task start`, which the
+write-up phase runs for you once you approve the card, unless you hold it.
+Two more, `task handoff` and `task log`, record and show how each step ended.
 `task ls` lists the cards there are to start.
 
 ### Seeing a project's cards
@@ -247,7 +248,8 @@ entourage task new <project> <card>
   with the card and project filled in. It tells the agent to start with
   `sdlc-define` and follow each skill's handoff block to the next
   (`sdlc-plan`, then `sdlc-breakdown`), in that one session, and to wait for
-  your approval at the end. Edit that file to change what the agent is told.
+  your approval at the end, then start the build phase unless you hold it. Edit that
+  file to change what the agent is told.
 - **Your approval moves the card.** Once you approve it, and its sub-issues
   exist when it was sliced, the agent records the approval, and recording it
   moves the card in Linear to its team's first not-started status (Todo in
@@ -255,6 +257,22 @@ entourage task new <project> <card>
   team's statuses (see [Hand-offs](#hand-offs)). A card already further
   along, done or canceled stays where it is. When a card cannot be moved, the
   approval is still recorded, and the agent tells you which card, and why.
+- **Your approval starts the build phase, unless you hold it.** The approval
+  asks whether to start the build phase now. With `approve and start`, or any approval
+  that does not hold it back, the agent runs `entourage task start` itself
+  once the approval is recorded (see [Starting the work](#starting-the-work)),
+  and Herdr shows the task's new tab, as when you run it yourself. For a card
+  that was sliced, it starts the first sub-issue that is not already started,
+  done or canceled. With `approve, start later`, or an approval that holds it
+  back in other words, the approval is the same and moves the card the same
+  way, but the agent gives you the command to run when you want the build
+  phase to start. The agent passes on what `task start` says still needs you, such as
+  a repo Claude Code will ask about trusting. When `task start` stops, the
+  agent does not run it again: it tells you what it said and what to run once
+  that is fixed. `task log` shows which you chose, in your answer and the
+  approval's summary. A started task adds a `start` row under the card it
+  started, which for a sliced card is the sub-issue, so it is in that
+  sub-issue's log.
 - **It makes no branch, worktree or task folder.** The card has no type until
   the agent has defined it, and the type is the start of the branch name.
 - **It checks first.** An unknown project, something that is not a card ID,
@@ -331,8 +349,8 @@ recording its merge moves it to Done, which takes it off the list (see
 Each step of the write-up phase ends by handing off: which step it was, how it
 ended (`done`, `needs-human` or `failed`) and what comes next. Breakdown, the
 last of them, hands off `done` with `start` next once you approve the card:
-the next step is `entourage task start`, which you run. Recording that
-hand-off moves the card in Linear to its team's first not-started status (Todo
+the next step is `entourage task start`, which the agent runs, or gives
+you to run when you chose to start later. Recording that hand-off moves the card in Linear to its team's first not-started status (Todo
 in Lab, Ready for Dev in PHY), and each of its sub-issues with it, by its own
 team's statuses. What happened to each card is said on stderr; when one cannot
 be moved, the hand-off is still recorded, the note names each card that was
@@ -464,8 +482,9 @@ entourage task start <project> <card> [<repo>[:<group>[,<group>...]] ...]
 ```
 
 - **The card is its ID**, like `ABC-122`, as for `task new`. The write-up
-  phase gives you this command once you approve the card. For a card that was
-  sliced, it gives the first sub-issue's ID.
+  phase runs this command once you approve the card, or gives it to you when
+  you chose to start later. For a card that was sliced, it uses the first
+  sub-issue that is not already started, done or canceled.
 - **Linear names the branch.** `task start` asks Linear for the card, with
   the key `linear key` saved (see
   [Seeing a project's cards](#seeing-a-projects-cards)), and makes the branch

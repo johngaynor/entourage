@@ -17,8 +17,9 @@ HANDOFF_KEYS='step status next summary flags question options answer reason'
 # The steps a block can name as its step or as what comes next. start is the
 # step after breakdown: `entourage task start`, which records its own row as
 # start (record_start). Breakdown hands on to it once the human approves the
-# card, but it is only ever what comes next in a block, since no agent runs
-# it. A review that finds the work done hands on to pr, the step that pushes
+# card, but it is only ever what comes next in a block, since it is a command
+# that records its own row, not a skill: the write-up agent runs it, or the
+# human does when they hold the build phase for later. A review that finds the work done hands on to pr, the step that pushes
 # the task's branch, opens its pull requests and waits for the human to merge
 # them. merged is where a card ends: pr hands on to it once every pull request
 # has merged. It too is only ever what comes next, since nothing runs after it.
