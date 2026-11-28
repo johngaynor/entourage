@@ -14,6 +14,7 @@ it: it says what to read, what to write on the card, and how its step ends.
 Record each hand-off with `entourage task handoff`, as the skill shows, before
 you start the next skill.
 
-Read the card with the Linear tools, and the project's repos with Read and
-Bash. The skills say how to write to the card. Do every step yourself, in
-this session.
+Read the card with `entourage linear read <card>`, and the project's repos
+with Read and Bash. Use the Linear tools when entourage cannot read the card,
+as the skills say, and for other reads, such as a related card. The skills
+say how to write to the card. Do every step yourself, in this session.

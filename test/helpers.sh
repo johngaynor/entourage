@@ -34,7 +34,7 @@ setup() {
   mkdir -p "$REPO/.claude"
   cp -R "$ROOT/.claude/profiles" "$REPO/.claude/profiles"
   # A key exported in the shell that runs the tests must not reach a case.
-  unset CLAUDE_CONFIG_DIR ENTOURAGE_AGENT ENTOURAGE_SETUP ENTOURAGE_SQLITE LINEAR_API_KEY
+  unset CLAUDE_CONFIG_DIR ENTOURAGE_HARNESS ENTOURAGE_SETUP ENTOURAGE_SQLITE LINEAR_API_KEY
   # Nor may a run asking a worktree's copy to act on the real machine.
   unset ENTOURAGE_LIVE
   SK=$HOME/.claude/skills

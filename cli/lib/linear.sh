@@ -22,6 +22,11 @@ KEY_RE='^[A-Za-z0-9_.-]+$'
 LINEAR_WAIT=20
 # Where the human makes a key.
 KEY_PLACE='Linear, under Settings, Account, Security & access, Personal API keys'
+# What is said of a LINEAR_API_KEY that does not hold a key at all.
+NOT_A_KEY="LINEAR_API_KEY does not hold a Linear API key. Check your environment and $ENV_FILE, or save a new key with: entourage linear key"
+# How linear_ask exits when Linear rejects the key, so that `status` can tell
+# it from Linear out of reach. It exits 1, as die does, for everything else.
+KEY_REJECTED=2
 
 # Stop unless the two programs every Linear command needs are here.
 linear_tools() {
@@ -37,9 +42,10 @@ linear_tools() {
 # The key goes to curl on stdin, as a line of its config: other programs on
 # the machine can read a command's arguments, and cannot read its stdin. The
 # ways this fails are told apart, because what the human does next differs:
-# check the network, or replace the key.
+# check the network, or replace the key. A rejected key also has an exit code
+# of its own, KEY_REJECTED; every other failure exits 1.
 linear_ask() {
-  local key=$1 query=$2 vars=${3:-} body out code=0 status said rejected
+  local key=$1 query=$2 vars=${3:-} body out code=0 status said
   [ -n "$vars" ] || vars='{}'
   body=$(jq -cn --arg q "$query" --argjson v "$vars" '{query: $q, variables: $v}') ||
     die "could not put a question to Linear together."
@@ -60,8 +66,7 @@ linear_ask() {
   status=${out##*$'\n'}
   out=${out%$'\n'*}
   # A key Linear does not know: a 401, whatever comes with it.
-  rejected="Linear rejected the key. Make a new one in $KEY_PLACE, then save it with: entourage linear key"
-  [ "$status" != 401 ] || die "$rejected"
+  [ "$status" != 401 ] || key_rejected
   # Linear's API always answers with JSON, so an empty answer did not come
   # from it. It is stopped here, before jq judges it: jq 1.6 exits zero for
   # -e when it is given no JSON at all, so the tests below would pass on it.
@@ -74,7 +79,7 @@ linear_ask() {
   # says nothing about the key, and a new key would not get past it.
   if { [ "$status" = 403 ] && printf '%s' "$out" | jq -e 'type == "object" and has("errors")' >/dev/null 2>&1; } ||
     [ "$(printf '%s' "$out" | jq -r '[.errors[]?.extensions | ((.type // "") + " " + (.code // "")) | test("authentication"; "i")] | any' 2>/dev/null)" = true ]; then
-    die "$rejected"
+    key_rejected
   fi
   said=$(printf '%s' "$out" | jq -r '.errors[0].message // empty' 2>/dev/null) || said=
   [ -z "$said" ] || die "Linear answered with an error: ${said//"$key"/<the key>}"
@@ -86,14 +91,60 @@ linear_ask() {
     die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it."
 }
 
+# Stop as die does, saying Linear rejected the key, with the exit code that
+# says so.
+key_rejected() {
+  printf 'entourage: Linear rejected the key. Make a new one in %s, then save it with: entourage linear key\n' "$KEY_PLACE" >&2
+  exit "$KEY_REJECTED"
+}
+
 # Print the key entourage has been given, or stop and say how to save one.
 linear_saved_key() {
   local key=${LINEAR_API_KEY:-}
   [ -n "$key" ] ||
     die "no Linear key is saved, so entourage cannot read Linear. Make one in $KEY_PLACE, then save it with: entourage linear key"
-  [[ $key =~ $KEY_RE ]] ||
-    die "LINEAR_API_KEY does not hold a Linear API key. Check your environment and $ENV_FILE, or save a new key with: entourage linear key"
+  [[ $key =~ $KEY_RE ]] || die "$NOT_A_KEY"
   printf '%s' "$key"
+}
+
+# The question that tells whose a key is. `linear key` asks it before it saves
+# a key, and `status` asks it of the saved one.
+VIEWER_QUERY='query { viewer { id name } }'
+
+# Whether the saved key works, for `status` to say. It asks Linear whose the
+# key is, as `linear key` does, but it never stops: what it found is in how it
+# returns, as with linear_card_known.
+#   linear_key_state
+# It returns:
+#   0  the key works; its owner's name is on stdout, with every control
+#      character made a space, as `task ls` does for titles
+#   1  Linear rejected the key, or LINEAR_API_KEY does not hold a key; why is
+#      on stderr
+#   2  no key is saved, so nothing was asked
+#   3  the key could not be checked; why is on stderr
+# Only 1 says the key is bad. 3 says nothing of it: curl or jq is missing,
+# Linear is out of reach, or something else answered in its place.
+linear_key_state() {
+  local key=${LINEAR_API_KEY:-} tool data rc=0
+  [ -n "$key" ] || return 2
+  # Not a key, whether or not curl and jq are here to ask Linear about it.
+  [[ $key =~ $KEY_RE ]] || { printf '%s\n' "$NOT_A_KEY" >&2; return 1; }
+  for tool in curl jq; do
+    command -v "$tool" >/dev/null 2>&1 || { printf '%s is not installed\n' "$tool" >&2; return 3; }
+  done
+  # linear_ask stops with its own message, on stderr, when it cannot ask.
+  data=$(linear_ask "$key" "$VIEWER_QUERY") || rc=$?
+  case $rc in
+    0) ;;
+    "$KEY_REJECTED") return 1 ;;
+    *) return 3 ;;
+  esac
+  # As in linear_key: an answer that names nobody did not come from Linear.
+  [ -n "$(printf '%s' "$data" | jq -r '.viewer.id | strings' 2>/dev/null)" ] ||
+    { printf "Linear's answer did not say whose key it is\n" >&2; return 3; }
+  printf '%s' "$data" |
+    jq -r 'def plain: explode | map(if . < 32 or (. > 126 and . < 160) then 32 else . end) | implode;
+      .viewer.name | strings | plain' 2>/dev/null || true
 }
 
 # The kinds of status an open card is in, as Linear names them, in the order
@@ -333,7 +384,7 @@ linear_key() {
   [ -n "$key" ] || die "no key was given. Make one in $KEY_PLACE, then run this again."
   [[ $key =~ $KEY_RE ]] ||
     die "that is not a Linear API key. A key is lin_api_ and then letters and digits. Make one in $KEY_PLACE."
-  data=$(linear_ask "$key" 'query { viewer { id name } }') || die "the key was not saved."
+  data=$(linear_ask "$key" "$VIEWER_QUERY") || die "the key was not saved."
   # Linear always says who a good key belongs to. An answer that names nobody
   # did not come from Linear, so it checked nothing. What jq prints decides,
   # not how it exits: jq 1.6 exits zero for -e when it is given no JSON.
@@ -371,6 +422,142 @@ linear_key() {
   # would go on being used.
   if [ -n "$KEY_EXPORTED" ] && [ "${LINEAR_API_KEY:-}" != "$key" ]; then
     say "  note      LINEAR_API_KEY is also set in your environment, to another key. That one is used while it is set, not the one just saved."
+  fi
+}
+
+# --- reading a card ---------------------------------------------------------
+#
+# The card skills read a card here, so that the read goes the same way on
+# every run, with the card's sections, comments and sub-issues. A mod reads
+# it too, with --json.
+
+# Linear's text as a line of a list or of a card: every control character
+# becomes a space, so that a newline cannot start what looks like another line
+# and an escape sequence cannot reach the terminal. No regex, so any jq does
+# it. `task ls` uses it too.
+PLAIN_DEF='def plain: explode | map(if . < 32 or (. > 126 and . < 160) then 32 else . end) | implode;'
+
+# How many labels, comments and sub-issues a read asks Linear for. A card
+# with more than that is not printed, since what was read would pass for the
+# whole of it.
+READ_LABELS=100
+READ_COMMENTS=100
+READ_SUBS=50
+
+# The question for linear read: the card whole.
+READ_QUERY='query($team: String!, $number: Float!) {
+  issues(first: 1, filter: {team: {key: {eq: $team}}, number: {eq: $number}}) {
+    nodes {
+      identifier title url description
+      state { name type }
+      labels(first: '$READ_LABELS') { nodes { name parent { name } } pageInfo { hasNextPage } }
+      parent { identifier title }
+      comments(first: '$READ_COMMENTS') { nodes { body createdAt user { name } botActor { name } } pageInfo { hasNextPage } }
+      children(first: '$READ_SUBS') { nodes { identifier title state { name type } } pageInfo { hasNextPage } }
+    }
+  }
+}'
+
+# From the answer to READ_QUERY, on stdin, print "none" when Linear has no
+# such card, {"more": <what>} when it has more comments, sub-issues or labels
+# than were asked for, or {"card": <the card>}, the card as linear read --json
+# prints it. A comment's author is the app Linear credits with it, or else
+# the user who wrote it. Comments come oldest first. An answer with a card in
+# it that is not in this form did not come from Linear. $group is TYPE_GROUP.
+READ_SHAPE='
+  def text: if type == "string" then . else error("unreadable") end;
+  def list: if (.nodes | type) == "array" then .nodes[] else error("unreadable") end;
+  def status: if type == "object" then {name: (.name | text), type: (.type | text)} else error("unreadable") end;
+  if (.issues.nodes | type) != "array" then error("no list of cards")
+  elif (.issues.nodes | length) == 0 then "none"
+  else .issues.nodes[0]
+    | if .comments.pageInfo.hasNextPage? == true then {more: "comments"}
+      elif .children.pageInfo.hasNextPage? == true then {more: "sub-issues"}
+      elif .labels.pageInfo.hasNextPage? == true then {more: "labels"}
+      else {card: {
+        id: (.identifier | text),
+        title: (.title | text),
+        url: (.url // "" | text),
+        status: (.state | status),
+        type: ([.labels | list | select(.parent.name? == $group) | .name] | first),
+        labels: [.labels | list | .name | text],
+        parent: (if .parent == null then null else {id: (.parent.identifier | text), title: (.parent.title | text)} end),
+        description: (.description // "" | text),
+        comments: ([.comments | list
+          | {author: (.botActor.name? // .user.name? // "unknown" | text),
+             createdAt: (.createdAt | text), body: (.body // "" | text)}] | sort_by(.createdAt)),
+        subIssues: [.children | list | {id: (.identifier | text), title: (.title | text), status: (.state | status)}]
+      }}
+      end
+  end'
+
+# The card from READ_SHAPE, on stdin, laid out like the card: its head, the
+# description as written, the comments, each with its body indented under who
+# wrote it and when, and the sub-issues. Every field is made plain, but the
+# description and the comments keep their line breaks, without the \r Linear
+# may end a line with, and lose only the blank lines at either end.
+READ_TEXT=$PLAIN_DEF'
+  def blank: explode | all(. == 32);
+  def trim_blank: if length > 0 and (.[0] | blank) then .[1:] | trim_blank
+    elif length > 0 and (.[-1] | blank) then .[:-1] | trim_blank else . end;
+  def lines: split("\n") | map(rtrimstr("\r") | plain) | trim_blank;
+  "\(.id | plain)  \(.title | plain)",
+  "Status: \(.status.name | plain)",
+  "Labels: \(if .labels == [] then "none" else .labels | map(plain) | join(", ") end)",
+  (.parent // empty | "Parent: \(.id | plain)  \(.title | plain)"),
+  "URL:    \(.url | plain)",
+  "",
+  ((.description | lines) as $lines | if $lines == [] then "No description." else $lines[] end),
+  "",
+  "Comments (\(.comments | length))",
+  (.comments[]
+    | "  \(.author | plain), \(.createdAt | sub("\\.[0-9]+Z$"; "Z") | plain)",
+      (.body | lines[] | if blank then "" else "    " + . end)),
+  "",
+  "Sub-issues (\(.subIssues | length))",
+  (.subIssues[] | "  \(.id | plain)  \(.status.name | plain)  \(.title | plain)")'
+
+# Print a card whole, laid out like the card, or with --json as one line of
+# JSON, for a mod:
+#   {"id":"ABC-122","title":"…","url":"…","status":{"name":"In Progress","type":"started"},
+#    "type":"feat","labels":["feat"],"parent":{"id":"ABC-100","title":"…"},"description":"…",
+#    "comments":[{"author":"…","createdAt":"…","body":"…"}],
+#    "subIssues":[{"id":"ABC-123","title":"…","status":{"name":"Todo","type":"unstarted"}}]}
+# type is the card's label in the Type group, or null; parent is null for a
+# card with none. When it fails it prints nothing on stdout.
+#   entourage linear read <card> [--json]
+linear_read() {
+  local card=${1:-} json=0 key vars data shape more=''
+  [ "$#" -ge 1 ] && [ "$#" -le 2 ] ||
+    die "usage: entourage linear read <card> [--json], like: entourage linear read ABC-122"
+  case ${2:-} in
+    --json) json=1 ;;
+    '') ;;
+    *) die "unknown option for linear read: $2" ;;
+  esac
+  [[ $card =~ $CARD_RE ]] || die "'$card' is not a card ID like ABC-122."
+  card=$(printf '%s' "$card" | tr '[:lower:]' '[:upper:]')
+  linear_tools
+  key=$(linear_saved_key) || exit 1
+  vars=$(jq -cn --arg team "${card%-*}" --arg number "${card##*-}" '{team: $team, number: ($number | tonumber)}') ||
+    die "'$card' is not a card ID like ABC-122."
+  data=$(linear_ask "$key" "$READ_QUERY" "$vars") || exit 1
+  # Judged by what jq prints: some versions exit zero on an empty answer.
+  shape=$(printf '%s' "$data" | jq -c --arg group "$TYPE_GROUP" "$READ_SHAPE" 2>/dev/null) || shape=
+  case $shape in
+    '{"card":'*) ;;
+    '"none"') die "Linear has no card $card that the saved key can see. Check the ID, then run this again." ;;
+    '{"more":"comments"}') more="$READ_COMMENTS comments" ;;
+    '{"more":"sub-issues"}') more="$READ_SUBS sub-issues" ;;
+    '{"more":"labels"}') more="$READ_LABELS labels" ;;
+    *) die "Linear's answer was not one entourage can read. Something between this machine and Linear may be answering for it." ;;
+  esac
+  [ -z "$more" ] ||
+    die "$card has more than $more, more than entourage reads, so it printed none of the card: what it read would pass for the whole. Read the card in Linear, or with an agent's Linear tools."
+  if [ "$json" = 1 ]; then
+    printf '%s' "$shape" | jq -c '.card'
+  else
+    printf '%s' "$shape" | jq -r '.card | '"$READ_TEXT"
   fi
 }
 
@@ -873,7 +1060,8 @@ cmd_linear() {
     type) shift; linear_type "$@" ;;
     section) shift; linear_section "$@" ;;
     move) shift; linear_move_cmd "$@" ;;
+    read) shift; linear_read "$@" ;;
     archive) shift; linear_archive_cmd "$@" ;;
-    *) die "usage: entourage linear key, or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <approved|started|review|done>, or: entourage linear archive [on|off|--json] (see: entourage help)" ;;
+    *) die "usage: entourage linear key, or: entourage linear read <card> [--json], or: entourage linear type <card> <feat|fix|chore>, or: entourage linear section <card> <Specification|Plan|Breakdown> [--replace], or: entourage linear move <card> <approved|started|review|done>, or: entourage linear archive [on|off|--json] (see: entourage help)" ;;
   esac
 }
