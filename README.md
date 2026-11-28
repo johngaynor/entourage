@@ -235,14 +235,29 @@ in the tab that they have merged makes it check at once, with
 When one is closed without merging, it asks you whether to stop. No agent
 merges a pull request.
 
+When the default branch moves on and a pull request comes to conflict with
+it, the agent brings it up to date without asking you. It merges the default
+branch into the task's branch, never by a rebase, fixes what the repo's tests
+then find and commits the merge, and the review checks each Done when item
+again and revises the card's Review. Then it pushes, never forced, adds a line
+under **Brought up to date:** to the pull request's description, saying which
+files conflicted and what the fix changed, and waits for you again. A pull
+request with no conflict gets no push. It asks you, as `needs-human` naming
+the pull request and the files in conflict, only when it cannot get the tests
+to pass or when the fix would change what a Done when item says, and pushes
+nothing until you answer.
+
 ```sh
 entourage task watch my-project ABC-122 [--once]
 ```
 
 `task watch` asks GitHub, with `gh`, for the pull request of each of the
 task's worktrees, skipping one whose branch has none, and prints a line for
-each: `merged`, `open` or `closed`, and its URL. It ends once every one has
-merged (exit 0) or one is closed without merging (exit 3). With `--once` it
+each: `merged`, `open`, `closed` or `conflict`, and its URL. `conflict` is an
+open one that GitHub says conflicts with its default branch; while GitHub is
+still working that out, it is `open`. It ends once every one has merged (exit
+0), one is closed without merging (exit 3) or one is in conflict (exit 4). A
+closed one comes first, so it is 3 whatever the others are. With `--once` it
 checks once, and exits 2 while one is still open. It changes nothing.
 
 To have something changed instead of merging, say what in the tab. The agent

@@ -590,6 +590,104 @@ pr_finishes_nothing_for_a_closed_pull_request() {
     fail "sdlc-pr's 'If something goes wrong' row for a closed pull request does not say it runs no task finish"
 }
 
+# sdlc-pr's section that brings a pull request in conflict up to date, from
+# its heading to the next.
+pr_up_to_date_section() {
+  awk '/^## / { if (on) exit } /^## [0-9]+\. Bring a pull request up to date/ { on = 1 } on' \
+    "$REPO/skills/sdlc-pr/SKILL.md"
+}
+
+# When the watch ends with 4, a pull request conflicts with its default
+# branch. The agent records that as the answer and brings it up to date
+# without asking: it merges the default branch in, never by a rebase, which
+# would need a forced push, runs the whole test suite and commits the merge,
+# pushing nothing, then hands off done with review next. The review checks the
+# merge again and says so on its round line. Back in pr, the pull request is
+# open already: it pushes only a branch that moved, keeps the description's
+# added lines, adds one under Brought up to date:, and starts the watch again.
+pr_brings_a_conflicting_branch_up_to_date() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md wait ended section open want
+  wait=$(pr_wait_section)
+  ended=$(printf '%s\n' "$wait" | awk '/^- \*\*It ends with 4/ { on = 1 } on && /^- \*\*It ends with [^4]/ { exit } on')
+  [ -n "$ended" ] || fail "sdlc-pr does not say what to do when the watch ends with 4"
+  case $ended in
+    *'status: answered'*'answer: in conflict on GitHub'*'Bring a pull request up to date'*) ;;
+    *) fail "sdlc-pr does not record a conflict the watch sees as the answer, then bring the pull request up to date" ;;
+  esac
+  case $wait in
+    *'--once'*'With 4,'*'Bring a pull request up to date'*) ;;
+    *) fail "sdlc-pr does not bring a pull request up to date when --once ends with 4" ;;
+  esac
+  case $wait in *'started again'*) ;; *) fail "sdlc-pr does not start the watch again once a watch has ended" ;; esac
+
+  section=$(pr_up_to_date_section)
+  [ -n "$section" ] || { fail "sdlc-pr has no section that brings a pull request up to date"; return; }
+  for want in 'without asking the human' 'no conflict gets no push' 'git fetch origin' \
+      'git merge origin/<default branch>' 'never a rebase' 'whole test suite' 'git commit' 'Push nothing'; do
+    case $section in
+      *"$want"*) ;;
+      *) fail "sdlc-pr's section that brings a pull request up to date does not mention $want" ;;
+    esac
+  done
+  case $section in *'git rebase'* | *'--force'* | *'git push'*) fail "sdlc-pr's section that brings a pull request up to date rebases, forces or pushes" ;; esac
+  printf '%s\n' "$section" | grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" |
+    grep -A1 -x 'status: done' | grep -qx 'next: review' ||
+    fail "sdlc-pr's section that brings a pull request up to date does not hand off done with review next"
+  printf '%s\n' "$section" | grep -A4 -F "entourage task handoff <project> <card ID> <<'EOF'" |
+    grep -E '^summary: ' | grep 'files that conflicted' | grep -q 'what the fix changed' ||
+    fail "sdlc-pr's done hand-off for a merge does not name the files that conflicted and what the fix changed"
+
+  # The review it hands on to checks the merge, and says so.
+  grep -qF 'default branch was merged in' "$REPO/skills/sdlc-review/SKILL.md" ||
+    fail "sdlc-review does not say on its round line that the default branch was merged in"
+  grep -F '`review` is the sdlc-review skill' "$REPO/prompts/task-build.md" | grep -qF 'from sdlc-pr' ||
+    fail "the task-build prompt does not say review may come next from sdlc-pr"
+
+  # Back in pr, with the pull request open already.
+  open=$(pr_section 4)
+  for want in 'already has an open pull request' 'origin/<branch>..HEAD' 'push nothing in that worktree' \
+      '**Changes asked for:**' '**Brought up to date:**' 'files that conflicted' 'what the fix changed'; do
+    case $open in
+      *"$want"*) ;;
+      *) fail "sdlc-pr's section 4 does not mention, for a pull request already open: $want" ;;
+    esac
+  done
+  case $open in *'never forced'*) ;; *) fail "sdlc-pr's section 4 does not say the push is never forced" ;; esac
+  ! printf '%s\n' "$open" | grep -qE -- 'git push[^`]*--force' || fail "sdlc-pr's section 4 shows a forced push"
+}
+
+# The agent asks the human about a conflict only when it cannot settle it:
+# the tests cannot be made to pass, or a resolution would change what a Done
+# when item says. It names the pull request and the files in conflict, and
+# commits and pushes nothing until they answer.
+pr_asks_only_when_a_conflict_cannot_be_settled() {
+  local skill=$REPO/skills/sdlc-pr/SKILL.md section want row
+  section=$(pr_up_to_date_section)
+  [ -n "$section" ] || { fail "sdlc-pr has no section that brings a pull request up to date"; return; }
+  case $section in
+    *'Ask the human only when'*'cannot be made to pass'*'what a Done when item says'*) ;;
+    *) fail "sdlc-pr does not name the two times it asks the human about a conflict" ;;
+  esac
+  printf '%s\n' "$section" | grep -A3 -F "entourage task handoff <project> <card ID> <<'EOF'" |
+    grep -qx 'status: needs-human' ||
+    fail "sdlc-pr's section that brings a pull request up to date does not show its needs-human hand-off"
+  printf '%s\n' "$section" | grep -A4 -F "entourage task handoff <project> <card ID> <<'EOF'" |
+    grep -E '^question: ' | grep '<the pull request>' | grep -q '<the files in conflict>' ||
+    fail "sdlc-pr's question about a conflict does not name the pull request and the files in conflict"
+  for want in 'Until they answer, commit and push nothing' 'record the answer first' '`failed`'; do
+    case $section in
+      *"$want"*) ;;
+      *) fail "sdlc-pr's question about a conflict does not say: $want" ;;
+    esac
+  done
+  row=$(grep -E '^\| A pull request is in conflict' "$skill")
+  [ -n "$row" ] || { fail "sdlc-pr's 'If something goes wrong' has no row for a conflict it cannot settle"; return; }
+  case $row in
+    *'`needs-human`'*'files in conflict'*'push nothing'*) ;;
+    *) fail "sdlc-pr's row for a conflict does not ask as needs-human, with the files, pushing nothing: $row" ;;
+  esac
+}
+
 # What can stop the push is checked before anything is pushed, and a check
 # that fails is a failed hand-off with the reason, not a push that half works.
 pr_checks_it_can_push_before_pushing() {
@@ -796,6 +894,7 @@ CASES="skills_share_one_handoff_block handoff_block_names_every_status
   pr_no_longer_leaves_the_status_to_the_human
   pr_finishes_the_task_after_the_merge pr_says_what_finish_would_lose
   pr_finishes_nothing_for_a_closed_pull_request
+  pr_brings_a_conflicting_branch_up_to_date pr_asks_only_when_a_conflict_cannot_be_settled
   the_answer_is_recorded_first
   handoffs_are_recorded_with_the_command
   each_skill_hands_off_as_itself no_skill_says_then_stop

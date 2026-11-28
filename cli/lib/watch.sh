@@ -9,11 +9,15 @@
 # worktree's copy of entourage runs it too (guard.sh).
 #
 # Each check asks GitHub, in each worktree of the task, for the pull request of
-# that worktree's branch, and prints one line for each: merged, open or closed,
-# then its URL. A worktree whose branch has no pull request is skipped, since
-# the work did not change that repo. It exits with:
+# that worktree's branch, and prints one line for each: merged, open, closed or
+# conflict, then its URL. conflict is an open pull request that GitHub says
+# conflicts with its default branch, which the agent then brings up to date.
+# A worktree whose branch has no pull request is skipped, since the work did
+# not change that repo. It exits with:
 #   0  every pull request has merged
-#   3  one was closed without merging
+#   3  one was closed without merging, whatever the rest are, since the human
+#      is asked about it first
+#   4  one is in conflict with its default branch
 #   2  with --once, while one is still open
 #   1  it cannot watch: no task, no pull request at all, no gh or jq, or with
 #      --once a check that gh could not make
@@ -33,17 +37,22 @@ watch_pause() {
   fi
 }
 
-# A branch's pull requests, as `gh pr list --json url,state,createdAt` gives
-# them, read as one line: the state, createdAt in seconds since 1970 (- when
-# it cannot be read), and the URL. Nothing when the branch has none. Only its
-# newest pull request counts: one closed before another was opened is over.
+# A branch's pull requests, as `gh pr list --json url,state,mergeable,createdAt`
+# gives them, read as one line: the state, createdAt in seconds since 1970 (-
+# when it cannot be read), and the URL. The state is CONFLICTING for an open
+# one that GitHub says cannot be merged for a conflict. GitHub answers
+# mergeable UNKNOWN while it works that out, so that one is still OPEN.
+# Nothing when the branch has none. Only its newest pull request counts: one
+# closed before another was opened is over.
 WATCH_PR='if type != "array" then error("not a list")
   elif length == 0 then empty
-  else max_by(.createdAt) | "\(.state) \((.createdAt | fromdateiso8601?) // "-") \(.url)" end'
+  else max_by(.createdAt)
+    | (if .state == "OPEN" and .mergeable == "CONFLICTING" then "CONFLICTING" else .state end) as $state
+    | "\($state) \((.createdAt | fromdateiso8601?) // "-") \(.url)" end'
 
 # What one check found: how many pull requests stand each way, how many
 # worktrees it could not tell for, and the newest createdAt it saw ('' none).
-CHECK_OPEN=0 CHECK_CLOSED=0 CHECK_MERGED=0 CHECK_FAILED=0 CHECK_NEWEST=''
+CHECK_OPEN=0 CHECK_CLOSED=0 CHECK_MERGED=0 CHECK_CONFLICT=0 CHECK_FAILED=0 CHECK_NEWEST=''
 
 # Say on stderr that a check could not be made for a worktree, and count it.
 #   $1 1 for --once   $2 the worktree   $3 why
@@ -62,12 +71,12 @@ watch_check() {
   shift 2
   while [ "$1" != -- ]; do wts+=("$1"); shift; done
   shift
-  CHECK_OPEN=0 CHECK_CLOSED=0 CHECK_MERGED=0 CHECK_FAILED=0 CHECK_NEWEST=''
+  CHECK_OPEN=0 CHECK_CLOSED=0 CHECK_MERGED=0 CHECK_CONFLICT=0 CHECK_FAILED=0 CHECK_NEWEST=''
   for wt in "${wts[@]}"; do
     branch=$1
     shift
     # Run in the worktree, so that gh takes the repo from its origin.
-    if ! out=$(cd "$wt" && gh pr list --head "$branch" --state all --json url,state,createdAt 2>"$scratch/err"); then
+    if ! out=$(cd "$wt" && gh pr list --head "$branch" --state all --json url,state,mergeable,createdAt 2>"$scratch/err"); then
       why=$(sed -n '/[^[:space:]]/{p;q;}' "$scratch/err" 2>/dev/null) || why=
       check_failed "$once" "$wt" "${why:-gh failed}"
       continue
@@ -83,6 +92,7 @@ watch_check() {
     case $state in
       MERGED) CHECK_MERGED=$((CHECK_MERGED + 1)); say "merged $url" ;;
       CLOSED) CHECK_CLOSED=$((CHECK_CLOSED + 1)); say "closed $url" ;;
+      CONFLICTING) CHECK_CONFLICT=$((CHECK_CONFLICT + 1)); say "conflict $url" ;;
       # OPEN, and anything GitHub may add later: it has not merged yet.
       *) CHECK_OPEN=$((CHECK_OPEN + 1)); say "open $url" ;;
     esac
@@ -134,7 +144,10 @@ task_watch() {
   while :; do
     watch_check "$once" "$scratch" "${wts[@]}" -- "${branches[@]}"
     # A pull request closed without merging settles it, whatever the rest do.
+    # One in conflict comes next: the agent brings it up to date, with or
+    # without --once.
     [ "$CHECK_CLOSED" = 0 ] || exit 3
+    [ "$CHECK_CONFLICT" = 0 ] || exit 4
     if [ "$CHECK_OPEN" = 0 ] && [ "$CHECK_FAILED" = 0 ]; then
       [ "$CHECK_MERGED" -gt 0 ] ||
         die "GitHub has no pull request for $card's branch, ${branches[0]}, in any repo of its task. Open them first."

@@ -29,7 +29,7 @@ Usage:
                                            its branch in each repo and its folder, and close its tab
   entourage task watch <project> <card> [--once]
                                            watch the card's pull requests on GitHub until every one
-                                           has merged or one is closed (--once: check once)
+                                           has merged, or one is closed or in conflict (--once: check once)
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
   entourage task log <project> [<card>] [--json]
                                            list a card's hand-offs and how long each step took,
@@ -103,7 +103,11 @@ showed each Done when item. You merge it. Meanwhile the agent watches the pull
 requests on GitHub with `task watch`, and records the merge once every pull
 request for the card has merged, with no one typing in the tab; telling it in
 the tab that they have merged makes it check at once. When one is closed
-without merging, it asks you whether to stop. No agent merges a pull request.
+without merging, it asks you whether to stop. When one is in conflict with its
+default branch, it merges the default branch in, never by a rebase, fixes what
+the tests find, has the review check it again and pushes, never forced; it
+asks you only when the tests cannot pass or the fix would change a Done when
+item. No agent merges a pull request.
 entourage moves the card in Linear at four points: once your approval is
 recorded, to the team's first not-started status (Todo in Lab, Ready for Dev
 in PHY), and each of its sub-issues with it; once `task start` has opened
@@ -120,11 +124,13 @@ Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122`, `/sdlc-pr ABC-122`.
 `task watch` asks GitHub, with gh, for the pull request of each worktree of
 the card's task, skipping one whose branch has none, and prints a line for
-each: merged, open or closed, then its URL. It checks every minute for the
-first 10 minutes after the newest was opened, every 5 minutes for the hour
-after that, then every 30 minutes, and ends once every one has merged (exit
-0) or one is closed without merging (exit 3). With --once it checks once,
-and exits 2 while one is still open. It changes nothing.
+each: merged, open, closed or conflict (open, and in conflict with its
+default branch), then its URL. It checks every minute for the first 10
+minutes after the newest was opened, every 5 minutes for the hour after that,
+then every 30 minutes, and ends once every one has merged (exit 0), one is
+closed without merging (exit 3) or one is in conflict (exit 4), a closed one
+first. With --once it checks once, and exits 2 while one is still open. It
+changes nothing.
 `task finish` ends a task once its work has merged: it removes the task's
 worktrees, deletes its branch in each repo, deletes its folder and closes its
 tab. It checks first, and removes nothing when that would lose work: changes
