@@ -25,6 +25,8 @@ Usage:
                                            start the work: a worktree per repo, opened as a tab
                                            where the agent builds the card
   entourage task build <project> <card>    start the agent that builds the card, in its task's tab
+  entourage task finish <project> <card>   end a task whose work has merged: remove its worktrees,
+                                           its branch in each repo and its folder, and close its tab
   entourage task handoff <project> <card>  record how a step ended: a handoff block on stdin
   entourage task log <project> [<card>] [--json]
                                            list a card's hand-offs and how long each step took,
@@ -98,6 +100,13 @@ moves forward, one that is done or canceled is never moved, the key needs
 Write permission, and a move that cannot be made is a note, never a failure.
 Each skill also runs alone in an agent: `/sdlc-build ABC-122`,
 `/sdlc-review ABC-122`, `/sdlc-pr ABC-122`.
+`task finish` ends a task once its work has merged: it removes the task's
+worktrees, deletes its branch in each repo, deletes its folder and closes its
+tab. It checks first, and removes nothing when that would lose work: changes
+that are not committed, commits that are not in the remote's default branch
+(pushed or not), anything in the task folder outside its worktrees, or ignored
+files the repo's `made-by-setup` recipe does not say its setup makes again.
+It names every problem in every repo in one go.
 `task handoff` is run by the agent each time a step ends or pauses, and
 when the human answers a question. It reads a handoff block on stdin (phase,
 status, next and so on, one per line), refuses one that breaks the rules, and
@@ -253,7 +262,7 @@ TEMPLATE_MARK='<!-- entourage:template -->'
 
 # Sourced, so every file shares the settings above and each other's functions.
 LIB=$REPO/cli/lib
-for part in common guard links recipes trust project linear task handoff commands; do
+for part in common guard links recipes trust project linear task finish handoff commands; do
   [ -f "$LIB/$part.sh" ] ||
     { printf 'entourage: %s is missing; reinstall entourage\n' "$LIB/$part.sh" >&2; exit 1; }
   # shellcheck source=/dev/null
