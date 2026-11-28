@@ -204,6 +204,64 @@ build_stops_on_a_card_with_no_plan() {
   esac
 }
 
+# The card skills write to Linear through entourage: each shows the command
+# for its own section, and define and breakdown the one for the type.
+each_skill_writes_its_section_with_the_command() {
+  local s section
+  for s in sdlc-define sdlc-plan sdlc-breakdown; do
+    case $s in
+      sdlc-define) section=Specification ;;
+      sdlc-plan) section=Plan ;;
+      sdlc-breakdown) section=Breakdown ;;
+    esac
+    grep -qF "entourage linear section <card ID> $section <<'EOF'" "$REPO/skills/$s/SKILL.md" ||
+      fail "$s does not show the command that writes its $section"
+  done
+  grep -qF 'entourage linear type <card ID> <type>' "$REPO/skills/sdlc-define/SKILL.md" ||
+    fail "sdlc-define does not show the command that sets the card's type"
+  # A slice's type and sections go on the slice, by its own ID.
+  grep -qF 'entourage linear type <sub-issue ID> <type>' "$REPO/skills/sdlc-breakdown/SKILL.md" ||
+    fail "sdlc-breakdown does not show the command that sets a sub-issue's type"
+  grep -qF 'entourage linear section <sub-issue ID>' "$REPO/skills/sdlc-breakdown/SKILL.md" ||
+    fail "sdlc-breakdown does not show the command that writes a sub-issue's sections"
+}
+
+# The command adds a section's heading and folding. A skill that shows a
+# section written with its heading, in any form, would have it written twice.
+no_skill_writes_a_section_itself() {
+  local s
+  for s in $CARD_SKILL_NAMES; do
+    ! grep -qE '^((>>>|\+\+\+) )?## (Specification|Plan|Breakdown)$' "$REPO/skills/$s/SKILL.md" ||
+      fail "$s still shows a section written with its heading: $(grep -nE '^((>>>|\+\+\+) )?## (Specification|Plan|Breakdown)$' "$REPO/skills/$s/SKILL.md")"
+  done
+}
+
+# Each skill revises its section in place, never by writing a second one.
+each_skill_revises_its_section_with_replace() {
+  local s section
+  for s in sdlc-define sdlc-plan sdlc-breakdown; do
+    case $s in
+      sdlc-define) section=Specification ;;
+      sdlc-plan) section=Plan ;;
+      sdlc-breakdown) section=Breakdown ;;
+    esac
+    grep -q -- '--replace' "$REPO/skills/$s/SKILL.md" || fail "$s never says how to revise its $section"
+  done
+  grep -F '| Change the breakdown |' "$REPO/skills/sdlc-breakdown/SKILL.md" | grep -q -- '--replace' ||
+    fail "sdlc-breakdown's change of the breakdown does not use --replace"
+  grep -qF 'entourage linear section <card ID> Breakdown --replace' "$REPO/skills/sdlc-breakdown/SKILL.md" ||
+    fail "sdlc-breakdown does not replace the parent's Breakdown to add the sub-issue IDs"
+}
+
+# With no key saved, each skill still writes, through the agent's Linear tools.
+each_skill_falls_back_without_a_key() {
+  local s
+  for s in sdlc-define sdlc-plan sdlc-breakdown; do
+    grep -qF '`entourage linear` says no Linear key is saved' "$REPO/skills/$s/SKILL.md" ||
+      fail "$s does not say what to do when no Linear key is saved"
+  done
+}
+
 # When the review sends the work back, build takes it as a later round: only
 # what the Review names, on top of the commits already there.
 build_takes_a_later_round_from_the_review() {
@@ -354,6 +412,8 @@ pr_checks_it_can_push_before_pushing() {
 }
 
 CASES="skills_share_one_handoff_block handoff_block_names_every_status
+  each_skill_writes_its_section_with_the_command no_skill_writes_a_section_itself
+  each_skill_revises_its_section_with_replace each_skill_falls_back_without_a_key
   build_pushes_nothing build_is_done_only_when_the_tests_pass
   build_stops_on_a_card_with_no_plan build_installs_what_the_tests_need_first
   build_takes_a_later_round_from_the_review

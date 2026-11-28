@@ -67,23 +67,29 @@ Then the card stands as one piece, however large it is. Don't force a cut that f
 
 Append a Breakdown section below the Plan. Leave it open, not collapsible, because it is what the human reads to approve the card. Change nothing above it.
 
+Write it with this command, the section's body on stdin. The command adds the `## Breakdown` heading, leaves the section open, and reads the card back before it says it is done.
+
 For one piece:
 
 ```
-## Breakdown
+entourage linear section <card ID> Breakdown <<'EOF'
 One piece. <one line on why: already small, or why it can't be cut>
+EOF
 ```
 
 For slices:
 
 ```
-## Breakdown
+entourage linear section <card ID> Breakdown <<'EOF'
 1. **<slice name: a short phrase for the behaviour>**
    - [ ] <its Done when>
    - [ ] …
 2. **<slice name>**
    - [ ] …
+EOF
 ```
+
+To change a Breakdown that is already on the card, run the same command with `--replace` after the section name.
 
 Create nothing else in Linear yet. A proposal the human turns down should leave nothing behind to clean up.
 
@@ -113,7 +119,7 @@ Wait for their answer.
 
 | The human says | Then |
 |---|---|
-| Change the breakdown | Revise the Breakdown section and ask again |
+| Change the breakdown | Revise the Breakdown section, with `--replace`, and ask again |
 | Change the Specification or the Plan | Make the change by that section's own skill, `sdlc-define` or `sdlc-plan`, as a revision the human asked for. That skill ends with its own `done` block, whose `next` does not apply here: come back to this step and re-check every section below the one that changed, because a new Done when item can make the Plan and the Breakdown wrong. Ask again |
 | Approve, and the card is one piece | The card is ready to build. Hand off, as described below |
 | Approve, and the card is sliced | Go on to part 2 |
@@ -122,19 +128,22 @@ Wait for their answer.
 
 Do this only when the human has approved the card in this session, and only when the breakdown has more than one slice.
 
-For each slice, in order, create a sub-issue of the card:
+For each slice, in order:
 
-- **Title.** The slice name.
-- **Type.** The parent's type, set as the label. Slices don't get a type of their own.
-- **Description.** One or two sentences saying what this slice delivers, then its own sections in the same form as any card:
-  - A collapsed Specification, with the parent's Why narrowed to this slice, and the slice's Done when.
-  - A collapsed Plan, with the approach in a sentence or two, only the files this slice touches, and the Tests lines for its Done when items.
-  - A Breakdown section that reads `One piece. Slice <n> of <total>.`
-- **Order.** Mark it as blocked by the slice before it. The first slice is blocked by nothing.
+1. **Create a sub-issue of the card** with the Linear tools. Its title is the slice name. Its description is one or two sentences saying what this slice delivers, and nothing else: its sections come next. Mark it as blocked by the slice before it. The first slice is blocked by nothing.
+2. **Set its type**, which is the parent's type. Slices don't get a type of their own. Give the sub-issue's own ID:
+
+   ```
+   entourage linear type <sub-issue ID> <type>
+   ```
+3. **Write its sections** in the same form as any card, each with its own command and the sub-issue's ID, in this order:
+   - A Specification, with the parent's Why narrowed to this slice, and the slice's Done when: `entourage linear section <sub-issue ID> Specification <<'EOF'`.
+   - A Plan, with the approach in a sentence or two, only the files this slice touches, and the Tests lines for its Done when items: `entourage linear section <sub-issue ID> Plan <<'EOF'`.
+   - A Breakdown that reads `One piece. Slice <n> of <total>.`: `entourage linear section <sub-issue ID> Breakdown <<'EOF'`.
 
 A sub-issue has to stand alone. The build step will open it in a fresh session and see only that card, so anything it needs from the parent goes into it.
 
-Then update the parent's Breakdown list so each slice name carries its sub-issue's ID. The parent is not built. It stays as the record of the whole.
+Then update the parent's Breakdown list so each slice name carries its sub-issue's ID, with `entourage linear section <card ID> Breakdown --replace`. The parent is not built. It stays as the record of the whole.
 
 Read the parent and each sub-issue back, then hand off.
 
@@ -199,9 +208,11 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
-| A write to the card fails | Read the card before doing anything else. Retry once, and only if the section isn't there, so it can't be added twice |
-| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell the human |
-| Creating the sub-issues stops partway | Don't start over. List the sub-issues the card already has, create only the missing ones, then set the blocking order |
+| `entourage linear` says no Linear key is saved, or the command isn't there | Write the Breakdown, set the sub-issues' types and write their sections with the Linear tools instead, in the same form: the Breakdown under the heading `## Breakdown`, and a sub-issue's Specification and Plan each between `>>> ## <name>` and a closing `>>>`. Say so in `flags` |
+| `entourage linear` says it could not reach Linear | Run it once more. It checks the card before it writes, so it can't add the section twice. If it then says the card already has a Breakdown, the first try got through |
+| `entourage linear section` says the text above the section changed | Put it back from what you read at the start of this run, with the Linear tools, and tell the human |
+| `entourage linear type` says the label it needs doesn't exist | Don't create it. Finish the sub-issues, and tell the human which label is missing |
+| Creating the sub-issues stops partway | Don't start over. List the sub-issues the card already has and create only the missing ones. Then, on every one, set the type with `entourage linear type`, which does nothing on one that has it, and write any section it lacks: `entourage linear section` refuses one that is there. Then set the blocking order |
 | A blocking relation can't be set | Tell the human. The order is still on the parent's Breakdown list, so it isn't lost |
 | The human's answer isn't a clear yes | Treat it as a change request. Ask what they want changed, then ask for approval again |
 
@@ -212,14 +223,15 @@ If something fails that isn't on this list, stop and tell the human what happene
 **One piece.** The card "Export orders as CSV" has a plan that touches four files and delivers one behaviour.
 
 ```
-## Breakdown
+entourage linear section ABC-122 Breakdown <<'EOF'
 One piece. Four files and one behaviour, small enough for a single pull request.
+EOF
 ```
 
 **Sliced.** The card "Order notes" asks that staff can add notes to an order, edit and delete them, and mark some as visible to the customer. The plan touches the database, the API, the staff app and the customer app.
 
 ```
-## Breakdown
+entourage linear section ABC-130 Breakdown <<'EOF'
 1. **Staff can add a note to an order**
    - [ ] On an order, a staff member can type a note and save it.
    - [ ] Saved notes show on the order, newest first, with the author and time.
@@ -231,6 +243,7 @@ One piece. Four files and one behaviour, small enough for a single pull request.
 3. **A note can be shown to the customer**
    - [ ] A staff member can mark a note as visible to the customer.
    - [ ] The customer sees those notes, and only those, on their order page.
+EOF
 ```
 
 **The wrong cut** for the same card:

@@ -29,7 +29,11 @@ Usage:
   entourage task log <project> [<card>] [--json]
                                            list a card's hand-offs and how long each step took,
                                            or with no card the cards that have hand-offs and where each stands
-  entourage linear key                     save your Linear API key, so entourage can read Linear
+  entourage linear key                     save your Linear API key, so entourage can read and write Linear cards
+  entourage linear type <card> <feat|fix|chore>
+                                           set a card's type, its label in the Type group
+  entourage linear section <card> <Specification|Plan|Breakdown> [--replace]
+                                           add a section to a card, its body on stdin
   entourage help
 
 A project groups repos that belong together, with a PROJECT.md saying what
@@ -43,10 +47,12 @@ A task is one piece of work in a project, usually a Linear card.
 project's Linear teams that is not done, cancelled or a duplicate, under its
 status. It needs two things set once. `linear key` asks for a Linear API key
 and saves it (make one in Linear, under Settings, Account, Security & access,
-Personal API keys; Read permission is enough to list cards). `project team`
-names the project's teams by their keys: ABC for the team whose cards are
-ABC-122. A project can name several teams, and several projects can name the
-same one. Linear is asked with curl and its answer read with jq.
+Personal API keys; Read permission is enough to list cards, and the card
+skills' writes, `linear type` and `linear section`, need Write too).
+`project team` names the project's teams by their keys: ABC for the team
+whose cards are ABC-122. A project can name several teams, and several
+projects can name the same one. Linear is asked with curl and its answer read
+with jq.
 `task new` takes the card's ID, like ABC-122. It opens a tab in the project's
 Herdr space and starts an agent there, which writes the card up with the
 sdlc-define, sdlc-plan and sdlc-breakdown skills and asks you to approve it.

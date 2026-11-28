@@ -15,7 +15,7 @@ Define says what and why. How it will be built belongs to plan, and whether it i
 
 1. Get the card. If you weren't given a card ID, ask for one.
 2. Read the card with the Linear tools: title, description, labels and comments.
-3. If the card already has a Specification section, don't write a second one. If the human has asked for it to be revised, revise it in place. Otherwise tell the human and ask whether they want it revised, and if they don't, hand off as `done` without changing it.
+3. If the card already has a Specification section, don't write a second one. If the human has asked for it to be revised, revise it in place, with `--replace` (see step 4). Otherwise tell the human and ask whether they want it revised, and if they don't, hand off as `done` without changing it.
 4. Read the project's `PROJECT.md`, and look at only enough of the product, docs and code to use the right names and to know what exists today. Stop there. Working out the approach is plan's job, and doing it now tends to leak files and design into the Specification.
 
 ## 1. Set the type
@@ -30,7 +30,13 @@ Every card gets exactly one type. The types come from Conventional Branch, becau
 
 - If two could fit, take the first that does, in this order: `fix`, `feat`, `chore`.
 - Work the type out from the title and description even when the card already carries a type label. Labels get added by habit and are often wrong. Replace the label if yours differs.
-- Set the type as the card's label in the `Type` label group, which allows one per card. The name is lowercase and exact, because setup uses it as the branch prefix: `<type>/<card-id>-<short-name>`, for example `feat/abc-122-export-orders`.
+- Set it as the card's label in the `Type` label group, which allows one per card, with this command:
+
+  ```
+  entourage linear type <card ID> <type>
+  ```
+
+  It takes any other type off the card and keeps the card's other labels. The name is lowercase and exact, because setup uses it as the branch prefix: `<type>/<card-id>-<short-name>`, for example `feat/abc-122-export-orders`.
 - If the work is really two types, such as a fix plus an unrelated clean-up, this card keeps its main change. Tell the human about the other part and ask whether they want a second card for it. Don't create that card yourself.
 
 The type is a label only. Don't write it into the card's text.
@@ -84,10 +90,10 @@ Ask one question at a time, in a handoff block with `status: needs-human`. Put y
 - Append the Specification below it as a collapsible section, so the card stays short when the human opens it.
 - Add nothing else. No type line, repo, risk or flags, and no approach or file names.
 
-Use this form:
+Write it with this command, the section's body on stdin:
 
 ```
->>> ## Specification
+entourage linear section <card ID> Specification <<'EOF'
 **Why:** …
 
 **Done when:**
@@ -95,10 +101,10 @@ Use this form:
 - [ ] …
 
 **Out of scope:** …
->>>
+EOF
 ```
 
-After writing, read the card back. Check that the original description is unchanged and that the Specification shows as a collapsed section.
+The command adds the heading and the folding, puts the section below the description, and leaves the description as it is. To revise a Specification the human asked you to change, run it with `--replace` after the section name. It reads the card back before it says it is done: when it says it added the Specification, the write is checked, and you don't need to read the card again.
 
 ## 5. Hand off
 
@@ -159,11 +165,12 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
-| A write to the card fails | Read the card before doing anything else. Retry once, and only if the section isn't there, so it can't be added twice |
-| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell the human |
+| `entourage linear` says no Linear key is saved, or the command isn't there | Set the type and write the section with the Linear tools instead, in the same form, with the heading `>>> ## Specification` and a closing `>>>`. Say so in `flags` |
+| `entourage linear` says it could not reach Linear | Run it once more. It checks the card before it writes, so it can't add the section twice. If it then says the card already has a Specification, the first try got through |
+| `entourage linear section` says the text above the section changed | Put it back from what you read at the start of this run, with the Linear tools, and tell the human |
 | The collapsed section shows as plain `>>>` text | Leave the content as it is and tell the human. Don't keep reformatting it |
-| The `Type` label group, or the label you need, doesn't exist | Don't create it. Finish the Specification, and tell the human which label is missing |
-| The card carries more than one type label | Leave only the one you worked out |
+| `entourage linear type` says the label it needs doesn't exist | Don't create it. Finish the Specification, and tell the human which label is missing |
+| The card carries more than one type label | `entourage linear type` leaves only the one you give it |
 
 If something fails that isn't on this list, stop and tell the human what happened. Don't work around it.
 
@@ -174,12 +181,12 @@ If something fails that isn't on this list, stop and tell the human what happene
 > **Export orders as CSV**
 > Managers keep asking for the raw order list so they can work on it in a spreadsheet. Let them download it.
 
-**Type:** `feat`, set as the label.
+**Type:** `feat`, set as the label with `entourage linear type ABC-122 feat`.
 
-**Appended to the card**
+**Written to the card**
 
 ```
->>> ## Specification
+entourage linear section ABC-122 Specification <<'EOF'
 **Why:** A manager can download the order list as a CSV, so they can analyse it in their own spreadsheet.
 
 **Done when:**
@@ -190,7 +197,7 @@ If something fails that isn't on this list, stop and tell the human what happene
 - [ ] Someone who is not a manager does not see the button and cannot fetch the file.
 
 **Out of scope:** Scheduled or emailed exports.
->>>
+EOF
 ```
 
 Notice what isn't there: no endpoint, no file names, no library. Those are plan's.

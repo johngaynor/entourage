@@ -78,10 +78,10 @@ Plan never edits the Specification or the original description. They are what th
 - Change nothing above it.
 - Add nothing else: no repo line, no risk, no open questions.
 
-Use this form:
+Write it with this command, the section's body on stdin:
 
 ```
->>> ## Plan
+entourage linear section <card ID> Plan <<'EOF'
 **Approach:** …
 
 **Changes:**
@@ -91,10 +91,10 @@ Use this form:
 **Tests:**
 1. <Done when item, in a few words>: how it is shown
 2. …
->>>
+EOF
 ```
 
-After writing, read the card back. Check that the description and Specification are unchanged and that the Plan shows as a collapsed section.
+The command adds the heading and the folding, puts the Plan below what is on the card, and leaves everything above it as it is. To revise a Plan the human asked you to change, run it with `--replace` after the section name. It reads the card back before it says it is done: when it says it added the Plan, the write is checked, and you don't need to read the card again.
 
 ## 5. Hand off
 
@@ -155,8 +155,9 @@ EOF
 |---|---|
 | The card ID doesn't resolve | Ask the human for the ID. Don't pick a card because its title looks similar |
 | The Linear tools aren't available | Stop and say so. Show the finished section in the session so the work isn't lost. Don't save it somewhere else and report the step as done |
-| A write to the card fails | Read the card before doing anything else. Retry once, and only if the section isn't there, so it can't be added twice |
-| The read-back shows that text above your section changed | Put it back from what you read at the start of this run, append your section again, and tell the human |
+| `entourage linear` says no Linear key is saved, or the command isn't there | Write the section with the Linear tools instead, in the same form, with the heading `>>> ## Plan` and a closing `>>>`. Say so in `flags` |
+| `entourage linear` says it could not reach Linear | Run it once more. It checks the card before it writes, so it can't add the section twice. If it then says the card already has a Plan, the first try got through |
+| `entourage linear section` says the text above the section changed | Put it back from what you read at the start of this run, with the Linear tools, and tell the human |
 | The collapsed section shows as plain `>>>` text | Leave the content as it is and tell the human. Don't keep reformatting it |
 | A repo named in `PROJECT.md` is missing, or the fetch fails | Tell the human, and ask whether to plan from what is on disk |
 | You can't tell which repo the work belongs in | Ask the human. Don't guess paths |
@@ -179,10 +180,10 @@ If something fails that isn't on this list, stop and tell the human what happene
 - [ ] Someone who is not a manager does not see the button and cannot fetch the file.
 ```
 
-**Appended to the card**
+**Written to the card**
 
 ```
->>> ## Plan
+entourage linear section ABC-122 Plan <<'EOF'
 **Approach:** Add a CSV response to the existing orders list endpoint, and a button on the orders page that calls it with the filters currently applied. This follows the invoice export, which already streams a CSV the same way. A separate export endpoint was rejected because it would duplicate the list endpoint's filtering.
 
 **Changes:**
@@ -197,5 +198,5 @@ If something fails that isn't on this list, stop and tell the human what happene
 3. Same filters and range as on screen: API test with a filtered request, and a component test that the filters are passed
 4. Empty range gives the header only: API test in `test_orders_export.py`
 5. A non-manager can't see or fetch it: component test for the button, API test for a 403
->>>
+EOF
 ```

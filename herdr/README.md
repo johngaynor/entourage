@@ -146,7 +146,7 @@ entourage task ls <project> [--json]
 
   | Set once | With | What it is |
   |---|---|---|
-  | Your Linear API key | `entourage linear key` | Make the key in Linear, under Settings, Account, Security & access, Personal API keys. Read permission is enough to list cards. The command asks for it without showing it, checks it with Linear, and saves it. |
+  | Your Linear API key | `entourage linear key` | Make the key in Linear, under Settings, Account, Security & access, Personal API keys. Read permission is enough to list cards; the card skills' writes need Write too (see [Writing the card up](#writing-the-card-up)). The command asks for it without showing it, checks it with Linear, and saves it. |
   | The project's teams | `entourage project team <project> <team>...` | A team's key is what its cards' IDs start with: `ABC` for `ABC-122`. A project can name several teams, and several projects can name the same team. With no team given, the command prints the ones that are set. |
 
 - **The key is one of entourage's variables, `LINEAR_API_KEY`.** `linear key`
@@ -219,6 +219,19 @@ entourage task new <project> <card>
   project's teams. Only a definite no stops it: with no key saved, Linear is
   not asked, and when Linear cannot be asked (the network, a rejected key, no
   `curl` or `jq`), the card starts as before, with a note saying why.
+- **The skills write to the card through entourage.** The agent reads the card
+  with its own Linear tools, but sets the type and writes each section with two
+  entourage commands, so those steps go the same way on every run:
+
+  | Command | What it does |
+  |---|---|
+  | `entourage linear type <card> <feat\|fix\|chore>` | Sets the card's type: its one label in the `Type` label group, the team's or else the workspace's. Any other type comes off; the card's other labels are never touched. A missing label is refused, never made. |
+  | `entourage linear section <card> <Specification\|Plan\|Breakdown> [--replace]` | Adds the section, its body on stdin, below the description. Specification and Plan are folded away, in the form Linear keeps them in, `+++ ## <name>` … `+++` (one written as `>>>` is read the same); the Breakdown is left open, because you read it to approve the card. A section of that name already there is refused, unless `--replace` puts the new one in its place; `--replace` with none there is refused too. A body is refused when a line in it would end the section early or start a second one: a fold line, and in the Breakdown a `#` or `##` heading. A line inside a fenced code block is never taken for a section. |
+
+  Both read the card back before they say they are done: one type, the one
+  asked for; the section there once, and the text above it as it was. Both need
+  your key to have Write permission. With no key saved, the skills write with
+  the agent's Linear tools instead, and say so.
 
 ### The Cards panel
 
